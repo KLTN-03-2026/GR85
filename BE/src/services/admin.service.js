@@ -118,3 +118,61 @@ export async function getAdminDashboard() {
     emailVerifications,
   });
 }
+
+export async function updateUserByAdmin(userId, input) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id },
+  });
+
+  if (!currentUser) {
+    throw new Error("User not found");
+  }
+
+  const data = {};
+
+  if (input.fullName !== undefined) {
+    const fullName = String(input.fullName).trim();
+    if (!fullName) {
+      throw new Error("Full name is required");
+    }
+    data.fullName = fullName;
+  }
+
+  if (input.phone !== undefined) {
+    const phone = String(input.phone ?? "").trim();
+    data.phone = phone || null;
+  }
+
+  if (input.roleId !== undefined) {
+    const roleId = input.roleId === null ? null : Number(input.roleId);
+    if (roleId !== null) {
+      if (!Number.isFinite(roleId) || roleId <= 0) {
+        throw new Error("Invalid role id");
+      }
+
+      const role = await prisma.role.findUnique({ where: { id: roleId } });
+      if (!role) {
+        throw new Error("Role not found");
+      }
+    }
+
+    data.roleId = roleId;
+  }
+
+  if (input.status !== undefined) {
+    data.status = String(input.status).trim().toUpperCase();
+  }
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data,
+    include: { role: true },
+  });
+
+  return serializeData(updated);
+}

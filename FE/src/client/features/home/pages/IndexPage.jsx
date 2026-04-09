@@ -1,10 +1,7 @@
+import { useEffect, useMemo, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { ComponentCard } from "@/components/ComponentCard";
-import {
-  mockComponents,
-  componentCategories,
-} from "@/client/features/catalog/data/mock-components";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -17,7 +14,63 @@ import {
 import { Link } from "react-router-dom";
 
 const Index = () => {
-  const featuredComponents = mockComponents.slice(0, 4);
+  const [catalog, setCatalog] = useState({ categories: [], products: [] });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalog() {
+      setIsLoading(true);
+
+      try {
+        const response = await fetch("/api/products/overview");
+        if (!response.ok) {
+          throw new Error("Không tải được dữ liệu sản phẩm");
+        }
+
+        const payload = await response.json();
+
+        if (!cancelled) {
+          setCatalog({
+            categories: Array.isArray(payload.categories) ? payload.categories : [],
+            products: Array.isArray(payload.products) ? payload.products : [],
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalog({ categories: [], products: [] });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const featuredComponents = useMemo(() => {
+    return catalog.products.slice(0, 4).map(mapProductToCardData);
+  }, [catalog.products]);
+
+  const categoryCards = useMemo(() => {
+    return catalog.categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      productCount: Number(category.productCount ?? 0),
+      color: resolveCategoryColor(category.slug),
+    }));
+  }, [catalog.categories]);
+
+  const totalProducts = useMemo(() => {
+    return categoryCards.reduce((sum, category) => sum + category.productCount, 0);
+  }, [categoryCards]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -38,7 +91,7 @@ const Index = () => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {componentCategories.map((category) => (
+            {categoryCards.map((category) => (
               <Link
                 key={category.id}
                 to={`/components?category=${category.id}`}
@@ -59,6 +112,9 @@ const Index = () => {
                   <h3 className="font-display font-semibold">
                     {category.name}
                   </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {category.productCount} sản phẩm
+                  </p>
                 </div>
               </Link>
             ))}
@@ -75,7 +131,7 @@ const Index = () => {
                 Sản phẩm <span className="text-gradient-accent">nổi bật</span>
               </h2>
               <p className="text-muted-foreground">
-                Những linh kiện được yêu thích nhất
+                Tổng kho hiện có {totalProducts} sản phẩm từ MySQL
               </p>
             </div>
             <Link to="/components">
@@ -90,6 +146,11 @@ const Index = () => {
             {featuredComponents.map((component) => (
               <ComponentCard key={component.id} component={component} />
             ))}
+            {!isLoading && featuredComponents.length === 0 && (
+              <p className="col-span-full text-sm text-muted-foreground">
+                Chưa có dữ liệu sản phẩm trong hệ thống.
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -186,3 +247,64 @@ function FeatureItem({ icon: Icon, title, description }) {
 }
 
 export default Index;
+
+function mapProductToCardData(product) {
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    brand: product.category?.name ?? "PC Perfect",
+    category: normalizeCategory(product.category?.slug),
+    price: Number(product.price ?? 0),
+    usedPrice: null,
+    stock: Number(product.stockQuantity ?? 0),
+    isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
+    rating: 5,
+    reviews: 0,
+    image: "/robots.txt",
+    isNew: false,
+    specs: sanitizeSpecs(product.specifications),
+    compatibility: {},
+    description: product.name,
+  };
+}
+
+function sanitizeSpecs(specifications) {
+  if (!specifications || typeof specifications !== "object") {
+    return { thongTin: "San pham linh kien" };
+  }
+
+  const entries = Object.entries(specifications).slice(0, 3);
+  if (entries.length === 0) {
+    return { thongTin: "San pham linh kien" };
+  }
+
+  return Object.fromEntries(entries);
+}
+
+function normalizeCategory(slug) {
+  const value = String(slug ?? "").toLowerCase();
+
+  if (value === "mainboard") {
+    return "motherboard";
+  }
+
+  if (value === "vga") {
+    return "gpu";
+  }
+
+  if (value === "ssd") {
+    return "storage";
+  }
+
+  if (["cpu", "gpu", "ram", "storage", "motherboard", "psu", "case", "cooling"].includes(value)) {
+    return value;
+  }
+
+  return "cpu";
+}
+
+function resolveCategoryColor(slug) {
+  const normalized = normalizeCategory(slug);
+  return normalized;
+}

@@ -1,8 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Cpu,
-  LayoutDashboard,
+  LogOut,
   Menu,
   MessageCircle,
   ShoppingCart,
@@ -12,10 +12,13 @@ import {
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Navbar() {
   const { totalItems } = useCart();
+  const { isAuthenticated, user, logout, isHydrated } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
@@ -23,7 +26,6 @@ export function Navbar() {
     { href: "/builder", label: "Build PC" },
     { href: "/components", label: "Linh kiện" },
     { href: "/ai-recommend", label: "AI gợi ý", icon: Sparkles },
-    { href: "/admin", label: "Admin", icon: LayoutDashboard },
   ];
 
   return (
@@ -74,16 +76,49 @@ export function Navbar() {
               </Button>
             </Link>
 
-            <Link to="/login">
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden gap-2 sm:flex"
-              >
-                <User className="h-4 w-4" />
-                Đăng nhập
-              </Button>
-            </Link>
+            {isHydrated && isAuthenticated ? (
+              <div className="hidden items-center gap-3 rounded-full border border-border/70 bg-white/80 px-3 py-1.5 sm:flex">
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  {getInitials(user?.fullName ?? user?.email ?? "U")}
+                </button>
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="leading-tight cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <div className="text-sm font-semibold">
+                    {user?.fullName ?? user?.email}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {user?.role ?? "User"}
+                  </div>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                    navigate("/");
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Link to="/login">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="hidden gap-2 sm:flex"
+                >
+                  <User className="h-4 w-4" />
+                  Đăng nhập
+                </Button>
+              </Link>
+            )}
 
             <Button
               variant="ghost"
@@ -120,12 +155,27 @@ export function Navbar() {
                   </Button>
                 </Link>
               ))}
-              <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="outline" className="w-full gap-2">
-                  <User className="h-4 w-4" />
-                  Đăng nhập
+              {isHydrated && isAuthenticated ? (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                    navigate("/");
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Đăng xuất
                 </Button>
-              </Link>
+              ) : (
+                <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="outline" className="w-full gap-2">
+                    <User className="h-4 w-4" />
+                    Đăng nhập
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -133,3 +183,13 @@ export function Navbar() {
     </nav>
   );
 }
+
+function getInitials(value) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+

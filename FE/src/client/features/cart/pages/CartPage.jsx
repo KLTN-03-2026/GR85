@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/contexts/CartContext";
+import { useState } from "react";
 import {
   Minus,
   Plus,
@@ -15,8 +16,19 @@ import {
 import { Link } from "react-router-dom";
 
 export default function CartPage() {
-  const { items, updateQuantity, removeFromCart, totalPrice, clearCart } =
-    useCart();
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+
+  const {
+    items,
+    updateQuantity,
+    removeFromCart,
+    totalPrice,
+    clearCart,
+    checkout,
+  } = useCart();
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -85,7 +97,7 @@ export default function CartPage() {
             <div className="lg:col-span-2 space-y-4">
               {items.map((item) => (
                 <Card
-                  key={`${item.component.id}-${item.isUsed}`}
+                  key={item.id}
                   className="glass border-border/50 p-4"
                 >
                   <div className="flex gap-4">
@@ -108,18 +120,16 @@ export default function CartPage() {
                           <h3 className="font-semibold line-clamp-1">
                             {item.component.name}
                           </h3>
-                          {item.isUsed && (
-                            <span className="inline-flex items-center gap-1 text-xs text-storage mt-1">
-                              <Package className="w-3 h-3" />
-                              Đồ cũ
-                            </span>
-                          )}
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <Package className="w-3 h-3" />
+                            Tồn kho: {item.component.stock}
+                          </span>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="text-destructive"
-                          onClick={() => removeFromCart(item.component.id)}
+                          onClick={() => removeFromCart(item.id)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -134,7 +144,7 @@ export default function CartPage() {
                             className="h-8 w-8"
                             onClick={() =>
                               updateQuantity(
-                                item.component.id,
+                                item.id,
                                 item.quantity - 1,
                               )
                             }
@@ -150,7 +160,7 @@ export default function CartPage() {
                             className="h-8 w-8"
                             onClick={() =>
                               updateQuantity(
-                                item.component.id,
+                                item.id,
                                 item.quantity + 1,
                               )
                             }
@@ -162,9 +172,7 @@ export default function CartPage() {
                         {/* Price */}
                         <p className="text-lg font-bold text-primary">
                           {formatPrice(
-                            (item.isUsed && item.component.usedPrice
-                              ? item.component.usedPrice
-                              : item.component.price) * item.quantity,
+                            item.component.price * item.quantity,
                           )}
                         </p>
                       </div>
@@ -205,14 +213,45 @@ export default function CartPage() {
 
                 {/* Promo Code */}
                 <div className="flex gap-2 mb-6">
-                  <Input placeholder="Mã giảm giá" />
-                  <Button variant="outline">Áp dụng</Button>
+                  <Input
+                    placeholder="Địa chỉ nhận hàng"
+                    value={shippingAddress}
+                    onChange={(event) => setShippingAddress(event.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2 mb-6">
+                  <Input
+                    placeholder="Số điện thoại"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                  />
                 </div>
 
-                <Button variant="hero" className="w-full gap-2">
+                <Button
+                  variant="hero"
+                  className="w-full gap-2"
+                  onClick={async () => {
+                    setCheckoutMessage("");
+                    setCheckoutError("");
+
+                    try {
+                      const result = await checkout({ shippingAddress, phoneNumber });
+                      setCheckoutMessage(`Thanh toán thành công. Mã đơn #${result.orderId}`);
+                    } catch (error) {
+                      setCheckoutError(error instanceof Error ? error.message : "Thanh toán thất bại");
+                    }
+                  }}
+                >
                   Tiến hành thanh toán
                   <ArrowRight className="w-4 h-4" />
                 </Button>
+
+                {checkoutMessage && (
+                  <p className="text-xs text-emerald-600 text-center mt-3">{checkoutMessage}</p>
+                )}
+                {checkoutError && (
+                  <p className="text-xs text-destructive text-center mt-3">{checkoutError}</p>
+                )}
 
                 <p className="text-xs text-muted-foreground text-center mt-4">
                   Bằng việc đặt hàng, bạn đồng ý với điều khoản sử dụng

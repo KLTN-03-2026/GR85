@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import path from "node:path";
 import { apiRouter } from "./api/routes/index.js";
 import { env } from "./config/env.js";
 
@@ -13,6 +14,7 @@ export function createServer() {
     }),
   );
   app.use(express.json());
+  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
   app.use("/api", apiRouter);
 

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Link } from "react-router-dom";
 import { Star, Plus, Eye, ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useBuild } from "@/contexts/BuildContext";
@@ -66,6 +67,9 @@ export function ComponentCard({ component, mode = "shop" }) {
             {component.isNew && (
               <Badge className="bg-accent text-accent-foreground">Mới</Badge>
             )}
+            {Number(component.stock ?? 0) <= 0 && (
+              <Badge className="bg-rose-100 text-rose-700">Hết hàng</Badge>
+            )}
           </div>
 
           {/* Quick Actions */}
@@ -105,7 +109,9 @@ export function ComponentCard({ component, mode = "shop" }) {
 
           {/* Name */}
           <h3 className="font-semibold text-foreground line-clamp-2 min-h-[2.5rem]">
-            {component.name}
+            <Link to={`/components/${component.slug || component.id}`} className="hover:underline">
+              {component.name}
+            </Link>
           </h3>
 
           {/* Key Specs */}
@@ -145,10 +151,21 @@ export function ComponentCard({ component, mode = "shop" }) {
                 <Button
                   variant="default"
                   className="flex-1 gap-2"
-                  onClick={() => addToCart(component)}
+                  onClick={async () => {
+                    try {
+                      await addToCart(component);
+                    } catch (error) {
+                      window.alert(
+                        error instanceof Error
+                          ? error.message
+                          : "Không thể thêm vào giỏ hàng",
+                      );
+                    }
+                  }}
+                  disabled={Number(component.stock ?? 0) <= 0}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  Mua ngay
+                  {Number(component.stock ?? 0) <= 0 ? "Hết hàng" : "Mua ngay"}
                 </Button>
                 <Button
                   variant="outline"

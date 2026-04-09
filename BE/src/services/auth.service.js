@@ -1,11 +1,25 @@
 import { compare, hash } from "bcryptjs";
+import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 import { UserStatus } from "@prisma/client";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
 
 const defaultUserPermissions = ["place_order", "save_build", "send_review"];
+const verificationPurposes = {
+  EMAIL_VERIFY: "EMAIL_VERIFY",
+  PASSWORD_RESET: "PASSWORD_RESET",
+};
+
+const mailTransport = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: env.EMAIL,
+    pass: env.APP_PASSWORD.replace(/\s+/g, ""),
+  },
+});
 
 export async function registerUser(input) {
   const existingUser = await prisma.user.findUnique({
@@ -21,33 +35,66 @@ export async function registerUser(input) {
   });
 
   const passwordHash = await hash(input.password, 10);
-
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      passwordHash,
-      fullName: input.fullName,
-      phone: input.phone,
-      status: UserStatus.ACTIVE,
-      roleId: userRole?.id,
-      cart: {
-        create: {},
+  const { user, verificationCode } = await prisma.$transaction(async (tx) => {
+    const createdUser = await tx.user.create({
+      data: {
+        email: input.email,
+        passwordHash,
+        fullName: input.fullName,
+        phone: input.phone,
+        status: UserStatus.UNVERIFIED,
+        roleId: userRole?.id,
+        cart: {
+          create: {},
+        },
       },
-    },
-    include: {
-      role: {
-        include: {
-          permissions: {
-            include: {
-              permission: true,
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
             },
           },
         },
       },
-    },
+    });
+
+    const verificationCode = await issueEmailVerification(tx, {
+      email: createdUser.email,
+      purpose: verificationPurposes.EMAIL_VERIFY,
+    });
+
+    return { user: createdUser, verificationCode };
   });
 
-  return buildAuthPayload(user);
+  try {
+    await sendOtpEmail({
+      email: user.email,
+      fullName: user.fullName,
+      otp: verificationCode,
+      purpose: verificationPurposes.EMAIL_VERIFY,
+    });
+  } catch (error) {
+    await prisma.$transaction([
+      prisma.emailVerification.deleteMany({
+        where: {
+          email: user.email,
+          purpose: verificationPurposes.EMAIL_VERIFY,
+        },
+      }),
+      prisma.user.delete({ where: { id: user.id } }),
+    ]);
+
+    throw new Error("Unable to send verification email");
+  }
+
+  return serializeData({
+    message: "Verification code sent to your email",
+    email: user.email,
+    verificationRequired: true,
+  });
 }
 
 export async function loginUser(input) {
@@ -76,11 +123,141 @@ export async function loginUser(input) {
     throw new Error("Invalid email or password");
   }
 
+  if (user.status === UserStatus.UNVERIFIED) {
+    throw new Error("Please verify your email first");
+  }
+
   if (user.status === UserStatus.BANNED) {
     throw new Error("This account has been banned");
   }
 
   return buildAuthPayload(user);
+}
+
+export async function verifyEmail(input) {
+  const verification = await getValidVerification({
+    email: input.email,
+    purpose: verificationPurposes.EMAIL_VERIFY,
+    otp: input.otp,
+  });
+
+  const user = await prisma.$transaction(async (tx) => {
+    await tx.emailVerification.update({
+      where: { id: verification.id },
+      data: { usedAt: new Date() },
+    });
+
+    return tx.user.update({
+      where: { email: input.email },
+      data: { status: UserStatus.ACTIVE },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  return buildAuthPayload(user);
+}
+
+export async function resendVerificationCode(input) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+  });
+
+  if (!user) {
+    throw new Error("Email not found");
+  }
+
+  if (user.status === UserStatus.BANNED) {
+    throw new Error("This account has been banned");
+  }
+
+  const verificationCode = await prisma.$transaction(async (tx) => {
+    return issueEmailVerification(tx, {
+      email: input.email,
+      purpose: verificationPurposes.EMAIL_VERIFY,
+    });
+  });
+
+  await sendOtpEmail({
+    email: user.email,
+    fullName: user.fullName,
+    otp: verificationCode,
+    purpose: verificationPurposes.EMAIL_VERIFY,
+  });
+
+  return serializeData({
+    message: "Verification code resent to your email",
+    email: user.email,
+  });
+}
+
+export async function requestPasswordReset(input) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+  });
+
+  if (!user) {
+    throw new Error("Email not found");
+  }
+
+  if (user.status === UserStatus.BANNED) {
+    throw new Error("This account has been banned");
+  }
+
+  const resetCode = await prisma.$transaction(async (tx) => {
+    return issueEmailVerification(tx, {
+      email: input.email,
+      purpose: verificationPurposes.PASSWORD_RESET,
+    });
+  });
+
+  await sendOtpEmail({
+    email: user.email,
+    fullName: user.fullName,
+    otp: resetCode,
+    purpose: verificationPurposes.PASSWORD_RESET,
+  });
+
+  return serializeData({
+    message: "Password reset code sent to your email",
+    email: user.email,
+  });
+}
+
+export async function resetPassword(input) {
+  const verification = await getValidVerification({
+    email: input.email,
+    purpose: verificationPurposes.PASSWORD_RESET,
+    otp: input.otp,
+  });
+
+  const passwordHash = await hash(input.password, 10);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.emailVerification.update({
+      where: { id: verification.id },
+      data: { usedAt: new Date() },
+    });
+
+    await tx.user.update({
+      where: { email: input.email },
+      data: { passwordHash },
+    });
+  });
+
+  return serializeData({
+    message: "Password updated successfully",
+    email: input.email,
+  });
 }
 
 export async function getCurrentUser(userId) {
@@ -107,11 +284,267 @@ export async function getCurrentUser(userId) {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    phone: user.phone,
+    address: user.address,
     status: user.status,
     role: user.role?.name ?? "User",
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
     permissions:
       user.role?.permissions.map((item) => item.permission.actionName) ??
       defaultUserPermissions,
+  });
+}
+
+export async function listMyOrders(userId) {
+  const orders = await prisma.order.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      orderItems: true,
+    },
+  });
+
+  return serializeData(
+    orders.map((order) => ({
+      id: order.id,
+      orderStatus: order.orderStatus,
+      paymentStatus: order.paymentStatus,
+      totalAmount: order.totalAmount,
+      discountAmount: order.discountAmount,
+      shippingAddress: order.shippingAddress,
+      phoneNumber: order.phoneNumber,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      itemCount: order.orderItems.reduce((sum, item) => sum + item.quantity, 0),
+    })),
+  );
+}
+
+export async function getMyOrderDetail(userId, orderId) {
+  const id = Number(orderId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid order id");
+  }
+
+  const order = await prisma.order.findFirst({
+    where: { id, userId },
+    include: {
+      orderItems: {
+        include: {
+          product: {
+            include: {
+              images: {
+                orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+      statusHistories: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  return serializeData({
+    id: order.id,
+    orderStatus: order.orderStatus,
+    paymentStatus: order.paymentStatus,
+    totalAmount: order.totalAmount,
+    discountAmount: order.discountAmount,
+    shippingAddress: order.shippingAddress,
+    phoneNumber: order.phoneNumber,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    items: order.orderItems.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      priceAtTime: item.priceAtTime,
+      lineTotal: Number(item.priceAtTime) * item.quantity,
+      product: {
+        id: item.product.id,
+        name: item.product.name,
+        slug: item.product.slug,
+        imageUrl: item.product.images?.[0]?.imageUrl ?? "/robots.txt",
+      },
+    })),
+    statusHistory: order.statusHistories,
+  });
+}
+
+function createOtp() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+async function issueEmailVerification(tx, { email, purpose }) {
+  const otp = createOtp();
+
+  await tx.emailVerification.deleteMany({
+    where: {
+      email,
+      purpose,
+    },
+  });
+
+  await tx.emailVerification.create({
+    data: {
+      email,
+      otp,
+      purpose,
+      expiredAt: new Date(Date.now() + env.OTP_EXPIRY_MINUTES * 60 * 1000),
+    },
+  });
+
+  return otp;
+}
+
+async function getValidVerification({ email, purpose, otp }) {
+  const verification = await prisma.emailVerification.findFirst({
+    where: {
+      email,
+      purpose,
+      otp,
+      usedAt: null,
+      expiredAt: {
+        gt: new Date(),
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!verification) {
+    throw new Error("Invalid or expired verification code");
+  }
+
+  return verification;
+}
+
+async function sendOtpEmail({ email, fullName, otp, purpose }) {
+  const subject =
+    purpose === verificationPurposes.PASSWORD_RESET
+      ? "Mã đặt lại mật khẩu PC Perfect"
+      : "Mã xác minh email PC Perfect";
+
+  const label =
+    purpose === verificationPurposes.PASSWORD_RESET
+      ? "đặt lại mật khẩu"
+      : "xác minh email";
+
+  await mailTransport.sendMail({
+    from: `PC Perfect <${env.EMAIL}>`,
+    to: email,
+    subject,
+    text: [
+      `Xin chào ${fullName || email},`,
+      `Mã ${label} của bạn là: ${otp}`,
+      `Mã này sẽ hết hạn sau ${env.OTP_EXPIRY_MINUTES} phút.`,
+      "Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.",
+    ].join("\n\n"),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a;">
+        <p>Xin chào ${fullName || email},</p>
+        <p>Mã <strong>${label}</strong> của bạn là:</p>
+        <div style="font-size: 28px; letter-spacing: 6px; font-weight: 700; padding: 12px 18px; background: #ecfdf5; border-radius: 12px; display: inline-block;">${otp}</div>
+        <p>Mã này sẽ hết hạn sau ${env.OTP_EXPIRY_MINUTES} phút.</p>
+        <p>Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.</p>
+      </div>
+    `,
+  });
+}
+
+export async function updateUserProfile(userId, input) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      fullName:
+        input.fullName !== undefined ? input.fullName : user.fullName,
+      phone:
+        input.phone !== undefined
+          ? String(input.phone ?? "").trim() || null
+          : user.phone,
+      address:
+        input.address !== undefined
+          ? String(input.address ?? "").trim() || null
+          : user.address,
+    },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return serializeData({
+    id: updatedUser.id,
+    email: updatedUser.email,
+    fullName: updatedUser.fullName,
+    phone: updatedUser.phone,
+    address: updatedUser.address,
+    status: updatedUser.status,
+    role: updatedUser.role?.name ?? "User",
+    createdAt: updatedUser.createdAt,
+    updatedAt: updatedUser.updatedAt,
+  });
+}
+
+export async function changePassword(userId, input) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const isPasswordValid = await compare(
+    input.currentPassword,
+    user.passwordHash,
+  );
+
+  if (!isPasswordValid) {
+    throw new Error("Current password is incorrect");
+  }
+
+  const newPasswordHash = await hash(input.newPassword, 10);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: newPasswordHash },
+  });
+
+  return serializeData({
+    message: "Password changed successfully",
   });
 }
 
