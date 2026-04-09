@@ -73,4 +73,129 @@ export const profileApi = {
 
     return response.json();
   },
+
+  getAddresses: async () => {
+    const response = await fetch(`${API_BASE}/auth/addresses`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to fetch addresses");
+    }
+
+    return response.json();
+  },
+
+  createAddress: async (data) => {
+    const response = await fetch(`${API_BASE}/auth/addresses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to create address");
+    }
+
+    return response.json();
+  },
+
+  updateAddress: async (addressId, data) => {
+    const response = await fetch(`${API_BASE}/auth/addresses/${addressId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to update address");
+    }
+
+    return response.json();
+  },
+
+  deleteAddress: async (addressId) => {
+    const response = await fetch(`${API_BASE}/auth/addresses/${addressId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to delete address");
+    }
+
+    return response.json();
+  },
+
+  getWallet: async () => {
+    const response = await fetch(`${API_BASE}/auth/wallet`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to fetch wallet");
+    }
+
+    return response.json();
+  },
+
+  topUpWallet: async (data) => {
+    const response = await fetch(`${API_BASE}/auth/wallet/top-up`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to top up wallet");
+    }
+
+    return response.json();
+  },
+
+  getMyReturnRequests: async () => {
+    const response = await fetch(`${API_BASE}/auth/returns`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to fetch return requests");
+    }
+
+    return response.json();
+  },
+
+  requestReturn: async (data) => {
+    const response = await fetch(`${API_BASE}/auth/returns`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to request return");
+    }
+
+    return response.json();
+  },
 };

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import PaymentQRModal from "@/components/PaymentQRModal";
 import {
   ArrowLeft,
   AlertCircle,
@@ -21,12 +22,12 @@ const profileValidation = {
     if (!value?.trim()) return "Tên không được trống";
     if (value.trim().length < 2) return "Tên phải có ít nhất 2 ký tự";
     if (value.trim().length > 100) return "Tên không được quá 100 ký tự";
+    if (/\d/.test(value.trim())) return "Tên không được chứa số";
     return "";
   },
   phone: (value) => {
     if (!value?.trim()) return "";
-    if (!/^[\d\s\-\+().]{6,20}$/.test(value.trim())) 
-      return "Số điện thoại không hợp lệ";
+    if (!/^\d{10}$/.test(value.trim())) return "Số điện thoại phải đúng 10 chữ số";
     return "";
   },
   address: (value) => {
@@ -63,7 +64,16 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [showPendingOrders, setShowPendingOrders] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
+  const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletMessage, setWalletMessage] = useState(null);
+  const [walletError, setWalletError] = useState(null);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [showTopUpQRModal, setShowTopUpQRModal] = useState(false);
+  const [topUpQRData, setTopUpQRData] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
   const [showPasswords, setShowPasswords] = useState({
@@ -103,6 +113,7 @@ export default function ProfilePage() {
       setLoading(true);
       const data = await profileApi.getProfile();
       setProfileData(data);
+      setWalletBalance(Number(data.walletBalance ?? 0));
       setFormData({
         fullName: data.fullName || "",
         phone: data.phone || "",
@@ -115,6 +126,18 @@ export default function ProfilePage() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadWallet() {
+    try {
+      setWalletLoading(true);
+      const data = await profileApi.getWallet();
+      setWalletBalance(Number(data?.balance ?? 0));
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "Không thể tải số dư ví");
+    } finally {
+      setWalletLoading(false);
     }
   }
 
@@ -150,10 +173,12 @@ export default function ProfilePage() {
       setMessage(null);
       const updatedUser = await profileApi.updateProfile({
         fullName: formData.fullName.trim(),
-        phone: formData.phone?.trim() || null,
-        address: formData.address?.trim() || null,
+        phone: formData.phone?.trim() || undefined,
+        address: formData.address?.trim() || undefined,
       });
       setSession({ token, user: updatedUser });
+      setProfileData(updatedUser);
+      setWalletBalance(Number(updatedUser.walletBalance ?? walletBalance));
       setMessage({
         type: "success",
         text: "Cập nhật thông tin thành công",
@@ -184,6 +209,16 @@ export default function ProfilePage() {
     }
   }
 
+  const visibleOrders = showPendingOrders
+    ? orders
+    : orders.filter(
+        (order) =>
+          !(
+            String(order?.paymentStatus ?? "").toUpperCase() === "PENDING" &&
+            String(order?.orderStatus ?? "").toUpperCase() === "PENDING"
+          ),
+      );
+
   async function loadOrderDetail(orderId) {
     try {
       const data = await profileApi.getMyOrderDetail(orderId);
@@ -196,6 +231,58 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleRequestReturn(orderId) {
+    const reason = window.prompt("Nhập lý do trả hàng (tối thiểu 10 ký tự):", "Sản phẩm bị lỗi hoặc không đúng mô tả");
+    if (!reason) {
+      return;
+    }
+
+    try {
+      setSubmittingReturnOrderId(orderId);
+      await profileApi.requestReturn({ orderId, reason });
+      setMessage({
+        type: "success",
+        text: `Đã gửi yêu cầu trả hàng cho đơn #${orderId}. Chờ admin duyệt.`,
+      });
+      await loadMyOrders();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể gửi yêu cầu trả hàng",
+      });
+    } finally {
+      setSubmittingReturnOrderId(null);
+    }
+  }
+
+  async function handleTopUpWallet(e) {
+    e.preventDefault();
+
+    try {
+      setWalletError(null);
+      setWalletMessage(null);
+
+      const amount = Number(topUpAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Số tiền nạp phải lớn hơn 0");
+      }
+
+      const result = await profileApi.topUpWallet({
+        amount,
+        note: "Nạp tiền từ trang thông tin cá nhân",
+      });
+
+      setWalletBalance(Number(result?.balance ?? walletBalance));
+      setWalletMessage("Đã tạo mã QR nạp tiền và gửi email xác nhận");
+      setTopUpQRData(result);
+      setShowTopUpQRModal(true);
+      setTopUpAmount("");
+      await loadProfile();
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "Nạp tiền thất bại");
+    }
+  }
+
   useEffect(() => {
     if (activeTab !== "orders") {
       return;
@@ -203,6 +290,14 @@ export default function ProfilePage() {
 
     loadMyOrders();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated) {
+      return;
+    }
+
+    loadWallet();
+  }, [isHydrated, isAuthenticated]);
 
   async function handleChangePassword(e) {
     e.preventDefault();
@@ -332,6 +427,14 @@ export default function ProfilePage() {
                       )}
                     </p>
                   </div>
+                  <div className="text-left">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      SỐ DƯ VÍ
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-sky-700">
+                      {formatMoney(profileData?.walletBalance ?? 0)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -366,8 +469,9 @@ export default function ProfilePage() {
 
             {/* Profile Tab */}
             {activeTab === "profile" && (
-              <Card className="p-6">
-                <form onSubmit={handleUpdateProfile} className="space-y-6">
+              <div className="space-y-6">
+                <Card className="p-6">
+                  <form onSubmit={handleUpdateProfile} className="space-y-6">
                   {/* Full Name */}
                   <div>
                     <label className="block text-sm font-medium mb-2">
@@ -421,12 +525,13 @@ export default function ProfilePage() {
                       placeholder="Nhập số điện thoại (không bắt buộc)"
                       value={formData.phone}
                       onChange={(e) => {
+                        const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
                         setFormData({
                           ...formData,
-                          phone: e.target.value,
+                          phone: nextPhone,
                         });
                         if (errors.phone) {
-                          const error = profileValidation.phone(e.target.value);
+                          const error = profileValidation.phone(nextPhone);
                           setErrors({
                             ...errors,
                             phone: error,
@@ -536,8 +641,42 @@ export default function ProfilePage() {
                       "Lưu thay đổi"
                     )}
                   </Button>
-                </form>
-              </Card>
+                  </form>
+                </Card>
+
+                <Card className="p-6">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">Ví thanh toán</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Nạp tiền và dùng số dư để thanh toán đơn hàng.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Số dư hiện tại</p>
+                      <p className="text-xl font-bold text-sky-700">{formatMoney(walletBalance)}</p>
+                    </div>
+                  </div>
+
+                  <form className="space-y-3" onSubmit={handleTopUpWallet}>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <Input
+                        type="number"
+                        min="1000"
+                        step="1000"
+                        placeholder="Nhập số tiền muốn nạp"
+                        value={topUpAmount}
+                        onChange={(event) => setTopUpAmount(event.target.value)}
+                      />
+                      <Button type="submit" disabled={walletLoading}>
+                        {walletLoading ? "Đang xử lý..." : "Nạp tiền"}
+                      </Button>
+                    </div>
+                    {walletMessage ? <p className="text-xs text-emerald-600">{walletMessage}</p> : null}
+                    {walletError ? <p className="text-xs text-destructive">{walletError}</p> : null}
+                  </form>
+                </Card>
+              </div>
             )}
 
             {/* Password Tab */}
@@ -731,9 +870,19 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold">Danh sách đơn hàng</h3>
-                    <Button variant="outline" onClick={loadMyOrders}>
-                      Tải lại
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={showPendingOrders}
+                          onChange={(event) => setShowPendingOrders(event.target.checked)}
+                        />
+                        Hiển thị đơn chờ thanh toán
+                      </label>
+                      <Button variant="outline" onClick={loadMyOrders}>
+                        Tải lại
+                      </Button>
+                    </div>
                   </div>
 
                   {ordersLoading ? (
@@ -741,8 +890,8 @@ export default function ProfilePage() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Đang tải đơn hàng...
                     </div>
-                  ) : orders.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Bạn chưa có đơn hàng nào.</p>
+                  ) : visibleOrders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Bạn chưa có đơn hàng nào phù hợp bộ lọc hiện tại.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[700px] text-left text-sm">
@@ -754,10 +903,11 @@ export default function ProfilePage() {
                             <th className="px-3 py-3 font-medium">Thanh toán</th>
                             <th className="px-3 py-3 font-medium">Trạng thái</th>
                             <th className="px-3 py-3 font-medium">Theo dõi</th>
+                            <th className="px-3 py-3 font-medium">Trả hàng</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {orders.map((order) => (
+                          {visibleOrders.map((order) => (
                             <tr key={order.id} className="border-b border-border/40">
                               <td className="px-3 py-3">#{order.id}</td>
                               <td className="px-3 py-3">{formatDate(order.createdAt)}</td>
@@ -774,6 +924,20 @@ export default function ProfilePage() {
                                 >
                                   Xem chi tiết
                                 </Button>
+                              </td>
+                              <td className="px-3 py-3">
+                                {canRequestReturn(order) ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={submittingReturnOrderId === order.id}
+                                    onClick={() => handleRequestReturn(order.id)}
+                                  >
+                                    {submittingReturnOrderId === order.id ? "Đang gửi..." : "Yêu cầu trả"}
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Không khả dụng</span>
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -829,6 +993,18 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <PaymentQRModal
+        isOpen={showTopUpQRModal}
+        onClose={() => setShowTopUpQRModal(false)}
+        paymentData={topUpQRData}
+        title="Nạp tiền vào tài khoản"
+        description="Quét mã QR để nạp tiền, sau đó hệ thống sẽ gửi email xác nhận giao dịch cho bạn."
+        actionLabel="Đã quét mã"
+        confirmNote="Email sẽ được gửi về ngay sau khi giao dịch nạp tiền được tạo."
+        codeLabel="Mã nạp tiền"
+        amountLabel="Số tiền nạp"
+      />
     </div>
   );
 }
@@ -856,6 +1032,13 @@ function formatEnum(value) {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function canRequestReturn(order) {
+  return (
+    String(order?.orderStatus ?? "").toUpperCase() === "DELIVERED" &&
+    String(order?.paymentStatus ?? "").toUpperCase() === "PAID"
+  );
 }
 
 function formatDate(value) {

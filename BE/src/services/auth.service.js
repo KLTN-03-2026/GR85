@@ -6,6 +6,10 @@ import { UserStatus } from "@prisma/client";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import {
+  normalizeAndValidateFullName,
+  normalizeAndValidatePhoneNumber,
+} from "../utils/validation.js";
 
 const defaultUserPermissions = ["place_order", "save_build", "send_review"];
 const verificationPurposes = {
@@ -22,6 +26,12 @@ const mailTransport = nodemailer.createTransport({
 });
 
 export async function registerUser(input) {
+  const normalizedFullName = normalizeAndValidateFullName(
+    input.fullName,
+    "Full name",
+  );
+  const normalizedPhone = normalizeAndValidatePhoneNumber(input.phone);
+
   const existingUser = await prisma.user.findUnique({
     where: { email: input.email },
   });
@@ -40,8 +50,8 @@ export async function registerUser(input) {
       data: {
         email: input.email,
         passwordHash,
-        fullName: input.fullName,
-        phone: input.phone,
+        fullName: normalizedFullName,
+        phone: normalizedPhone,
         status: UserStatus.UNVERIFIED,
         roleId: userRole?.id,
         cart: {
@@ -286,6 +296,7 @@ export async function getCurrentUser(userId) {
     fullName: user.fullName,
     phone: user.phone,
     address: user.address,
+    walletBalance: Number(user.walletBalance ?? 0),
     status: user.status,
     role: user.role?.name ?? "User",
     createdAt: user.createdAt,
@@ -371,7 +382,7 @@ export async function getMyOrderDetail(userId, orderId) {
         id: item.product.id,
         name: item.product.name,
         slug: item.product.slug,
-        imageUrl: item.product.images?.[0]?.imageUrl ?? "/robots.txt",
+        imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
       },
     })),
     statusHistory: order.statusHistories,
@@ -478,15 +489,20 @@ export async function updateUserProfile(userId, input) {
     throw new Error("User not found");
   }
 
+  const normalizedFullName =
+    input.fullName !== undefined
+      ? normalizeAndValidateFullName(input.fullName, "Full name")
+      : user.fullName;
+  const normalizedPhone =
+    input.phone !== undefined
+      ? normalizeAndValidatePhoneNumber(input.phone)
+      : user.phone;
+
   const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
-      fullName:
-        input.fullName !== undefined ? input.fullName : user.fullName,
-      phone:
-        input.phone !== undefined
-          ? String(input.phone ?? "").trim() || null
-          : user.phone,
+      fullName: normalizedFullName,
+      phone: normalizedPhone,
       address:
         input.address !== undefined
           ? String(input.address ?? "").trim() || null
@@ -516,6 +532,118 @@ export async function updateUserProfile(userId, input) {
     createdAt: updatedUser.createdAt,
     updatedAt: updatedUser.updatedAt,
   });
+}
+
+export async function listUserAddresses(userId) {
+  const addresses = await prisma.userAddress.findMany({
+    where: { userId },
+    orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+  });
+
+  return serializeData(addresses.map(mapUserAddress));
+}
+
+export async function createUserAddress(userId, input) {
+  const normalized = normalizeAddressInput(input);
+  const existingCount = await prisma.userAddress.count({ where: { userId } });
+  const shouldSetDefault = Boolean(normalized.isDefault) || existingCount === 0;
+
+  const created = await prisma.$transaction(async (tx) => {
+    if (shouldSetDefault) {
+      await tx.userAddress.updateMany({
+        where: { userId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    return tx.userAddress.create({
+      data: {
+        userId,
+        label: normalized.label,
+        receiverName: normalized.receiverName,
+        phoneNumber: normalized.phoneNumber,
+        addressLine: normalized.addressLine,
+        isDefault: shouldSetDefault,
+      },
+    });
+  });
+
+  return serializeData(mapUserAddress(created));
+}
+
+export async function updateUserAddress(userId, addressId, input) {
+  const id = Number(addressId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid address id");
+  }
+
+  const existing = await prisma.userAddress.findFirst({
+    where: { id, userId },
+  });
+
+  if (!existing) {
+    throw new Error("Address not found");
+  }
+
+  const normalized = normalizeAddressInput(input);
+  const shouldSetDefault = Boolean(normalized.isDefault);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (shouldSetDefault) {
+      await tx.userAddress.updateMany({
+        where: { userId, isDefault: true, id: { not: id } },
+        data: { isDefault: false },
+      });
+    }
+
+    return tx.userAddress.update({
+      where: { id },
+      data: {
+        label: normalized.label,
+        receiverName: normalized.receiverName,
+        phoneNumber: normalized.phoneNumber,
+        addressLine: normalized.addressLine,
+        isDefault: shouldSetDefault || existing.isDefault,
+      },
+    });
+  });
+
+  return serializeData(mapUserAddress(updated));
+}
+
+export async function deleteUserAddress(userId, addressId) {
+  const id = Number(addressId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid address id");
+  }
+
+  const existing = await prisma.userAddress.findFirst({
+    where: { id, userId },
+  });
+
+  if (!existing) {
+    throw new Error("Address not found");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.userAddress.delete({ where: { id } });
+
+    if (existing.isDefault) {
+      const fallback = await tx.userAddress.findFirst({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      if (fallback) {
+        await tx.userAddress.update({
+          where: { id: fallback.id },
+          data: { isDefault: true },
+        });
+      }
+    }
+  });
+
+  return serializeData({ message: "Address deleted" });
 }
 
 export async function changePassword(userId, input) {
@@ -576,4 +704,42 @@ function buildAuthPayload(user) {
       permissions,
     },
   });
+}
+
+function normalizeAddressInput(input) {
+  const receiverName = normalizeAndValidateFullName(
+    input.receiverName,
+    "Receiver name",
+  );
+  const phoneNumber = normalizeAndValidatePhoneNumber(input.phoneNumber, {
+    required: true,
+    fieldLabel: "Phone number",
+  });
+  const addressLine = String(input.addressLine ?? "").trim();
+  const label = String(input.label ?? "").trim();
+
+  if (!addressLine || addressLine.length < 5) {
+    throw new Error("Address line is required");
+  }
+
+  return {
+    label: label || null,
+    receiverName,
+    phoneNumber,
+    addressLine,
+    isDefault: Boolean(input.isDefault),
+  };
+}
+
+function mapUserAddress(address) {
+  return {
+    id: address.id,
+    label: address.label,
+    receiverName: address.receiverName,
+    phoneNumber: address.phoneNumber,
+    addressLine: address.addressLine,
+    isDefault: address.isDefault,
+    createdAt: address.createdAt,
+    updatedAt: address.updatedAt,
+  };
 }

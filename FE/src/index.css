@@ -136,6 +136,94 @@
   .animate-slide-up {
     animation: slideUp 0.6s ease-out forwards;
   }
+
+  .auth-orbit {
+    animation: orbitBob 3.6s ease-in-out infinite;
+  }
+
+  .auth-bob {
+    animation: authBob 4.4s ease-in-out infinite;
+  }
+
+  .auth-scan {
+    animation: scanLight 2.2s ease-in-out infinite;
+  }
+
+  .auth-rgb {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .auth-rgb::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 22px;
+    padding: 1px;
+    background: linear-gradient(120deg, rgba(52, 211, 153, 0.9), rgba(56, 189, 248, 0.9), rgba(99, 102, 241, 0.8), rgba(52, 211, 153, 0.9));
+    background-size: 220% 220%;
+    animation: authRgbFlow 3.5s linear infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .auth-card {
+    height: min(94vh, 860px);
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .auth-form {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+
+  .auth-form::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .auth-form::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .auth-form::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+
+  @media (max-height: 860px) {
+    .auth-title {
+      font-size: 1.5rem;
+      line-height: 1.2;
+    }
+
+    .auth-header {
+      margin-bottom: 0.6rem;
+    }
+
+    .auth-footer {
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+    }
+  }
+
+  @media (max-height: 760px) {
+    .auth-card {
+      height: min(96vh, 760px);
+      max-height: 96vh;
+      padding: 0.9rem;
+      border-radius: 22px;
+    }
+
+    .auth-helper {
+      display: none;
+    }
+  }
 }
 
 @keyframes float {
@@ -156,6 +244,49 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes orbitBob {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.88;
+  }
+  50% {
+    transform: translateY(-6px) scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes authBob {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0px);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+@keyframes scanLight {
+  0%,
+  100% {
+    opacity: 0.45;
+    box-shadow: 0 0 6px hsl(161 100% 50% / 0.2);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 14px hsl(191 100% 60% / 0.45);
+  }
+}
+
+@keyframes authRgbFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
   }
 }
 

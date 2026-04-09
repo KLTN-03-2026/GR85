@@ -111,7 +111,7 @@ export default function BuilderPage() {
           {/* Header */}
           <div className="mb-8">
             <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
-              PC <span className="text-gradient-primary">Builder</span>
+              Trình <span className="text-gradient-primary">lắp PC</span>
             </h1>
             <p className="text-muted-foreground">
               Tự chọn từng linh kiện để xây dựng PC hoàn hảo

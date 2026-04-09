@@ -67,7 +67,7 @@ export default function ProductDetailPage() {
           <div className="mt-6 grid gap-8 lg:grid-cols-2">
             <div className="rounded-2xl border bg-white p-6">
               <img
-                src={product.imageUrl || "/robots.txt"}
+                src={product.imageUrl || "/images/component-placeholder.svg"}
                 alt={product.name}
                 className="h-[360px] w-full rounded-xl object-contain"
               />

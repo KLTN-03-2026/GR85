@@ -1,5 +1,9 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import {
+  normalizeAndValidateFullName,
+  normalizeAndValidatePhoneNumber,
+} from "../utils/validation.js";
 
 export async function getAdminDashboard() {
   const [
@@ -136,16 +140,11 @@ export async function updateUserByAdmin(userId, input) {
   const data = {};
 
   if (input.fullName !== undefined) {
-    const fullName = String(input.fullName).trim();
-    if (!fullName) {
-      throw new Error("Full name is required");
-    }
-    data.fullName = fullName;
+    data.fullName = normalizeAndValidateFullName(input.fullName, "Full name");
   }
 
   if (input.phone !== undefined) {
-    const phone = String(input.phone ?? "").trim();
-    data.phone = phone || null;
+    data.phone = normalizeAndValidatePhoneNumber(input.phone);
   }
 
   if (input.roleId !== undefined) {
@@ -175,4 +174,101 @@ export async function updateUserByAdmin(userId, input) {
   });
 
   return serializeData(updated);
+}
+
+export async function listCouponsForAdmin() {
+  const coupons = await prisma.coupon.findMany({
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  return serializeData(coupons.map(mapCoupon));
+}
+
+export async function createCouponByAdmin(input) {
+  const code = String(input.code ?? "")
+    .trim()
+    .toUpperCase();
+  const discountType = String(input.discountType ?? "")
+    .trim()
+    .toUpperCase();
+  const discountValue = Number(input.discountValue);
+  const minOrderValue = Number(input.minOrderValue ?? 0);
+  const usageLimit = Number(input.usageLimit ?? 100);
+  const startDate = new Date(input.startDate);
+  const endDate = new Date(input.endDate);
+  const status = String(input.status ?? "ACTIVE")
+    .trim()
+    .toUpperCase();
+
+  if (!code) {
+    throw new Error("Coupon code is required");
+  }
+
+  if (!["PERCENT", "FIXED_AMOUNT"].includes(discountType)) {
+    throw new Error("Invalid discount type");
+  }
+
+  if (!Number.isFinite(discountValue) || discountValue <= 0) {
+    throw new Error("Discount value must be greater than 0");
+  }
+
+  if (discountType === "PERCENT" && discountValue > 100) {
+    throw new Error("Percent discount cannot exceed 100");
+  }
+
+  if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+    throw new Error("Min order value must be >= 0");
+  }
+
+  if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+    throw new Error("Usage limit must be greater than 0");
+  }
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Invalid start/end date");
+  }
+
+  if (endDate <= startDate) {
+    throw new Error("End date must be later than start date");
+  }
+
+  if (!["ACTIVE", "EXPIRED", "DISABLED"].includes(status)) {
+    throw new Error("Invalid coupon status");
+  }
+
+  const existing = await prisma.coupon.findUnique({ where: { code } });
+  if (existing) {
+    throw new Error("Coupon code already exists");
+  }
+
+  const created = await prisma.coupon.create({
+    data: {
+      code,
+      discountType,
+      discountValue,
+      minOrderValue,
+      usageLimit,
+      startDate,
+      endDate,
+      status,
+    },
+  });
+
+  return serializeData(mapCoupon(created));
+}
+
+function mapCoupon(coupon) {
+  return {
+    id: coupon.id,
+    code: coupon.code,
+    discountType: coupon.discountType,
+    discountValue: coupon.discountValue,
+    minOrderValue: coupon.minOrderValue,
+    usageLimit: coupon.usageLimit,
+    usedCount: coupon.usedCount,
+    status: coupon.status,
+    startDate: coupon.startDate,
+    endDate: coupon.endDate,
+    createdAt: coupon.createdAt,
+  };
 }

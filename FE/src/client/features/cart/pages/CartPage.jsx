@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import PaymentQRModal from "@/components/PaymentQRModal";
 import { useCart } from "@/contexts/CartContext";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Minus,
   Plus,
@@ -14,12 +15,39 @@ import {
   Package,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { profileApi } from "@/client/features/profile/data/profile.api";
 
 export default function CartPage() {
   const [shippingAddress, setShippingAddress] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [paymentMethod] = useState("VNPAY");
+  const [addresses, setAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [editingAddressId, setEditingAddressId] = useState(null);
+  const [addressForm, setAddressForm] = useState({
+    label: "",
+    receiverName: "",
+    phoneNumber: "",
+    addressLine: "",
+    isDefault: false,
+  });
+  const [addressError, setAddressError] = useState("");
+  const [addressMessage, setAddressMessage] = useState("");
+  const [voucherCode, setVoucherCode] = useState("");
+  const [pricingPreview, setPricingPreview] = useState(null);
+  const [voucherFeedback, setVoucherFeedback] = useState("");
+  const [voucherError, setVoucherError] = useState("");
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [paymentQRData, setPaymentQRData] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [useWalletBalance, setUseWalletBalance] = useState(true);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletMessage, setWalletMessage] = useState("");
+  const [walletError, setWalletError] = useState("");
 
   const {
     items,
@@ -28,7 +56,204 @@ export default function CartPage() {
     totalPrice,
     clearCart,
     checkout,
+    previewPricing,
   } = useCart();
+
+  const selectedAddress = useMemo(
+    () => addresses.find((item) => String(item.id) === String(selectedAddressId)) || null,
+    [addresses, selectedAddressId],
+  );
+
+  const loadAddresses = useCallback(async () => {
+    try {
+      setAddressesLoading(true);
+      const [addressesResult, profileResult] = await Promise.allSettled([
+        profileApi.getAddresses(),
+        profileApi.getProfile(),
+      ]);
+
+      if (addressesResult.status !== "fulfilled") {
+        throw addressesResult.reason;
+      }
+
+      const profile =
+        profileResult.status === "fulfilled" ? profileResult.value : null;
+      const list = Array.isArray(addressesResult.value)
+        ? addressesResult.value
+        : [];
+      setAddresses(list);
+
+      const defaultAddress = list.find((item) => item.isDefault) || list[0] || null;
+      if (defaultAddress) {
+        setSelectedAddressId(String(defaultAddress.id));
+        setShippingAddress(defaultAddress.addressLine || "");
+        setPhoneNumber(defaultAddress.phoneNumber || "");
+      } else {
+        setSelectedAddressId("");
+        setShippingAddress(String(profile?.address ?? "").trim());
+        setPhoneNumber(String(profile?.phone ?? "").trim());
+      }
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Không tải được địa chỉ");
+    } finally {
+      setAddressesLoading(false);
+    }
+  }, []);
+
+  const loadWallet = useCallback(async () => {
+    try {
+      setWalletLoading(true);
+      const data = await profileApi.getWallet();
+      setWalletBalance(Number(data?.balance ?? 0));
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "Không tải được số dư ví");
+    } finally {
+      setWalletLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAddresses();
+    loadWallet();
+  }, [loadAddresses, loadWallet]);
+
+  useEffect(() => {
+    setPricingPreview(null);
+    setVoucherFeedback("");
+    setVoucherError("");
+  }, [items.length, totalPrice]);
+
+  function beginCreateAddress() {
+    setEditingAddressId(null);
+    setAddressForm({
+      label: "",
+      receiverName: "",
+      phoneNumber: "",
+      addressLine: "",
+      isDefault: addresses.length === 0,
+    });
+    setAddressError("");
+    setAddressMessage("");
+  }
+
+  function beginEditAddress() {
+    if (!selectedAddress) {
+      setAddressError("Hãy chọn địa chỉ để sửa");
+      return;
+    }
+
+    setEditingAddressId(selectedAddress.id);
+    setAddressForm({
+      label: selectedAddress.label || "",
+      receiverName: selectedAddress.receiverName || "",
+      phoneNumber: selectedAddress.phoneNumber || "",
+      addressLine: selectedAddress.addressLine || "",
+      isDefault: Boolean(selectedAddress.isDefault),
+    });
+    setAddressError("");
+    setAddressMessage("");
+  }
+
+  async function submitAddressForm() {
+    setAddressError("");
+    setAddressMessage("");
+
+    try {
+      const receiverNameError = validateDisplayName(addressForm.receiverName);
+      if (receiverNameError) {
+        throw new Error(receiverNameError);
+      }
+
+      const phoneError = validateVietnamPhone(addressForm.phoneNumber, true);
+      if (phoneError) {
+        throw new Error(phoneError);
+      }
+
+      if (!addressForm.addressLine.trim()) {
+        throw new Error("Địa chỉ không được trống");
+      }
+
+      const payload = {
+        label: addressForm.label,
+        receiverName: addressForm.receiverName,
+        phoneNumber: addressForm.phoneNumber,
+        addressLine: addressForm.addressLine,
+        isDefault: addressForm.isDefault,
+      };
+
+      const result = editingAddressId
+        ? await profileApi.updateAddress(editingAddressId, payload)
+        : await profileApi.createAddress(payload);
+
+      setAddressMessage(editingAddressId ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ mới");
+      setEditingAddressId(null);
+      await loadAddresses();
+      if (result?.id) {
+        setSelectedAddressId(String(result.id));
+        setShippingAddress(result.addressLine || "");
+        setPhoneNumber(result.phoneNumber || "");
+      }
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Lưu địa chỉ thất bại");
+    }
+  }
+
+  async function deleteSelectedAddress() {
+    if (!selectedAddress) {
+      return;
+    }
+
+    try {
+      setAddressError("");
+      setAddressMessage("");
+      await profileApi.deleteAddress(selectedAddress.id);
+      setAddressMessage("Đã xóa địa chỉ");
+      await loadAddresses();
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Xóa địa chỉ thất bại");
+    }
+  }
+
+  async function applyVoucher() {
+    setVoucherFeedback("");
+    setVoucherError("");
+
+    try {
+      const data = await previewPricing({ couponCode: voucherCode.trim() || undefined });
+      setPricingPreview(data);
+      if (data?.appliedCoupon?.code) {
+        setVoucherFeedback(`Đã áp mã ${data.appliedCoupon.code}`);
+      } else {
+        setVoucherFeedback("Không áp dụng voucher");
+      }
+    } catch (error) {
+      setPricingPreview(null);
+      setVoucherError(error instanceof Error ? error.message : "Áp voucher thất bại");
+    }
+  }
+
+  async function topUpWallet() {
+    setWalletError("");
+    setWalletMessage("");
+
+    try {
+      const amount = Number(topUpAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Số tiền nạp phải lớn hơn 0");
+      }
+
+      const result = await profileApi.topUpWallet({
+        amount,
+        note: "Nạp tiền nhanh từ trang giỏ hàng",
+      });
+
+      setWalletBalance(Number(result?.balance ?? walletBalance));
+      setTopUpAmount("");
+      setWalletMessage("Nạp tiền thành công");
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "Nạp tiền thất bại");
+    }
+  }
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -67,7 +292,8 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      <div className="min-h-screen bg-background">
       <Navbar />
 
       <main className="pt-24 pb-12">
@@ -192,7 +418,13 @@ export default function CartPage() {
                 <div className="space-y-4 mb-6">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Tạm tính</span>
-                    <span>{formatPrice(totalPrice)}</span>
+                    <span>{formatPrice(Number(pricingPreview?.subtotal ?? totalPrice))}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Giảm giá voucher</span>
+                    <span className="text-emerald-600">
+                      -{formatPrice(Number(pricingPreview?.discountAmount ?? 0))}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">
@@ -207,24 +439,184 @@ export default function CartPage() {
                 <div className="flex justify-between mb-6">
                   <span className="font-semibold">Tổng cộng</span>
                   <span className="text-2xl font-bold text-gradient-primary">
-                    {formatPrice(totalPrice)}
+                    {formatPrice(Number(pricingPreview?.totalAmount ?? totalPrice))}
                   </span>
                 </div>
 
-                {/* Promo Code */}
+                <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-2">
+                  <p className="text-sm font-medium">Voucher</p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Nhập mã voucher"
+                      value={voucherCode}
+                      onChange={(event) => setVoucherCode(event.target.value.toUpperCase())}
+                    />
+                    <Button type="button" variant="outline" onClick={applyVoucher}>
+                      Áp dụng
+                    </Button>
+                  </div>
+                  {voucherFeedback && <p className="text-xs text-emerald-600">{voucherFeedback}</p>}
+                  {voucherError && <p className="text-xs text-destructive">{voucherError}</p>}
+                </div>
+
+                <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Địa chỉ giao hàng</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={beginCreateAddress}>
+                        Thêm địa chỉ
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={beginEditAddress}>
+                        Sửa địa chỉ
+                      </Button>
+                    </div>
+                  </div>
+
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedAddressId}
+                    onChange={(event) => {
+                      const nextId = event.target.value;
+                      setSelectedAddressId(nextId);
+                      const nextAddress = addresses.find(
+                        (item) => String(item.id) === String(nextId),
+                      );
+                      if (nextAddress) {
+                        setShippingAddress(nextAddress.addressLine || "");
+                        setPhoneNumber(nextAddress.phoneNumber || "");
+                      }
+                    }}
+                    disabled={addressesLoading || addresses.length === 0}
+                  >
+                    {addresses.length === 0 ? (
+                      <option value="">Chưa có địa chỉ nào, hãy thêm mới</option>
+                    ) : (
+                      addresses.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.isDefault ? "[Mặc định] " : ""}
+                          {(item.label ? `${item.label} - ` : "") + item.addressLine}
+                        </option>
+                      ))
+                    )}
+                  </select>
+
+                  {(editingAddressId !== null || addresses.length === 0) && (
+                    <div className="space-y-2 rounded-md border border-border/50 p-3">
+                      <Input
+                        placeholder="Nhãn địa chỉ (Nhà riêng, Công ty...)"
+                        value={addressForm.label}
+                        onChange={(event) =>
+                          setAddressForm((prev) => ({ ...prev, label: event.target.value }))
+                        }
+                      />
+                      <Input
+                        placeholder="Tên người nhận"
+                        value={addressForm.receiverName}
+                        onChange={(event) =>
+                          setAddressForm((prev) => ({ ...prev, receiverName: event.target.value }))
+                        }
+                      />
+                      <Input
+                        placeholder="Số điện thoại"
+                        value={addressForm.phoneNumber}
+                        onChange={(event) =>
+                          setAddressForm((prev) => ({ ...prev, phoneNumber: event.target.value.replace(/\D/g, "").slice(0, 10) }))
+                        }
+                      />
+                      <Input
+                        placeholder="Địa chỉ đầy đủ"
+                        value={addressForm.addressLine}
+                        onChange={(event) =>
+                          setAddressForm((prev) => ({ ...prev, addressLine: event.target.value }))
+                        }
+                      />
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={addressForm.isDefault}
+                          onChange={(event) =>
+                            setAddressForm((prev) => ({ ...prev, isDefault: event.target.checked }))
+                          }
+                        />
+                        Đặt làm địa chỉ mặc định
+                      </label>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="hero" size="sm" onClick={submitAddressForm}>
+                          {editingAddressId ? "Lưu địa chỉ" : "Thêm địa chỉ"}
+                        </Button>
+                        {editingAddressId !== null && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingAddressId(null)}
+                          >
+                            Hủy
+                          </Button>
+                        )}
+                        {selectedAddress && (
+                          <Button type="button" variant="ghost" size="sm" onClick={deleteSelectedAddress}>
+                            Xóa địa chỉ đang chọn
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {addressMessage && <p className="text-xs text-emerald-600">{addressMessage}</p>}
+                  {addressError && <p className="text-xs text-destructive">{addressError}</p>}
+                </div>
+
                 <div className="flex gap-2 mb-6">
                   <Input
-                    placeholder="Địa chỉ nhận hàng"
+                    placeholder="Số điện thoại liên hệ"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                  />
+                </div>
+                <div className="flex gap-2 mb-6">
+                  <Input
+                    placeholder="Địa chỉ giao hàng (khi chưa chọn sổ địa chỉ)"
                     value={shippingAddress}
                     onChange={(event) => setShippingAddress(event.target.value)}
                   />
                 </div>
-                <div className="flex gap-2 mb-6">
-                  <Input
-                    placeholder="Số điện thoại"
-                    value={phoneNumber}
-                    onChange={(event) => setPhoneNumber(event.target.value)}
-                  />
+
+                <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50/70 p-3 space-y-3">
+                  <p className="text-sm font-semibold text-sky-900">Ví tài khoản</p>
+                  <p className="text-sm text-sky-800">
+                    Số dư hiện tại: <span className="font-semibold">{formatPrice(walletBalance)}</span>
+                  </p>
+                  <label className="flex items-center gap-2 text-sm text-sky-900">
+                    <input
+                      type="checkbox"
+                      checked={useWalletBalance}
+                      onChange={(event) => setUseWalletBalance(event.target.checked)}
+                    />
+                    Dùng số dư ví để trừ vào đơn hàng
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min="1000"
+                      step="1000"
+                      placeholder="Nạp thêm tiền vào ví"
+                      value={topUpAmount}
+                      onChange={(event) => setTopUpAmount(event.target.value)}
+                    />
+                    <Button type="button" variant="outline" onClick={topUpWallet} disabled={walletLoading}>
+                      Nạp tiền
+                    </Button>
+                  </div>
+                  {walletMessage && <p className="text-xs text-emerald-600">{walletMessage}</p>}
+                  {walletError && <p className="text-xs text-destructive">{walletError}</p>}
+                </div>
+
+                <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                  <p className="mb-1 text-sm font-semibold text-emerald-900">Phương thức thanh toán</p>
+                  <p className="text-sm text-emerald-800">
+                    Hệ thống chỉ hỗ trợ chuyển khoản online qua VNPAY để xác nhận giao dịch thực tế.
+                  </p>
                 </div>
 
                 <Button
@@ -235,14 +627,45 @@ export default function CartPage() {
                     setCheckoutError("");
 
                     try {
-                      const result = await checkout({ shippingAddress, phoneNumber });
-                      setCheckoutMessage(`Thanh toán thành công. Mã đơn #${result.orderId}`);
+                      const checkoutPhoneError = validateVietnamPhone(phoneNumber, true);
+                      if (checkoutPhoneError) {
+                        throw new Error(checkoutPhoneError);
+                      }
+
+                      const result = await checkout({
+                        shippingAddress,
+                        phoneNumber,
+                        paymentMethod,
+                        addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+                        couponCode: pricingPreview?.appliedCoupon?.code ?? undefined,
+                        useWalletBalance,
+                      });
+
+                      if (result?.isWalletPaymentOnly) {
+                        setCheckoutMessage(`Thanh toán bằng ví thành công. Mã đơn #${result.orderId}`);
+                        await loadWallet();
+                        return;
+                      }
+
+                      if (paymentMethod === "VNPAY" && result?.isMockPayment) {
+                        setPaymentQRData(result);
+                        setShowQRModal(true);
+                        await loadWallet();
+                        return;
+                      }
+
+                      if (paymentMethod === "VNPAY" && result?.paymentUrl) {
+                        window.location.href = result.paymentUrl;
+                        return;
+                      }
+
+                      setCheckoutMessage(`Đặt hàng thành công. Mã đơn #${result.orderId}`);
                     } catch (error) {
                       setCheckoutError(error instanceof Error ? error.message : "Thanh toán thất bại");
                     }
                   }}
                 >
-                  Tiến hành thanh toán
+                  Thanh toán chuyển khoản VNPAY
                   <ArrowRight className="w-4 h-4" />
                 </Button>
 
@@ -261,6 +684,41 @@ export default function CartPage() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+      <PaymentQRModal
+        isOpen={showQRModal}
+        onClose={() => {
+          setShowQRModal(false);
+          clearCart();
+          loadWallet();
+        }}
+        paymentData={paymentQRData}
+      />
+    </>
   );
+}
+
+function validateDisplayName(value) {
+  const name = String(value ?? "").trim();
+  if (!name) {
+    return "Tên người nhận không được để trống";
+  }
+  if (name.length < 2 || name.length > 100) {
+    return "Tên người nhận phải từ 2 đến 100 ký tự";
+  }
+  if (/\d/.test(name)) {
+    return "Tên người nhận không được chứa số";
+  }
+  return "";
+}
+
+function validateVietnamPhone(value, required = false) {
+  const phone = String(value ?? "").trim();
+  if (!phone) {
+    return required ? "Số điện thoại không được để trống" : "";
+  }
+  if (!/^\d{10}$/.test(phone)) {
+    return "Số điện thoại phải đúng 10 chữ số";
+  }
+  return "";
 }

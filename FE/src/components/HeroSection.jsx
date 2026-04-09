@@ -41,7 +41,7 @@ export function HeroSection() {
 
           {/* Heading */}
           <h1 className="font-display text-4xl sm:text-5xl md:text-7xl font-bold leading-tight">
-            Build PC <span className="text-gradient-primary">hoàn hảo</span>
+            Lắp PC <span className="text-gradient-primary">hoàn hảo</span>
             <br />
             cho riêng bạn
           </h1>
@@ -57,7 +57,7 @@ export function HeroSection() {
             <Link to="/builder">
               <Button variant="hero" size="xl" className="gap-2">
                 <Cpu className="w-5 h-5" />
-                Bắt đầu Build PC
+                Bắt đầu lắp PC
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>

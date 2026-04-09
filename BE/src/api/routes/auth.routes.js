@@ -2,17 +2,27 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   changePassword,
+  createUserAddress,
+  deleteUserAddress,
   getMyOrderDetail,
   getCurrentUser,
   loginUser,
+  listUserAddresses,
   listMyOrders,
   resendVerificationCode,
   requestPasswordReset,
   registerUser,
   resetPassword,
+  updateUserAddress,
   updateUserProfile,
   verifyEmail,
 } from "../../services/auth.service.js";
+import {
+  getMyWallet,
+  listMyReturnRequests,
+  requestOrderReturn,
+  topUpWallet,
+} from "../../services/wallet.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 const router = Router();
@@ -20,8 +30,10 @@ const router = Router();
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  fullName: z.string().min(2),
-  phone: z.string().optional(),
+  fullName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
+    message: "Full name cannot contain numbers",
+  }),
+  phone: z.string().regex(/^\d{10}$/).optional(),
 });
 
 const loginSchema = z.object({
@@ -45,14 +57,41 @@ const resetPasswordSchema = z.object({
 });
 
 const updateProfileSchema = z.object({
-  fullName: z.string().min(2).max(100).optional(),
-  phone: z.string().optional(),
+  fullName: z
+    .string()
+    .min(2)
+    .max(100)
+    .refine((value) => !/\d/.test(value), {
+      message: "Full name cannot contain numbers",
+    })
+    .optional(),
+  phone: z.string().regex(/^\d{10}$/).optional(),
   address: z.string().max(500).optional(),
 });
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(6),
+});
+
+const addressSchema = z.object({
+  label: z.string().max(100).optional(),
+  receiverName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
+    message: "Receiver name cannot contain numbers",
+  }),
+  phoneNumber: z.string().regex(/^\d{10}$/),
+  addressLine: z.string().min(5).max(500),
+  isDefault: z.boolean().optional(),
+});
+
+const topUpWalletSchema = z.object({
+  amount: z.number().positive(),
+  note: z.string().max(500).optional(),
+});
+
+const returnRequestSchema = z.object({
+  orderId: z.number().int().positive(),
+  reason: z.string().min(10).max(2000),
 });
 
 router.post("/register", async (req, res) => {
@@ -160,6 +199,89 @@ router.get("/my-orders/:orderId", requireAuth, async (req, res) => {
       Number(req.params.orderId),
     );
     return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/addresses", requireAuth, async (req, res) => {
+  try {
+    const result = await listUserAddresses(Number(req.auth?.sub));
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/addresses", requireAuth, async (req, res) => {
+  try {
+    const parsed = addressSchema.parse(req.body);
+    const result = await createUserAddress(Number(req.auth?.sub), parsed);
+    return res.status(201).json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.put("/addresses/:addressId", requireAuth, async (req, res) => {
+  try {
+    const parsed = addressSchema.parse(req.body);
+    const result = await updateUserAddress(
+      Number(req.auth?.sub),
+      Number(req.params.addressId),
+      parsed,
+    );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.delete("/addresses/:addressId", requireAuth, async (req, res) => {
+  try {
+    const result = await deleteUserAddress(
+      Number(req.auth?.sub),
+      Number(req.params.addressId),
+    );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/wallet", requireAuth, async (req, res) => {
+  try {
+    const data = await getMyWallet(Number(req.auth?.sub));
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/wallet/top-up", requireAuth, async (req, res) => {
+  try {
+    const parsed = topUpWalletSchema.parse(req.body);
+    const data = await topUpWallet(Number(req.auth?.sub), parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/returns", requireAuth, async (req, res) => {
+  try {
+    const data = await listMyReturnRequests(Number(req.auth?.sub));
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/returns", requireAuth, async (req, res) => {
+  try {
+    const parsed = returnRequestSchema.parse(req.body);
+    const data = await requestOrderReturn(Number(req.auth?.sub), parsed);
+    return res.status(201).json(data);
   } catch (error) {
     return handleRouteError(error, res);
   }

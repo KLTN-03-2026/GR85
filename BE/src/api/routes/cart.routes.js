@@ -5,6 +5,9 @@ import {
   addItemToCart,
   checkoutCart,
   getMyCart,
+  handleVnpayIpn,
+  handleVnpayReturn,
+  previewCartPricing,
   removeCartItem,
   updateCartItemQuantity,
 } from "../../services/cart.service.js";
@@ -21,8 +24,39 @@ const updateQuantitySchema = z.object({
 });
 
 const checkoutSchema = z.object({
-  shippingAddress: z.string().min(1),
-  phoneNumber: z.string().min(1),
+  shippingAddress: z.string().optional(),
+  phoneNumber: z.string().optional(),
+  addressId: z.number().int().positive().optional(),
+  couponCode: z.string().max(50).optional(),
+  useWalletBalance: z.boolean().optional().default(true),
+  paymentMethod: z.enum(["VNPAY"]).default("VNPAY"),
+  bankCode: z.string().optional(),
+});
+
+const previewPricingSchema = z.object({
+  couponCode: z.string().max(50).optional(),
+});
+
+router.get("/vnpay-ipn", async (req, res) => {
+  try {
+    const result = await handleVnpayIpn(req.query);
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ RspCode: "99", Message: error.message });
+    }
+
+    return res.status(500).json({ RspCode: "99", Message: "Unknown error" });
+  }
+});
+
+router.get("/vnpay-return", async (req, res) => {
+  try {
+    const result = await handleVnpayReturn(req.query);
+    return res.redirect(result.redirectUrl);
+  } catch (error) {
+    return res.redirect("/payment-result?status=failed&message=callback-error");
+  }
 });
 
 router.get("/me", requireAuth, async (req, res) => {
@@ -70,8 +104,26 @@ router.delete("/items/:itemId", requireAuth, async (req, res) => {
 router.post("/checkout", requireAuth, async (req, res) => {
   try {
     const parsed = checkoutSchema.parse(req.body);
-    const data = await checkoutCart(Number(req.auth?.sub), parsed);
+    const forwarded = req.headers["x-forwarded-for"];
+    const clientIp = Array.isArray(forwarded)
+      ? forwarded[0]
+      : String(forwarded ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+
+    const data = await checkoutCart(Number(req.auth?.sub), {
+      ...parsed,
+      clientIp,
+    });
     return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/preview-pricing", requireAuth, async (req, res) => {
+  try {
+    const parsed = previewPricingSchema.parse(req.body ?? {});
+    const data = await previewCartPricing(Number(req.auth?.sub), parsed);
+    return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
   }

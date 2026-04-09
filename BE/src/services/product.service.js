@@ -13,6 +13,8 @@ export async function listProducts(query = {}) {
   const keyword = String(query.keyword ?? "").trim();
   const category = String(query.category ?? "").trim().toLowerCase();
   const brand = String(query.brand ?? "").trim();
+  const sort = String(query.sort ?? "newest").trim().toLowerCase();
+  const stockStatus = String(query.stockStatus ?? "all").trim().toLowerCase();
   const minPrice =
     query.minPrice === undefined || query.minPrice === ""
       ? undefined
@@ -26,9 +28,12 @@ export async function listProducts(query = {}) {
     keyword,
     category,
     brand,
+    stockStatus,
     minPrice,
     maxPrice,
   });
+
+  const orderBy = resolveProductOrderBy(sort);
 
   const [totalItems, items] = await Promise.all([
     prisma.product.count({ where }),
@@ -36,7 +41,7 @@ export async function listProducts(query = {}) {
       where,
       skip: (page - 1) * pageSize,
       take: pageSize,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       include: {
         category: true,
         supplier: true,
@@ -356,11 +361,35 @@ function buildProductWhere(filters) {
     });
   }
 
+  if (filters.stockStatus === "in-stock") {
+    and.push({ stockQuantity: { gt: 0 } });
+  }
+
+  if (filters.stockStatus === "out-of-stock") {
+    and.push({ stockQuantity: { lte: 0 } });
+  }
+
   if (and.length === 0) {
     return {};
   }
 
   return { AND: and };
+}
+
+function resolveProductOrderBy(sort) {
+  switch (sort) {
+    case "price_asc":
+      return [{ price: "asc" }, { createdAt: "desc" }];
+    case "price_desc":
+      return [{ price: "desc" }, { createdAt: "desc" }];
+    case "name_asc":
+      return [{ name: "asc" }, { createdAt: "desc" }];
+    case "stock_desc":
+      return [{ stockQuantity: "desc" }, { createdAt: "desc" }];
+    case "newest":
+    default:
+      return [{ createdAt: "desc" }];
+  }
 }
 
 function mapProductListItem(product) {
@@ -376,7 +405,7 @@ function mapProductListItem(product) {
     specifications: product.specifications,
     category: product.category,
     supplier: product.supplier,
-    imageUrl: product.images?.[0]?.imageUrl ?? "/robots.txt",
+    imageUrl: product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
   };
 }
 

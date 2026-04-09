@@ -13,7 +13,7 @@ export default function ChatPage() {
       id: "1",
       role: "assistant",
       content:
-        "Xin chào! Tôi là AI trợ lý của PC Builder. Tôi có thể giúp bạn:\n\n• Tư vấn cấu hình PC phù hợp\n• Giải đáp thắc mắc về linh kiện\n• So sánh sản phẩm\n• Hỗ trợ build PC\n\nBạn cần hỗ trợ gì hôm nay?",
+        "Xin chào! Tôi là trợ lý AI của PC Perfect. Tôi có thể giúp bạn:\n\n• Tư vấn cấu hình PC phù hợp\n• Giải đáp thắc mắc về linh kiện\n• So sánh sản phẩm\n• Hỗ trợ lắp PC\n\nBạn cần hỗ trợ gì hôm nay?",
       timestamp: new Date(),
     },
   ]);
@@ -82,7 +82,7 @@ export default function ChatPage() {
               AI <span className="text-gradient-primary">Trợ lý</span>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Chat với AI để được tư vấn build PC
+              Trò chuyện với AI để được tư vấn lắp PC
             </p>
           </div>
 

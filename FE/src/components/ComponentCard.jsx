@@ -12,6 +12,7 @@ export function ComponentCard({ component, mode = "shop" }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
   const [showDetail, setShowDetail] = useState(false);
+  const fallbackImage = "/images/component-placeholder.svg";
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -54,9 +55,15 @@ export function ComponentCard({ component, mode = "shop" }) {
         {/* Image */}
         <div className="relative aspect-square bg-secondary/50 overflow-hidden">
           <img
-            src={component.image}
+            src={component.image || fallbackImage}
             alt={component.name}
             className="w-full h-full object-contain p-4 group-hover:scale-110 transition-transform duration-500"
+            onError={(event) => {
+              if (event.currentTarget.src.includes(fallbackImage)) {
+                return;
+              }
+              event.currentTarget.src = fallbackImage;
+            }}
           />
 
           {/* Badges */}

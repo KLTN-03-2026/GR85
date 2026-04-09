@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   MailCheck,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,22 +26,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "../data/auth.api";
 
-const adminBenefits = [
-  "Quản lý user, role và permission tập trung",
-  "Theo dõi doanh thu, đơn hàng và sản phẩm bán chạy",
-  "Điều phối kho, thanh toán, chat và AI build",
-];
-
 const modeConfig = {
   login: {
     badge: "Đăng nhập hệ thống",
-    title: "Đăng nhập vào trang quản trị",
-    description:
-      "Truy cập dashboard để quản lý user, đơn hàng, kho hàng, thanh toán, chat và AI build.",
+    title: "Đăng nhập vào PC Perfect",
+    description: "Tiếp tục mua sắm và theo dõi đơn hàng.",
     submit: "Đăng nhập",
     submitIcon: Lock,
-    helper:
-      "Dùng email đã được xác minh để đăng nhập. Nếu quên mật khẩu, bạn có thể đặt lại qua Gmail.",
+    helper: "Dùng email đã xác minh.",
     switchLabel: "Chưa có tài khoản?",
     switchAction: "Đăng ký ngay",
     switchHref: "/register",
@@ -51,13 +44,11 @@ const modeConfig = {
   },
   register: {
     badge: "Tạo tài khoản mới",
-    title: "Đăng ký tài khoản quản trị hoặc nhân viên",
-    description:
-      "Tạo tài khoản để quản lý sản phẩm, đơn hàng, khách hàng và toàn bộ vận hành của PC Perfect.",
+    title: "Đăng ký tài khoản PC Perfect",
+    description: "Tạo tài khoản mới trong vài giây.",
     submit: "Gửi mã xác minh",
     submitIcon: MailCheck,
-    helper:
-      "Sau khi đăng ký, hệ thống sẽ gửi mã OTP vào Gmail để xác minh email trước khi bạn đăng nhập.",
+    helper: "Hệ thống sẽ gửi OTP về Gmail.",
     switchLabel: "Đã có tài khoản?",
     switchAction: "Đăng nhập",
     switchHref: "/login",
@@ -65,12 +56,10 @@ const modeConfig = {
   forgot: {
     badge: "Khôi phục mật khẩu",
     title: "Nhận mã đặt lại mật khẩu qua Gmail",
-    description:
-      "Nhập email đã đăng ký để hệ thống gửi mã OTP đặt lại mật khẩu.",
+    description: "Nhập email để nhận mã OTP.",
     submit: "Gửi mã đặt lại",
     submitIcon: RefreshCw,
-    helper:
-      "Mã sẽ được gửi tới Gmail và hết hạn sau vài phút. Bạn sẽ dùng mã đó ở bước đặt lại mật khẩu.",
+    helper: "Mã có hiệu lực trong thời gian ngắn.",
     switchLabel: "Nhớ ra mật khẩu rồi?",
     switchAction: "Quay lại đăng nhập",
     switchHref: "/login",
@@ -78,12 +67,10 @@ const modeConfig = {
   verify: {
     badge: "Xác minh email",
     title: "Nhập mã OTP vừa gửi vào Gmail",
-    description:
-      "Kiểm tra hộp thư Gmail, lấy mã 6 chữ số và hoàn tất xác minh email.",
+    description: "Nhập mã 6 số vừa nhận qua Gmail.",
     submit: "Xác minh tài khoản",
     submitIcon: ShieldCheck,
-    helper:
-      "Nếu chưa thấy email, kiểm tra thư rác hoặc yêu cầu gửi lại mã xác minh.",
+    helper: "Nếu chưa nhận được, hãy gửi lại mã.",
     switchLabel: "Muốn dùng email khác?",
     switchAction: "Đăng ký lại",
     switchHref: "/register",
@@ -91,12 +78,10 @@ const modeConfig = {
   reset: {
     badge: "Đặt lại mật khẩu",
     title: "Nhập mã OTP và mật khẩu mới",
-    description:
-      "Dùng mã OTP đã gửi qua Gmail để tạo mật khẩu mới cho tài khoản.",
+    description: "Tạo mật khẩu mới bằng mã OTP.",
     submit: "Đổi mật khẩu",
     submitIcon: KeyRound,
-    helper:
-      "Mật khẩu mới cần được nhập hai lần để tránh sai sót khi khôi phục tài khoản.",
+    helper: "Nhập lại mật khẩu để xác nhận.",
     switchLabel: "Quay lại đăng nhập",
     switchAction: "Đăng nhập",
     switchHref: "/login",
@@ -206,7 +191,7 @@ export default function AuthPage() {
             title: "Xác minh thành công",
             description: "Tài khoản của bạn đã sẵn sàng sử dụng.",
           });
-          navigate(resolvePostLoginPath(result?.user?.role));
+          window.location.assign(resolvePostLoginPath(result?.user?.role));
           break;
         }
         case "reset": {
@@ -234,7 +219,7 @@ export default function AuthPage() {
             title: "Đăng nhập thành công",
             description: `Xin chào ${result.user.fullName ?? result.user.email}`,
           });
-          navigate(resolvePostLoginPath(result?.user?.role));
+          window.location.assign(resolvePostLoginPath(result?.user?.role));
         }
       }
     } catch (error) {
@@ -265,10 +250,14 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(135deg,_rgba(16,185,129,0.08)_0%,_rgba(255,255,255,1)_38%,_rgba(14,165,233,0.08)_100%)]">
-      <div className="mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="relative hidden overflow-hidden px-8 py-10 lg:flex lg:flex-col lg:justify-between">
+    <div className="relative h-screen overflow-hidden bg-[linear-gradient(125deg,_rgba(6,78,59,0.10)_0%,_rgba(255,255,255,1)_30%,_rgba(14,165,233,0.12)_100%)]">
+      <div className="pointer-events-none absolute left-8 top-16 h-56 w-56 rounded-full bg-emerald-300/25 blur-3xl animate-pulse-glow" />
+      <div className="pointer-events-none absolute right-8 bottom-10 h-72 w-72 rounded-full bg-sky-300/25 blur-3xl animate-pulse-glow" style={{ animationDelay: "1s" }} />
+      <div className="mx-auto grid h-screen max-w-7xl lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="relative hidden overflow-hidden px-8 py-8 lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.22),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.18),_transparent_30%)]" />
+          <div className="pointer-events-none absolute left-10 top-32 h-px w-56 bg-gradient-to-r from-emerald-300/0 via-emerald-500/80 to-emerald-300/0 animate-pulse" />
+          <div className="pointer-events-none absolute right-20 top-44 h-px w-40 bg-gradient-to-r from-sky-300/0 via-sky-500/80 to-sky-300/0 animate-pulse" style={{ animationDelay: "0.5s" }} />
           <div className="relative z-10">
             <Link
               to="/"
@@ -279,73 +268,37 @@ export default function AuthPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">PC Perfect</div>
-                <div className="font-semibold">Admin Access Portal</div>
+                <div className="font-semibold">Studio PC</div>
               </div>
             </Link>
           </div>
 
-          <div className="relative z-10 max-w-2xl space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/70 px-4 py-2 text-sm font-medium text-primary backdrop-blur">
-              {mode === "forgot" ? (
-                <KeyRound className="h-4 w-4" />
-              ) : mode === "verify" ? (
-                <MailCheck className="h-4 w-4" />
-              ) : (
-                <ShieldCheck className="h-4 w-4" />
-              )}
-              {pageCopy.badge}
-            </div>
-
-            <div className="space-y-4">
-              <h1 className="text-5xl font-bold leading-tight">
-                {pageCopy.title}
-              </h1>
-              <p className="max-w-xl text-lg text-slate-600">
-                {pageCopy.description}
-              </p>
-            </div>
-
-            <div className="grid gap-4">
-              {getBenefits(mode).map((item) => (
-                <div
-                  key={item}
-                  className="flex items-start gap-3 rounded-3xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur"
-                >
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 text-primary" />
-                  <span className="text-sm text-slate-700">{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative z-10 grid grid-cols-3 gap-4">
-            <StatCard label="Roles" value="3" />
-            <StatCard label="Modules" value="13" />
-            <StatCard label="OTP" value="Gmail" />
+          <div className="relative z-10 flex h-full items-center justify-center py-4">
+            <InteractivePcViewer />
           </div>
         </section>
 
-        <section className="flex items-center justify-center px-4 py-8 sm:px-6 lg:px-10">
-          <div className="w-full max-w-xl rounded-[32px] border border-border/60 bg-white/90 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
+        <section className="flex h-screen items-center justify-center overflow-hidden px-4 py-3 sm:px-6 lg:px-10">
+          <div className="auth-card animate-slide-up w-full max-w-xl rounded-[30px] border border-border/60 bg-white/90 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
             <Link
               to="/"
-              className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+              className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
               Về trang chủ
             </Link>
 
-            <div className="mb-8 space-y-3">
+            <div className="auth-header mb-4 space-y-2">
               <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
                 {pageCopy.badge}
               </span>
-              <h2 className="text-3xl font-bold leading-tight">
+              <h2 className="auth-title text-2xl font-bold leading-tight">
                 {pageCopy.title}
               </h2>
-              <p className="text-muted-foreground">{pageCopy.description}</p>
+              <p className="text-sm text-muted-foreground">{pageCopy.description}</p>
             </div>
 
-            <form className="space-y-5" onSubmit={handleSubmit}>
+            <form className="auth-form space-y-4" onSubmit={handleSubmit}>
               {(mode === "login" || mode === "register" || mode === "forgot" || mode === "verify" || mode === "reset") && (
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -354,7 +307,7 @@ export default function AuthPage() {
                     <Input
                       id="email"
                       type="email"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder="admin@pcperfect.vn"
                       value={form.email}
                       onChange={handleChange("email")}
@@ -370,7 +323,7 @@ export default function AuthPage() {
                     <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="fullName"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder="Nguyễn Văn A"
                       value={form.fullName}
                       onChange={handleChange("fullName")}
@@ -387,7 +340,7 @@ export default function AuthPage() {
                     <Input
                       id="password"
                       type="password"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder={
                         mode === "register" ? "Tạo mật khẩu" : "Nhập mật khẩu"
                       }
@@ -406,7 +359,7 @@ export default function AuthPage() {
                     <Input
                       id="confirmPassword"
                       type="password"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder="Nhập lại mật khẩu"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
@@ -443,7 +396,7 @@ export default function AuthPage() {
                     <Input
                       id="password"
                       type="password"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder="Nhập mật khẩu mới"
                       value={form.password}
                       onChange={handleChange("password")}
@@ -460,7 +413,7 @@ export default function AuthPage() {
                     <Input
                       id="confirmPassword"
                       type="password"
-                      className="h-12 pl-10"
+                      className="h-11 pl-10"
                       placeholder="Nhập lại mật khẩu mới"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
@@ -469,7 +422,7 @@ export default function AuthPage() {
                 </div>
               )}
 
-              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900">
+              <div className="auth-helper rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
                 {pageCopy.helper}
               </div>
 
@@ -509,7 +462,7 @@ export default function AuthPage() {
               )}
             </form>
 
-            <div className="mt-6 flex flex-col gap-3 border-t border-border/70 pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div className="auth-footer mt-3 flex flex-col gap-2 border-t border-border/70 pt-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <p>
                 {pageCopy.switchLabel} {" "}
                 <Link
@@ -533,7 +486,7 @@ export default function AuthPage() {
                 >
                   {mode === "verify"
                     ? "Quay lại đăng nhập"
-                    : "Vào dashboard sau khi xác minh"}
+                    : "Vào trang chủ sau khi xác minh"}
                 </Link>
               )}
             </div>
@@ -575,47 +528,186 @@ function resolveMode(pathname) {
   return "login";
 }
 
-function getBenefits(mode) {
-  if (mode === "forgot") {
-    return [
-      "Nhận mã khôi phục qua Gmail chỉ trong vài giây",
-      "Mã OTP có thời hạn ngắn để giữ an toàn tài khoản",
-      "Đặt lại mật khẩu mà không cần liên hệ hỗ trợ",
-    ];
-  }
+function InteractivePcViewer() {
+  const [rotation, setRotation] = useState({ x: -8, y: 18 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const dragRef = useRef({ x: 0, y: 0 });
+  const targetRef = useRef({ x: -8, y: 18 });
+  const frameRef = useRef(0);
+  const componentImage = "/images/component-placeholder.svg";
 
-  if (mode === "verify") {
-    return [
-      "Mã xác minh được gửi trực tiếp tới Gmail đã đăng ký",
-      "Email chưa xác minh sẽ không thể đăng nhập",
-      "Có thể gửi lại mã khi hộp thư đến bị chậm",
-    ];
-  }
+  useEffect(() => {
+    function tick() {
+      setRotation((prev) => {
+        const tx = targetRef.current.x;
+        const ty = targetRef.current.y;
+        return {
+          x: prev.x + (tx - prev.x) * 0.12,
+          y: prev.y + (ty - prev.y) * 0.12,
+        };
+      });
 
-  if (mode === "reset") {
-    return [
-      "Dùng OTP để xác nhận quyền sở hữu email",
-      "Tạo mật khẩu mới ngay trong vài bước",
-      "Mật khẩu cũ sẽ được thay thế ngay sau khi xác minh",
-    ];
-  }
+      frameRef.current = window.requestAnimationFrame(tick);
+    }
 
-  if (mode === "register") {
-    return [
-      "Tạo tài khoản mới và nhận mã xác minh qua Gmail",
-      "Khóa trạng thái tài khoản cho tới khi xác minh email",
-      "Giữ nguyên luồng admin và role-based access của dự án",
-    ];
-  }
+    frameRef.current = window.requestAnimationFrame(tick);
 
-  return adminBenefits;
-}
+    return () => {
+      window.cancelAnimationFrame(frameRef.current);
+    };
+  }, []);
 
-function StatCard({ label, value }) {
+  useEffect(() => {
+    if (isDragging || isHovering) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      targetRef.current = {
+        x: -8 + Math.sin(Date.now() / 900) * 3,
+        y: targetRef.current.y + 0.7,
+      };
+    }, 40);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isDragging, isHovering]);
+
+  const handlePointerDown = (event) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDragging(true);
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handlePointerMove = (event) => {
+    if (!isDragging) {
+      return;
+    }
+
+    const dx = event.clientX - dragRef.current.x;
+    const dy = event.clientY - dragRef.current.y;
+
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+
+    const nextY = targetRef.current.y + dx * 0.35;
+    const nextX = Math.max(-25, Math.min(20, targetRef.current.x - dy * 0.25));
+    targetRef.current = { x: nextX, y: nextY };
+  };
+
+  const stopDrag = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseMove = (event) => {
+    if (isDragging) {
+      return;
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const px = (event.clientX - bounds.left) / bounds.width;
+    const py = (event.clientY - bounds.top) / bounds.height;
+
+    targetRef.current = {
+      x: -12 + (0.5 - py) * 12,
+      y: 16 + (px - 0.5) * 32,
+    };
+  };
+
+  const resetHoverPose = () => {
+    if (isDragging) {
+      return;
+    }
+
+    targetRef.current = { x: -8, y: 18 };
+  };
+
   return (
-    <div className="rounded-3xl border border-white/60 bg-white/75 p-4 shadow-sm backdrop-blur">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="mt-2 text-2xl font-bold">{value}</div>
+    <div
+      className="relative w-full max-w-[560px] rounded-[28px] border border-white/60 bg-white/70 p-6 shadow-sm backdrop-blur"
+      onPointerMove={handlePointerMove}
+      onPointerUp={stopDrag}
+      onPointerLeave={stopDrag}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => {
+        setIsHovering(false);
+        resetHoverPose();
+      }}
+      onMouseMove={handleMouseMove}
+    >
+      <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_15%_20%,_rgba(52,211,153,0.22),_transparent_40%),radial-gradient(circle_at_85%_80%,_rgba(56,189,248,0.20),_transparent_42%)]" />
+
+      <div className="relative mb-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-700/80">
+        <Sparkles className="h-4 w-4 text-primary" />
+        Kéo để xoay mô hình 3D
+      </div>
+
+      <div className="relative mx-auto h-[320px] w-full select-none [perspective:1400px]">
+        <div className="pointer-events-none absolute left-1/2 top-[78%] h-16 w-[340px] -translate-x-1/2 rounded-[100%] bg-slate-950/40 blur-xl" />
+
+        <div
+          className={`absolute left-1/2 top-[50%] h-[255px] w-[420px] -translate-x-1/2 -translate-y-1/2 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          style={{
+            transform: `translate(-50%, -50%) rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
+            transformStyle: "preserve-3d",
+          }}
+          onPointerDown={handlePointerDown}
+          onPointerCancel={stopDrag}
+        >
+          <div
+            className="auth-rgb absolute left-4 right-4 top-5 h-[190px] overflow-hidden rounded-[22px] border border-emerald-200/65 bg-slate-900/95 shadow-[0_28px_55px_rgba(15,23,42,0.5)]"
+            style={{ transform: "translateZ(40px)", transformStyle: "preserve-3d" }}
+          >
+            <img
+              src={componentImage}
+              alt="Linh kiện PC"
+              draggable={false}
+              className="h-full w-full object-cover object-center opacity-90"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-emerald-400/12" />
+            <div className="auth-scan absolute inset-x-6 bottom-5 h-1 rounded bg-gradient-to-r from-emerald-400/0 via-emerald-300/95 to-sky-300/0" />
+            <div className="absolute left-6 top-5 h-3 w-20 rounded-full bg-emerald-400/70" />
+            <div className="absolute right-6 top-5 h-3 w-3 rounded-full bg-sky-400/80" />
+          </div>
+
+          <div
+            className="absolute right-4 top-5 h-[190px] w-9 rounded-r-[14px] border border-sky-200/30 bg-slate-800/90"
+            style={{ transform: "rotateY(90deg) translateZ(13px)", transformOrigin: "right center" }}
+          />
+          <div
+            className="absolute left-4 top-5 h-[190px] w-9 rounded-l-[14px] border border-emerald-200/30 bg-slate-800/90"
+            style={{ transform: "rotateY(-90deg) translateZ(13px)", transformOrigin: "left center" }}
+          />
+
+          <div
+            className="absolute left-[52px] right-[52px] top-[214px] h-[28px] rounded-[12px] border border-emerald-200/35 bg-slate-800/95"
+            style={{ transform: "translateZ(22px)" }}
+          />
+          <div
+            className="absolute left-[124px] right-[124px] top-[242px] h-[12px] rounded-full bg-slate-950/90"
+            style={{ transform: "translateZ(10px)" }}
+          />
+
+          <div
+            className="auth-orbit pointer-events-none absolute left-6 top-0 h-6 w-6 rounded-full border border-emerald-300/70 bg-emerald-200/35"
+            style={{ transform: "translateZ(72px)" }}
+          />
+          <div
+            className="auth-orbit pointer-events-none absolute right-10 top-[212px] h-5 w-5 rounded-full border border-sky-300/70 bg-sky-200/35"
+            style={{ animationDelay: "1.1s", transform: "translateZ(66px)" }}
+          />
+        </div>
+
+        <div className="pointer-events-none absolute left-8 top-8 h-16 w-16 rounded-full border border-emerald-200/50 bg-emerald-300/10 auth-orbit" />
+        <div className="pointer-events-none absolute right-10 bottom-10 h-20 w-20 rounded-full border border-sky-200/50 bg-sky-300/10 auth-orbit" style={{ animationDelay: "1.3s" }} />
+      </div>
     </div>
   );
 }

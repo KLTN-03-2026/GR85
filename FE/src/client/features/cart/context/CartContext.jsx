@@ -106,20 +106,50 @@ export function CartProvider({ children }) {
   }, [cart.items, removeFromCart]);
 
   const checkout = useCallback(
-    async ({ shippingAddress, phoneNumber }) => {
+    async ({
+      shippingAddress,
+      phoneNumber,
+      paymentMethod,
+      bankCode,
+      addressId,
+      couponCode,
+      useWalletBalance,
+    }) => {
       if (!isAuthenticated || !token) {
         throw new Error("Vui lòng đăng nhập để thanh toán");
       }
 
       const result = await callCartApi("/checkout", {
         method: "POST",
-        body: JSON.stringify({ shippingAddress, phoneNumber }),
+        body: JSON.stringify({
+          shippingAddress,
+          phoneNumber,
+          paymentMethod,
+          bankCode,
+          addressId,
+          couponCode,
+          useWalletBalance,
+        }),
       });
 
       await refreshCart();
       return result;
     },
     [callCartApi, isAuthenticated, token, refreshCart],
+  );
+
+  const previewPricing = useCallback(
+    async ({ couponCode }) => {
+      if (!isAuthenticated || !token) {
+        throw new Error("Vui lòng đăng nhập để xem ưu đãi");
+      }
+
+      return callCartApi("/preview-pricing", {
+        method: "POST",
+        body: JSON.stringify({ couponCode }),
+      });
+    },
+    [callCartApi, isAuthenticated, token],
   );
 
   const value = useMemo(
@@ -133,6 +163,7 @@ export function CartProvider({ children }) {
       updateQuantity,
       clearCart,
       checkout,
+      previewPricing,
       refreshCart,
     }),
     [
@@ -145,6 +176,7 @@ export function CartProvider({ children }) {
       updateQuantity,
       clearCart,
       checkout,
+      previewPricing,
       refreshCart,
     ],
   );
@@ -170,7 +202,7 @@ function normalizeCartPayload(payload) {
           slug: item.product.slug,
           name: item.product.name,
           brand: item.product?.specifications?.brand || "PC Perfect",
-          image: item.product.imageUrl || "/robots.txt",
+          image: item.product.imageUrl || "/images/component-placeholder.svg",
           price: Number(item.product.price ?? 0),
           stock: Number(item.product.stockQuantity ?? 0),
         },

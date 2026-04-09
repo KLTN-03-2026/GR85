@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Check, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { ComponentCard } from "@/components/ComponentCard";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,14 @@ export default function ComponentsPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedBrand, setSelectedBrand] = useState("all");
+  const [stockStatus, setStockStatus] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
   const [priceRange, setPriceRange] = useState([0, 50000000]);
+  const [customMinPrice, setCustomMinPrice] = useState(0);
+  const [customMaxPrice, setCustomMaxPrice] = useState(50000000);
   const [page, setPage] = useState(1);
+  const [searchPool, setSearchPool] = useState([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -38,6 +44,8 @@ export default function ComponentsPage() {
     Boolean(keyword) ||
     selectedCategory !== "all" ||
     selectedBrand !== "all" ||
+    stockStatus !== "all" ||
+    sortBy !== "newest" ||
     priceRange[0] > 0 ||
     priceRange[1] < 50000000;
 
@@ -58,6 +66,7 @@ export default function ComponentsPage() {
 
           const allBrands = new Set();
           const products = Array.isArray(payload.products) ? payload.products : [];
+          setSearchPool(products);
           products.forEach((item) => {
             const brand =
               item?.specifications?.brand ||
@@ -74,6 +83,7 @@ export default function ComponentsPage() {
         if (!cancelled) {
           setCategories([]);
           setBrands([]);
+          setSearchPool([]);
         }
       }
     }
@@ -89,9 +99,16 @@ export default function ComponentsPage() {
     const categoryFromQuery = String(searchParams.get("category") ?? "")
       .trim()
       .toLowerCase();
+    const keywordFromQuery = String(searchParams.get("keyword") ?? "").trim();
 
     if (categoryFromQuery) {
       setSelectedCategory(categoryFromQuery);
+    }
+
+    if (keywordFromQuery) {
+      setKeywordInput(keywordFromQuery);
+      setKeyword(keywordFromQuery);
+      setPage(1);
     }
   }, [searchParams]);
 
@@ -117,6 +134,14 @@ export default function ComponentsPage() {
 
         if (selectedBrand !== "all") {
           query.set("brand", selectedBrand);
+        }
+
+        if (stockStatus !== "all") {
+          query.set("stockStatus", stockStatus);
+        }
+
+        if (sortBy !== "newest") {
+          query.set("sort", sortBy);
         }
 
         if (priceRange[0] > 0) {
@@ -164,7 +189,12 @@ export default function ComponentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [keyword, selectedCategory, selectedBrand, priceRange, page]);
+  }, [keyword, selectedCategory, selectedBrand, stockStatus, sortBy, priceRange, page]);
+
+  useEffect(() => {
+    setCustomMinPrice(priceRange[0]);
+    setCustomMaxPrice(priceRange[1]);
+  }, [priceRange]);
 
   const totalPages = Math.max(1, Number(pagination.totalPages ?? 1));
 
@@ -177,6 +207,7 @@ export default function ComponentsPage() {
   const applyKeywordSearch = () => {
     setPage(1);
     setKeyword(keywordInput.trim());
+    setIsSearchFocused(false);
   };
 
   const clearFilters = () => {
@@ -184,7 +215,51 @@ export default function ComponentsPage() {
     setKeywordInput("");
     setSelectedCategory("all");
     setSelectedBrand("all");
+    setStockStatus("all");
+    setSortBy("newest");
     setPriceRange([0, 50000000]);
+    setCustomMinPrice(0);
+    setCustomMaxPrice(50000000);
+    setPage(1);
+  };
+
+  const suggestions = useMemo(() => {
+    const query = keywordInput.trim();
+    if (!query) {
+      return [];
+    }
+
+    return searchPool
+      .map((product) => {
+        const candidateName = String(product?.name ?? "");
+        const candidateCode = String(product?.productCode ?? product?.slug ?? "");
+        const score = scoreSearchCandidate(query, `${candidateName} ${candidateCode}`);
+        return {
+          id: product.id,
+          label: candidateName,
+          code: candidateCode,
+          slug: product.slug,
+          score,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+  }, [keywordInput, searchPool]);
+
+  const applySuggestedKeyword = (value) => {
+    setKeywordInput(value);
+    setKeyword(value);
+    setPage(1);
+    setIsSearchFocused(false);
+  };
+
+  const applyPriceInputs = () => {
+    const min = clampPrice(customMinPrice);
+    const max = clampPrice(customMaxPrice);
+    const normalizedMin = Math.min(min, max);
+    const normalizedMax = Math.max(min, max);
+    setPriceRange([normalizedMin, normalizedMax]);
     setPage(1);
   };
 
@@ -213,22 +288,66 @@ export default function ComponentsPage() {
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 mb-8">
-            <div className="relative flex-1 flex gap-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Tìm tên hoặc mã sản phẩm..."
-                value={keywordInput}
-                onChange={(event) => setKeywordInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    applyKeywordSearch();
-                  }
-                }}
-                className="pl-10"
-              />
-              <Button onClick={applyKeywordSearch}>Tìm</Button>
+            <div className="relative flex-1">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Tìm tên hoặc mã sản phẩm..."
+                    value={keywordInput}
+                    onChange={(event) => setKeywordInput(event.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => {
+                      setTimeout(() => setIsSearchFocused(false), 150);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        applyKeywordSearch();
+                      }
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+                <Button onClick={applyKeywordSearch}>Tìm</Button>
+              </div>
+
+              {isSearchFocused && suggestions.length > 0 && (
+                <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
+                  <p className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    Gợi ý gần đúng
+                  </p>
+                  <div className="py-1">
+                    {suggestions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
+                        onMouseDown={() => applySuggestedKeyword(item.label)}
+                      >
+                        <span>{item.label}</span>
+                        <span className="text-xs text-muted-foreground">{item.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+
+            <select
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              value={sortBy}
+              onChange={(event) => {
+                setSortBy(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="newest">Mới nhất</option>
+              <option value="price_asc">Giá tăng dần</option>
+              <option value="price_desc">Giá giảm dần</option>
+              <option value="name_asc">Tên A-Z</option>
+              <option value="stock_desc">Tồn kho cao</option>
+            </select>
 
             <Sheet>
               <SheetTrigger asChild>
@@ -267,6 +386,22 @@ export default function ComponentsPage() {
                     </select>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label>Tình trạng hàng</Label>
+                    <select
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={stockStatus}
+                      onChange={(event) => {
+                        setStockStatus(event.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="all">Tất cả</option>
+                      <option value="in-stock">Còn hàng</option>
+                      <option value="out-of-stock">Hết hàng</option>
+                    </select>
+                  </div>
+
                   <div className="space-y-4">
                     <Label>Khoảng giá</Label>
                     <Slider
@@ -283,6 +418,25 @@ export default function ComponentsPage() {
                       <span>{formatPrice(priceRange[0])}</span>
                       <span>{formatPrice(priceRange[1])}</span>
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={500000}
+                        value={customMinPrice}
+                        onChange={(event) => setCustomMinPrice(Number(event.target.value || 0))}
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        step={500000}
+                        value={customMaxPrice}
+                        onChange={(event) => setCustomMaxPrice(Number(event.target.value || 0))}
+                      />
+                    </div>
+                    <Button variant="outline" className="w-full" onClick={applyPriceInputs}>
+                      Áp dụng khoảng giá
+                    </Button>
                   </div>
 
                   {hasActiveFilters && (
@@ -303,6 +457,33 @@ export default function ComponentsPage() {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-4 mb-8 scrollbar-hide">
+            <Button
+              variant={stockStatus === "in-stock" ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
+                setPage(1);
+              }}
+              className="gap-1"
+            >
+              {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
+              Còn hàng
+            </Button>
+            <Button
+              variant={priceRange[1] <= 5000000 ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setPriceRange((prev) => {
+                  if (prev[0] === 0 && prev[1] <= 5000000) {
+                    return [0, 50000000];
+                  }
+                  return [0, 5000000];
+                });
+                setPage(1);
+              }}
+            >
+              Dưới 5 triệu
+            </Button>
             <Button
               variant={selectedCategory === "all" ? "default" : "ghost"}
               size="sm"
@@ -365,6 +546,18 @@ export default function ComponentsPage() {
                     className="w-3 h-3 cursor-pointer"
                     onClick={() => {
                       setSelectedBrand("all");
+                      setPage(1);
+                    }}
+                  />
+                </Badge>
+              )}
+              {stockStatus !== "all" && (
+                <Badge variant="secondary" className="gap-1">
+                  {stockStatus === "in-stock" ? "Còn hàng" : "Hết hàng"}
+                  <X
+                    className="w-3 h-3 cursor-pointer"
+                    onClick={() => {
+                      setStockStatus("all");
                       setPage(1);
                     }}
                   />
@@ -467,7 +660,7 @@ function mapProductToCardData(product) {
     stock: Number(product.stockQuantity ?? 0),
     rating: 5,
     reviews: 0,
-    image: product.imageUrl || "/robots.txt",
+    image: product.imageUrl || "/images/component-placeholder.svg",
     isNew: false,
     isOutOfStock: Boolean(product.isOutOfStock),
     specs: sanitizeSpecs(product.specifications),
@@ -496,4 +689,81 @@ function formatPrice(value) {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function scoreSearchCandidate(query, candidate) {
+  const q = normalizeText(query);
+  const c = normalizeText(candidate);
+
+  if (!q || !c) {
+    return 0;
+  }
+
+  if (c === q) {
+    return 120;
+  }
+
+  if (c.startsWith(q)) {
+    return 100;
+  }
+
+  if (c.includes(q)) {
+    return 80;
+  }
+
+  const qTokens = q.split(" ").filter(Boolean);
+  const cTokens = c.split(" ").filter(Boolean);
+  const tokenHits = qTokens.filter((token) => cTokens.some((part) => part.startsWith(token))).length;
+  const similarity = Math.max(...cTokens.map((token) => levenshteinRatio(q, token)), 0);
+
+  return tokenHits * 18 + similarity * 60;
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function levenshteinRatio(a, b) {
+  const dist = levenshteinDistance(a, b);
+  const longest = Math.max(a.length, b.length, 1);
+  return 1 - dist / longest;
+}
+
+function levenshteinDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i += 1) {
+    dp[i][0] = i;
+  }
+
+  for (let j = 0; j <= n; j += 1) {
+    dp[0][j] = j;
+  }
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[m][n];
+}
+
+function clampPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(50000000, Math.round(num / 500000) * 500000));
 }

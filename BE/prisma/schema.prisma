@@ -65,6 +65,20 @@ enum ChatRoomStatus {
     CLOSED
 }
 
+enum WalletTransactionType {
+    TOP_UP
+    PAYMENT_DEBIT
+    REFUND_CREDIT
+    ADJUSTMENT
+}
+
+enum ReturnRequestStatus {
+    PENDING
+    APPROVED
+    REJECTED
+    REFUNDED
+}
+
 // ================= 1. NGƯỜI DÙNG & PHÂN QUYỀN =================
 
 model User {
@@ -75,6 +89,7 @@ model User {
     phone        String?
     address      String?    @db.Text
     avatarUrl    String?    @map("avatar_url")
+    walletBalance Decimal    @default(0) @map("wallet_balance") @db.Decimal(15, 2)
     status       UserStatus @default(ACTIVE)
     roleId       Int?       @map("role_id")
     createdAt    DateTime   @default(now()) @map("created_at")
@@ -87,6 +102,9 @@ model User {
     chatRooms     ChatRoom[]
     messages      Message[]
     aiSavedBuilds AiSavedBuild[]
+    addresses     UserAddress[]
+    walletTransactions WalletTransaction[]
+    returnRequests ReturnRequest[]
 
     @@map("Users")
 }
@@ -321,6 +339,8 @@ model Order {
     coupon     Coupon?     @relation(fields: [couponId], references: [id])
     orderItems OrderItem[]
     statusHistories OrderStatusHistory[]
+    walletTransactions WalletTransaction[]
+    returnRequests ReturnRequest[]
 
     @@map("Orders")
 }
@@ -434,4 +454,59 @@ model EmailVerification {
     createdAt  DateTime @default(now()) @map("created_at")
 
     @@map("Email_Verifications")
+}
+
+model UserAddress {
+    id            Int      @id @default(autoincrement())
+    userId        Int      @map("user_id")
+    label         String?  @db.VarChar(100)
+    receiverName  String   @map("receiver_name")
+    phoneNumber   String   @map("phone_number")
+    addressLine   String   @map("address_line") @db.Text
+    isDefault     Boolean  @default(false) @map("is_default")
+    createdAt     DateTime @default(now()) @map("created_at")
+    updatedAt     DateTime @updatedAt @map("updated_at")
+
+    user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@map("User_Addresses")
+}
+
+model WalletTransaction {
+    id          Int                   @id @default(autoincrement())
+    userId      Int                   @map("user_id")
+    orderId     Int?                  @map("order_id")
+    amount      Decimal               @db.Decimal(15, 2)
+    type        WalletTransactionType
+    note        String?               @db.Text
+    createdAt   DateTime              @default(now()) @map("created_at")
+
+    user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    order       Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+    @@index([userId])
+    @@index([orderId])
+    @@map("Wallet_Transactions")
+}
+
+model ReturnRequest {
+    id             Int                 @id @default(autoincrement())
+    orderId        Int                 @map("order_id")
+    userId         Int                 @map("user_id")
+    reason         String              @db.Text
+    status         ReturnRequestStatus @default(PENDING)
+    reviewedBy     Int?                @map("reviewed_by")
+    rejectReason   String?             @map("reject_reason") @db.Text
+    refundAmount   Decimal?            @map("refund_amount") @db.Decimal(15, 2)
+    requestedAt    DateTime            @default(now()) @map("requested_at")
+    reviewedAt     DateTime?           @map("reviewed_at")
+
+    order          Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([orderId])
+    @@index([userId])
+    @@index([status])
+    @@map("Return_Requests")
 }

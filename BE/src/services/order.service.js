@@ -100,7 +100,7 @@ export async function getOrderDetailForAdmin(orderId) {
         id: item.product.id,
         name: item.product.name,
         slug: item.product.slug,
-        imageUrl: item.product.images?.[0]?.imageUrl ?? "/robots.txt",
+        imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
       },
     })),
     statusHistory: order.statusHistories,

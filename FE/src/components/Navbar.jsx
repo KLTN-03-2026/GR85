@@ -23,9 +23,9 @@ export function Navbar() {
 
   const navLinks = [
     { href: "/", label: "Trang chủ" },
-    { href: "/builder", label: "Build PC" },
+    { href: "/builder", label: "Tự ráp PC" },
     { href: "/components", label: "Linh kiện" },
-    { href: "/ai-recommend", label: "AI gợi ý", icon: Sparkles },
+    { href: "/ai-recommend", label: "AI tư vấn", icon: Sparkles },
   ];
 
   return (
@@ -92,7 +92,7 @@ export function Navbar() {
                     {user?.fullName ?? user?.email}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {user?.role ?? "User"}
+                    {user?.role ?? "Người dùng"}
                   </div>
                 </button>
                 <Button

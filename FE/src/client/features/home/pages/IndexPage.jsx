@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
   Cpu,
+  Search,
   Sparkles,
   Shield,
   Truck,
   MessageCircle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [catalog, setCatalog] = useState({ categories: [], products: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,14 +76,93 @@ const Index = () => {
     return categoryCards.reduce((sum, category) => sum + category.productCount, 0);
   }, [categoryCards]);
 
+  const homepageSuggestions = useMemo(() => {
+    const query = searchInput.trim();
+    if (!query) {
+      return [];
+    }
+
+    return catalog.products
+      .map((product) => {
+        const candidate = `${product.name} ${product.productCode ?? product.slug ?? ""}`;
+        return {
+          id: product.id,
+          slug: product.slug,
+          label: product.name,
+          score: scoreSearchCandidate(query, candidate),
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [catalog.products, searchInput]);
+
+  const submitHomepageSearch = (value = searchInput) => {
+    const keyword = String(value ?? "").trim();
+    if (!keyword) {
+      navigate("/components");
+      return;
+    }
+
+    navigate(`/components?keyword=${encodeURIComponent(keyword)}`);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <HeroSection />
 
+      <section className="relative z-20 mt-4 pb-2 sm:mt-6">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-4xl rounded-2xl border border-border/60 bg-background/95 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur">
+            <div className="relative flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 120)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      submitHomepageSearch();
+                    }
+                  }}
+                  placeholder="Tìm linh kiện nhanh: RTX 4060, i5 12400F, B760..."
+                  className="h-11 w-full rounded-md border border-input bg-background pl-10 pr-3 text-sm"
+                />
+              </div>
+              <Button onClick={() => submitHomepageSearch()} className="h-11">
+                Tìm sản phẩm
+              </Button>
+            </div>
+
+            {isSearchFocused && homepageSuggestions.length > 0 && (
+              <div className="mt-2 rounded-lg border border-border bg-background">
+                <p className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                  Tên gần giống
+                </p>
+                <div className="py-1">
+                  {homepageSuggestions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="block w-full px-3 py-2 text-left text-sm hover:bg-secondary"
+                      onMouseDown={() => submitHomepageSearch(item.label)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Categories Section */}
-      <section className="py-20 relative">
+      <section className="pt-14 pb-20 relative">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">
@@ -261,7 +344,7 @@ function mapProductToCardData(product) {
     isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
     rating: 5,
     reviews: 0,
-    image: "/robots.txt",
+    image: "/images/component-placeholder.svg",
     isNew: false,
     specs: sanitizeSpecs(product.specifications),
     compatibility: {},
@@ -307,4 +390,69 @@ function normalizeCategory(slug) {
 function resolveCategoryColor(slug) {
   const normalized = normalizeCategory(slug);
   return normalized;
+}
+
+function scoreSearchCandidate(query, candidate) {
+  const q = normalizeText(query);
+  const c = normalizeText(candidate);
+
+  if (!q || !c) {
+    return 0;
+  }
+
+  if (c === q) {
+    return 100;
+  }
+
+  if (c.startsWith(q)) {
+    return 90;
+  }
+
+  if (c.includes(q)) {
+    return 75;
+  }
+
+  const tokens = c.split(" ");
+  const bestRatio = Math.max(...tokens.map((token) => levenshteinRatio(q, token)), 0);
+  return bestRatio * 60;
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function levenshteinRatio(a, b) {
+  const dist = levenshteinDistance(a, b);
+  const longest = Math.max(a.length, b.length, 1);
+  return 1 - dist / longest;
+}
+
+function levenshteinDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i += 1) {
+    dp[i][0] = i;
+  }
+  for (let j = 0; j <= n; j += 1) {
+    dp[0][j] = j;
+  }
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[m][n];
 }

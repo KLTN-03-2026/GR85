@@ -7,7 +7,7 @@ export const mockComponents = [
     category: "cpu",
     price: 14990000,
     usedPrice: 12500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       cores: 16,
       threads: 32,
@@ -28,7 +28,7 @@ export const mockComponents = [
     category: "cpu",
     price: 15990000,
     usedPrice: 13500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       cores: 24,
       threads: 32,
@@ -49,7 +49,7 @@ export const mockComponents = [
     category: "cpu",
     price: 10990000,
     usedPrice: 9200000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       cores: 8,
       threads: 16,
@@ -70,7 +70,7 @@ export const mockComponents = [
     category: "gpu",
     price: 49990000,
     usedPrice: 42000000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       vram: "24GB GDDR6X",
       coreClock: "2235 MHz",
@@ -90,7 +90,7 @@ export const mockComponents = [
     category: "gpu",
     price: 28990000,
     usedPrice: 24000000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       vram: "24GB GDDR6",
       coreClock: "1900 MHz",
@@ -109,7 +109,7 @@ export const mockComponents = [
     category: "gpu",
     price: 22990000,
     usedPrice: 19500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       vram: "16GB GDDR6X",
       coreClock: "2340 MHz",
@@ -130,7 +130,7 @@ export const mockComponents = [
     category: "ram",
     price: 5990000,
     usedPrice: 4800000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       capacity: "32GB (2x16GB)",
       speed: "6400 MHz",
@@ -149,7 +149,7 @@ export const mockComponents = [
     category: "ram",
     price: 3990000,
     usedPrice: 3200000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       capacity: "32GB (2x16GB)",
       speed: "5600 MHz",
@@ -169,7 +169,7 @@ export const mockComponents = [
     category: "storage",
     price: 5490000,
     usedPrice: 4500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       capacity: "2TB",
       type: "NVMe SSD",
@@ -188,7 +188,7 @@ export const mockComponents = [
     category: "storage",
     price: 3290000,
     usedPrice: 2700000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       capacity: "1TB",
       type: "NVMe SSD",
@@ -208,7 +208,7 @@ export const mockComponents = [
     category: "motherboard",
     price: 15990000,
     usedPrice: 13500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       socket: "AM5",
       chipset: "X670E",
@@ -228,7 +228,7 @@ export const mockComponents = [
     category: "motherboard",
     price: 12990000,
     usedPrice: 10800000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       socket: "LGA1700",
       chipset: "Z790",
@@ -249,7 +249,7 @@ export const mockComponents = [
     category: "psu",
     price: 6990000,
     usedPrice: 5500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       wattage: "1200W",
       efficiency: "80+ Platinum",
@@ -268,7 +268,7 @@ export const mockComponents = [
     category: "psu",
     price: 8990000,
     usedPrice: 7500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       wattage: "1000W",
       efficiency: "80+ Platinum",
@@ -288,7 +288,7 @@ export const mockComponents = [
     category: "case",
     price: 4990000,
     usedPrice: 4000000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       formFactor: "Mid Tower",
       motherboardSupport: "E-ATX, ATX, mATX, ITX",
@@ -307,7 +307,7 @@ export const mockComponents = [
     category: "case",
     price: 3990000,
     usedPrice: 3200000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       formFactor: "Mid Tower",
       motherboardSupport: "ATX, mATX, ITX",
@@ -327,7 +327,7 @@ export const mockComponents = [
     category: "cooling",
     price: 7990000,
     usedPrice: 6500000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       type: "AIO Liquid Cooler",
       radiatorSize: "360mm",
@@ -346,7 +346,7 @@ export const mockComponents = [
     category: "cooling",
     price: 3290000,
     usedPrice: 2700000,
-    image: "/placeholder.svg",
+    image: "/images/component-placeholder.svg",
     specs: {
       type: "Air Cooler",
       fans: "2x 140mm",
@@ -403,3 +403,4 @@ export const brands = [
   "NZXT",
   "Noctua",
 ];
+
