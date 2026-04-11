@@ -29,7 +29,7 @@ import { authApi } from "../data/auth.api";
 const modeConfig = {
   login: {
     badge: "Đăng nhập hệ thống",
-    title: "Đăng nhập vào PC Perfect",
+    title: "Đăng nhập vào TechBuiltAI",
     description: "Tiếp tục mua sắm và theo dõi đơn hàng.",
     submit: "Đăng nhập",
     submitIcon: Lock,
@@ -44,7 +44,7 @@ const modeConfig = {
   },
   register: {
     badge: "Tạo tài khoản mới",
-    title: "Đăng ký tài khoản PC Perfect",
+    title: "Đăng ký tài khoản TechBuiltAI",
     description: "Tạo tài khoản mới trong vài giây.",
     submit: "Gửi mã xác minh",
     submitIcon: MailCheck,
@@ -267,7 +267,7 @@ export default function AuthPage() {
                 <Cpu className="h-6 w-6 text-white" />
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">PC Perfect</div>
+                <div className="text-sm text-muted-foreground">TechBuiltAI</div>
                 <div className="font-semibold">Studio PC</div>
               </div>
             </Link>

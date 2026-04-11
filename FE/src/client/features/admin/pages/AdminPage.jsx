@@ -887,7 +887,7 @@ export default function AdminPage() {
                   {isHydrated && isAuthenticated ? "Đang đăng nhập" : "Chưa đăng nhập"}
                 </Badge>
                 <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-                  Bảng điều khiển quản trị PC Perfect
+                  Bảng điều khiển quản trị TechBuiltAI
                 </h2>
                 <p className="mt-3 text-muted-foreground">
                   {isHydrated && isAuthenticated

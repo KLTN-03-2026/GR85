@@ -37,7 +37,7 @@ export function Navbar() {
               <Cpu className="h-6 w-6 text-primary-foreground" />
             </div>
             <span className="font-display text-xl font-bold text-gradient-primary">
-              PC Perfect
+              TechBuiltAI
             </span>
           </Link>
 
