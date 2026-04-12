@@ -51,7 +51,11 @@ export function ComponentCard({ component, mode = "shop" }) {
 
   return (
     <>
-      <Card className="group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]">
+      <Card
+        className="group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]"
+        data-aos="flip-right"
+        data-aos-duration="1000"
+      >
         {/* Image */}
         <div className="relative aspect-square bg-secondary/50 overflow-hidden">
           <img

@@ -153,11 +153,10 @@ export default function BuilderPage() {
                     return (
                       <div
                         key={cat.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
-                          selectedCategory === cat.id
-                            ? "border-primary bg-primary/5"
-                            : "border-border/50 hover:border-primary/50"
-                        }`}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transform-gpu transition-all duration-500 [transform:perspective(900px)_rotateX(0deg)] hover:[transform:perspective(900px)_rotateX(10deg)_translateY(-2px)] hover:shadow-[0_10px_24px_hsl(var(--primary)/0.16)] ${selectedCategory === cat.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border/50 hover:border-primary/50"
+                          }`}
                         onClick={() => setSelectedCategory(cat.id)}
                       >
                         <div className="flex items-center gap-3">
