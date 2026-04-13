@@ -28,6 +28,7 @@ const checkoutSchema = z.object({
   phoneNumber: z.string().optional(),
   addressId: z.number().int().positive().optional(),
   couponCode: z.string().max(50).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
   useWalletBalance: z.boolean().optional().default(true),
   paymentMethod: z.enum(["VNPAY"]).default("VNPAY"),
   bankCode: z.string().optional(),
@@ -35,6 +36,7 @@ const checkoutSchema = z.object({
 
 const previewPricingSchema = z.object({
   couponCode: z.string().max(50).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
 });
 
 router.get("/vnpay-ipn", async (req, res) => {
