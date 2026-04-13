@@ -338,18 +338,18 @@ export function useCart() {
 function normalizeCartPayload(payload) {
   const items = Array.isArray(payload.items)
     ? payload.items.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        component: {
-          id: item.product.id,
-          slug: item.product.slug,
-          name: item.product.name,
-          brand: item.product?.specifications?.brand || "PC Perfect",
-          image: item.product.imageUrl || "/images/component-placeholder.svg",
-          price: Number(item.product.price ?? 0),
-          stock: Number(item.product.stockQuantity ?? 0),
-        },
-      }))
+      id: item.id,
+      quantity: item.quantity,
+      component: {
+        id: item.product.id,
+        slug: item.product.slug,
+        name: item.product.name,
+        brand: item.product?.specifications?.brand || "PC Perfect",
+        image: item.product.imageUrl || "/images/component-placeholder.svg",
+        price: Number(item.product.price ?? 0),
+        stock: Number(item.product.stockQuantity ?? 0),
+      },
+    }))
     : [];
 
   return {

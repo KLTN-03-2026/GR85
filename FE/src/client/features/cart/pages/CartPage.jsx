@@ -847,8 +847,8 @@ function groupCartBundles(items, bundles) {
       const expectedCount = Array.isArray(bundle.items) ? bundle.items.length : 0;
       const bundleItems = Array.isArray(bundle.items)
         ? bundle.items
-            .map((bundleItem) => itemByProductId.get(String(bundleItem.productId)))
-            .filter(Boolean)
+          .map((bundleItem) => itemByProductId.get(String(bundleItem.productId)))
+          .filter(Boolean)
         : [];
 
       if (bundleItems.length === 0 || bundleItems.length !== expectedCount) {

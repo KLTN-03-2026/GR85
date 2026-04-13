@@ -320,11 +320,10 @@ export default function BuilderPage() {
                     <button
                       key={cat.id}
                       type="button"
-                      className={`w-full rounded-2xl border p-3 text-left transition-all duration-300 ${
-                        isActive
+                      className={`w-full rounded-2xl border p-3 text-left transition-all duration-300 ${isActive
                           ? "border-primary bg-primary/5 shadow-[0_10px_24px_hsl(var(--primary)/0.12)]"
                           : "border-border/50 hover:border-primary/50 hover:bg-primary/5"
-                      }`}
+                        }`}
                       onClick={() => setSelectedCategory(cat.id)}
                     >
                       <div className="flex items-center gap-3">
@@ -417,9 +416,9 @@ export default function BuilderPage() {
                     {isLoading
                       ? "Đang tải dữ liệu..."
                       : `${pagination.totalItems ?? 0} sản phẩm | Trang ${page}/${Math.max(
-                          1,
-                          Number(pagination.totalPages ?? 1),
-                        )}`}
+                        1,
+                        Number(pagination.totalPages ?? 1),
+                      )}`}
                   </p>
                 </div>
                 {Math.max(1, Number(pagination.totalPages ?? 1)) > 1 && (
