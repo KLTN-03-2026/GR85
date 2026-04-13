@@ -249,6 +249,7 @@ export function CartProvider({ children }) {
       addressId,
       couponCode,
       useWalletBalance,
+      selectedCartItemIds,
     }) => {
       if (!isAuthenticated || !token) {
         throw new Error("Vui lòng đăng nhập để thanh toán");
@@ -264,6 +265,7 @@ export function CartProvider({ children }) {
           addressId,
           couponCode,
           useWalletBalance,
+          selectedCartItemIds,
         }),
       });
 
@@ -274,14 +276,14 @@ export function CartProvider({ children }) {
   );
 
   const previewPricing = useCallback(
-    async ({ couponCode }) => {
+    async ({ couponCode, selectedCartItemIds }) => {
       if (!isAuthenticated || !token) {
         throw new Error("Vui lòng đăng nhập để xem ưu đãi");
       }
 
       return callCartApi("/preview-pricing", {
         method: "POST",
-        body: JSON.stringify({ couponCode }),
+        body: JSON.stringify({ couponCode, selectedCartItemIds }),
       });
     },
     [callCartApi, isAuthenticated, token],

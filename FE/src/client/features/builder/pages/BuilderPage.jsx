@@ -279,10 +279,10 @@ export default function BuilderPage() {
         <div className="container mx-auto px-4">
           <div className="mb-6">
             <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
-              Trình <span className="text-gradient-primary">tự ráp PC</span>
+              Tự <span className="text-gradient-primary">ráp PC</span>
             </h1>
             <p className="text-muted-foreground">
-              Chọn linh kiện từ cơ sở dữ liệu, tạo combo và xem kết quả theo từng trang.
+              Chọn linh kiện theo cách của bạn
             </p>
           </div>
 
@@ -302,13 +302,6 @@ export default function BuilderPage() {
                 )}
               </div>
 
-              <div className="mb-4 flex items-center justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2">
-                <Label className="flex items-center gap-2 text-sm">
-                  <Package className="w-4 h-4 text-storage" />
-                  Dùng giá máy cũ
-                </Label>
-                <Switch checked={useUsedPrices} onCheckedChange={setUseUsedPrices} />
-              </div>
 
               <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1 lg:max-h-none">
                 {categories.map((cat) => {
@@ -321,8 +314,8 @@ export default function BuilderPage() {
                       key={cat.id}
                       type="button"
                       className={`w-full rounded-2xl border p-3 text-left transition-all duration-300 ${isActive
-                          ? "border-primary bg-primary/5 shadow-[0_10px_24px_hsl(var(--primary)/0.12)]"
-                          : "border-border/50 hover:border-primary/50 hover:bg-primary/5"
+                        ? "border-primary bg-primary/5 shadow-[0_10px_24px_hsl(var(--primary)/0.12)]"
+                        : "border-border/50 hover:border-primary/50 hover:bg-primary/5"
                         }`}
                       onClick={() => setSelectedCategory(cat.id)}
                     >

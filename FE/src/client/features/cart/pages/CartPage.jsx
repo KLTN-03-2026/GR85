@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import PaymentQRModal from "@/components/PaymentQRModal";
 import { useCart } from "@/contexts/CartContext";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AOS from "aos";
 import {
   Minus,
@@ -51,6 +51,8 @@ export default function CartPage() {
   const [walletMessage, setWalletMessage] = useState("");
   const [walletError, setWalletError] = useState("");
   const [removingBundleId, setRemovingBundleId] = useState("");
+  const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
+  const hasInitializedSelectionRef = useRef(false);
 
   const {
     items,
@@ -77,6 +79,46 @@ export default function CartPage() {
     () => items.filter((item) => !bundleItemIds.has(String(item.id))),
     [bundleItemIds, items],
   );
+
+  const selectableItemIds = useMemo(
+    () => items.map((item) => Number(item.id)).filter((id) => Number.isFinite(id)),
+    [items],
+  );
+
+  const selectedCartItemIdSet = useMemo(
+    () => new Set(selectedCartItemIds.map((id) => Number(id))),
+    [selectedCartItemIds],
+  );
+
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedCartItemIdSet.has(Number(item.id))),
+    [items, selectedCartItemIdSet],
+  );
+
+  const selectedSubtotal = useMemo(
+    () =>
+      selectedItems.reduce(
+        (sum, item) => sum + Number(item.component.price ?? 0) * Number(item.quantity ?? 0),
+        0,
+      ),
+    [selectedItems],
+  );
+
+  const selectedBundleCount = useMemo(
+    () =>
+      bundleGroups.filter((bundle) =>
+        bundle.items.every((item) => selectedCartItemIdSet.has(Number(item.id))),
+      ).length,
+    [bundleGroups, selectedCartItemIdSet],
+  );
+
+  const selectedCartItemSignature = useMemo(
+    () => [...selectedCartItemIds].sort((a, b) => a - b).join(","),
+    [selectedCartItemIds],
+  );
+
+  const isAllSelected =
+    selectableItemIds.length > 0 && selectedCartItemIds.length === selectableItemIds.length;
 
   const selectedAddress = useMemo(
     () => addresses.find((item) => String(item.id) === String(selectedAddressId)) || null,
@@ -152,7 +194,60 @@ export default function CartPage() {
     setPricingPreview(null);
     setVoucherFeedback("");
     setVoucherError("");
-  }, [items.length, totalPrice]);
+  }, [items.length, totalPrice, selectedCartItemSignature]);
+
+  useEffect(() => {
+    const validIds = new Set(selectableItemIds);
+
+    if (!hasInitializedSelectionRef.current) {
+      hasInitializedSelectionRef.current = true;
+      setSelectedCartItemIds(selectableItemIds);
+      return;
+    }
+
+    setSelectedCartItemIds((prev) =>
+      prev.filter((id) => validIds.has(Number(id))),
+    );
+  }, [selectableItemIds]);
+
+  function toggleSelectAll(checked) {
+    setSelectedCartItemIds(checked ? selectableItemIds : []);
+  }
+
+  function toggleStandaloneItem(itemId, checked) {
+    const normalizedId = Number(itemId);
+    if (!Number.isFinite(normalizedId)) {
+      return;
+    }
+
+    setSelectedCartItemIds((prev) => {
+      const next = new Set(prev.map((id) => Number(id)));
+      if (checked) {
+        next.add(normalizedId);
+      } else {
+        next.delete(normalizedId);
+      }
+      return Array.from(next);
+    });
+  }
+
+  function toggleBundle(bundle, checked) {
+    const bundleItemIds = (bundle?.items ?? [])
+      .map((item) => Number(item.id))
+      .filter((id) => Number.isFinite(id));
+
+    setSelectedCartItemIds((prev) => {
+      const next = new Set(prev.map((id) => Number(id)));
+      for (const itemId of bundleItemIds) {
+        if (checked) {
+          next.add(itemId);
+        } else {
+          next.delete(itemId);
+        }
+      }
+      return Array.from(next);
+    });
+  }
 
   function beginCreateAddress() {
     setEditingAddressId(null);
@@ -250,7 +345,14 @@ export default function CartPage() {
     setVoucherError("");
 
     try {
-      const data = await previewPricing({ couponCode: voucherCode.trim() || undefined });
+      if (selectedCartItemIds.length === 0) {
+        throw new Error("Hãy chọn ít nhất 1 sản phẩm hoặc combo để áp voucher");
+      }
+
+      const data = await previewPricing({
+        couponCode: voucherCode.trim() || undefined,
+        selectedCartItemIds,
+      });
       setPricingPreview(data);
       if (data?.appliedCoupon?.code) {
         setVoucherFeedback(`Đã áp mã ${data.appliedCoupon.code}`);
@@ -336,17 +438,27 @@ export default function CartPage() {
                   Giỏ <span className="text-gradient-primary">hàng</span>
                 </h1>
                 <p className="text-muted-foreground">
-                  {items.length} sản phẩm trong giỏ
+                  {selectedItems.length}/{items.length} sản phẩm được chọn để thanh toán
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                className="text-destructive"
-                onClick={clearCart}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Xóa tất cả
-              </Button>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={(event) => toggleSelectAll(event.target.checked)}
+                  />
+                  Chọn tất cả
+                </label>
+                <Button
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={clearCart}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Xóa tất cả
+                </Button>
+              </div>
             </div>
 
             <div className="grid lg:grid-cols-3 gap-8">
@@ -361,24 +473,37 @@ export default function CartPage() {
                       </span>
                     </div>
 
-                    {bundleGroups.map((bundle, index) => (
-                      <Card
-                        key={bundle.id}
-                        className="glass border-primary/20 p-4"
-                        data-aos="fade-up"
-                        data-aos-delay={Math.min(index * 80, 320)}
-                      >
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-medium uppercase tracking-wider text-primary">
-                              Combo
-                            </p>
-                            <h3 className="font-display text-lg font-semibold">
-                              {bundle.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              {bundle.items.length} linh kiện
-                            </p>
+                    {bundleGroups.map((bundle, index) => {
+                      const bundleChecked = bundle.items.every((item) =>
+                        selectedCartItemIdSet.has(Number(item.id)),
+                      );
+
+                      return (
+                        <Card
+                          key={bundle.id}
+                          className="glass border-primary/20 p-4"
+                          data-aos="fade-up"
+                          data-aos-delay={Math.min(index * 80, 320)}
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={bundleChecked}
+                              onChange={(event) => toggleBundle(bundle, event.target.checked)}
+                            />
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                                Combo
+                              </p>
+                              <h3 className="font-display text-lg font-semibold">
+                                {bundle.name}
+                              </h3>
+                              <p className="text-sm text-muted-foreground">
+                                {bundle.items.length} linh kiện
+                              </p>
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge className="bg-primary text-primary-foreground">
@@ -407,30 +532,31 @@ export default function CartPage() {
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
-                        </div>
+                          </div>
 
-                        <div className="space-y-2">
-                          {bundle.items.map((item) => (
-                            <div
-                              key={item.id}
-                              className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/70 px-3 py-2"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium">
-                                  {item.component.name}
-                                </p>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {item.component.brand}
-                                </p>
+                          <div className="space-y-2">
+                            {bundle.items.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/70 px-3 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {item.component.name}
+                                  </p>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {item.component.brand}
+                                  </p>
+                                </div>
+                                <span className="text-sm font-semibold text-primary">
+                                  {formatPrice(item.component.price)}
+                                </span>
                               </div>
-                              <span className="text-sm font-semibold text-primary">
-                                {formatPrice(item.component.price)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </Card>
-                    ))}
+                            ))}
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -460,17 +586,27 @@ export default function CartPage() {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                                  {item.component.brand}
-                                </p>
-                                <h3 className="font-semibold line-clamp-1">
-                                  {item.component.name}
-                                </h3>
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                                  <Package className="w-3 h-3" />
-                                  Tồn kho: {item.component.stock}
-                                </span>
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1"
+                                  checked={selectedCartItemIdSet.has(Number(item.id))}
+                                  onChange={(event) =>
+                                    toggleStandaloneItem(item.id, event.target.checked)
+                                  }
+                                />
+                                <div>
+                                  <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                    {item.component.brand}
+                                  </p>
+                                  <h3 className="font-semibold line-clamp-1">
+                                    {item.component.name}
+                                  </h3>
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                                    <Package className="w-3 h-3" />
+                                    Tồn kho: {item.component.stock}
+                                  </span>
+                                </div>
                               </div>
                               <Button
                                 variant="ghost"
@@ -526,8 +662,14 @@ export default function CartPage() {
 
                   <div className="space-y-4 mb-6">
                     <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Đã chọn</span>
+                      <span>
+                        {selectedItems.length} món / {selectedBundleCount} combo
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Tạm tính</span>
-                      <span>{formatPrice(Number(pricingPreview?.subtotal ?? totalPrice))}</span>
+                      <span>{formatPrice(Number(pricingPreview?.subtotal ?? selectedSubtotal))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Giảm giá voucher</span>
@@ -548,7 +690,7 @@ export default function CartPage() {
                   <div className="flex justify-between mb-6">
                     <span className="font-semibold">Tổng cộng</span>
                     <span className="text-2xl font-bold text-gradient-primary">
-                      {formatPrice(Number(pricingPreview?.totalAmount ?? totalPrice))}
+                      {formatPrice(Number(pricingPreview?.totalAmount ?? selectedSubtotal))}
                     </span>
                   </div>
 
@@ -731,6 +873,7 @@ export default function CartPage() {
                   <Button
                     variant="hero"
                     className="w-full gap-2"
+                    disabled={selectedCartItemIds.length === 0}
                     onClick={async () => {
                       setCheckoutMessage("");
                       setCheckoutError("");
@@ -741,6 +884,10 @@ export default function CartPage() {
                           throw new Error(checkoutPhoneError);
                         }
 
+                        if (selectedCartItemIds.length === 0) {
+                          throw new Error("Vui lòng chọn sản phẩm hoặc combo để thanh toán");
+                        }
+
                         const result = await checkout({
                           shippingAddress,
                           phoneNumber,
@@ -748,6 +895,7 @@ export default function CartPage() {
                           addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
                           couponCode: pricingPreview?.appliedCoupon?.code ?? undefined,
                           useWalletBalance,
+                          selectedCartItemIds,
                         });
 
                         if (result?.isWalletPaymentOnly) {

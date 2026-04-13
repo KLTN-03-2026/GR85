@@ -19,9 +19,9 @@ import { env } from "../config/env.js";
 export async function previewCartPricing(userId, input = {}) {
   const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
   const cart = await ensureCart(userId);
-  const cartItems = await prisma.cartItem.findMany({
-    where: { cartId: cart.id },
-    include: { product: true },
+  const cartItems = await resolveSelectedCartItems({
+    cartId: cart.id,
+    selectedCartItemIds: input.selectedCartItemIds,
   });
 
   const subtotal = cartItems.reduce(
@@ -247,9 +247,9 @@ export async function checkoutCart(userId, input) {
   }
 
   const cart = await ensureCart(userId);
-  const cartItems = await prisma.cartItem.findMany({
-    where: { cartId: cart.id },
-    include: { product: true },
+  const cartItems = await resolveSelectedCartItems({
+    cartId: cart.id,
+    selectedCartItemIds: input.selectedCartItemIds,
   });
 
   if (cartItems.length === 0) {
@@ -354,7 +354,7 @@ export async function checkoutCart(userId, input) {
         });
       }
 
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+      await removePurchasedCartItems(tx, cart.id, cartItems);
     }
 
     return createdOrder;
@@ -591,7 +591,32 @@ async function finalizeVnpayPayment({
 
     const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
     if (cart) {
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+      const currentCartItems = await tx.cartItem.findMany({
+        where: { cartId: cart.id },
+        include: { product: true },
+      });
+      const orderItemByProductId = new Map(
+        order.orderItems.map((item) => [Number(item.productId), Number(item.quantity)]),
+      );
+
+      for (const cartItem of currentCartItems) {
+        const purchasedQuantity = orderItemByProductId.get(Number(cartItem.productId));
+        if (!purchasedQuantity) {
+          continue;
+        }
+
+        if (cartItem.quantity > purchasedQuantity) {
+          await tx.cartItem.update({
+            where: { id: cartItem.id },
+            data: {
+              quantity: cartItem.quantity - purchasedQuantity,
+            },
+          });
+          continue;
+        }
+
+        await tx.cartItem.delete({ where: { id: cartItem.id } });
+      }
     }
   });
 
@@ -606,6 +631,51 @@ async function ensureCart(userId) {
     where: { userId },
     update: {},
     create: { userId },
+  });
+}
+
+async function resolveSelectedCartItems({ cartId, selectedCartItemIds }) {
+  const isSelectionProvided = Array.isArray(selectedCartItemIds);
+
+  if (isSelectionProvided && selectedCartItemIds.length === 0) {
+    return [];
+  }
+
+  const normalizedIds = isSelectionProvided
+    ? Array.from(
+        new Set(
+          selectedCartItemIds
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0),
+        ),
+      )
+    : [];
+
+  if (isSelectionProvided && normalizedIds.length === 0) {
+    return [];
+  }
+
+  return prisma.cartItem.findMany({
+    where: {
+      cartId,
+      ...(normalizedIds.length > 0 ? { id: { in: normalizedIds } } : {}),
+    },
+    include: { product: true },
+  });
+}
+
+async function removePurchasedCartItems(tx, cartId, purchasedCartItems) {
+  if (!Array.isArray(purchasedCartItems) || purchasedCartItems.length === 0) {
+    return;
+  }
+
+  await tx.cartItem.deleteMany({
+    where: {
+      cartId,
+      id: {
+        in: purchasedCartItems.map((item) => item.id),
+      },
+    },
   });
 }
 
