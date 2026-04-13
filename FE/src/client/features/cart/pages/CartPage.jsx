@@ -1,6 +1,7 @@
-import { Navbar } from "@/components/Navbar";
+﻿import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import PaymentQRModal from "@/components/PaymentQRModal";
@@ -49,6 +50,7 @@ export default function CartPage() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletMessage, setWalletMessage] = useState("");
   const [walletError, setWalletError] = useState("");
+  const [removingBundleId, setRemovingBundleId] = useState("");
 
   const {
     items,
@@ -56,9 +58,25 @@ export default function CartPage() {
     removeFromCart,
     totalPrice,
     clearCart,
+    clearBundleMetadata,
+    removeBundle,
     checkout,
     previewPricing,
+    bundles,
   } = useCart();
+
+  const bundleGroups = useMemo(() => groupCartBundles(items, bundles), [items, bundles]);
+  const bundleItemIds = useMemo(
+    () =>
+      new Set(
+        bundleGroups.flatMap((bundle) => bundle.items.map((item) => String(item.id))),
+      ),
+    [bundleGroups],
+  );
+  const standaloneItems = useMemo(
+    () => items.filter((item) => !bundleItemIds.has(String(item.id))),
+    [bundleItemIds, items],
+  );
 
   const selectedAddress = useMemo(
     () => addresses.find((item) => String(item.id) === String(selectedAddressId)) || null,
@@ -334,93 +352,169 @@ export default function CartPage() {
             <div className="grid lg:grid-cols-3 gap-8">
               {/* Left - Cart Items */}
               <div className="lg:col-span-2 space-y-4">
-                {items.map((item, index) => (
-                  <Card
-                    key={item.id}
-                    className="glass border-border/50 p-4"
-                    data-aos="flip-right"
-                    data-aos-delay={Math.min(index * 80, 320)}
-                  >
-                    <div className="flex gap-4">
-                      {/* Image */}
-                      <div className="w-24 h-24 bg-secondary/50 rounded-lg flex-shrink-0 overflow-hidden">
-                        <img
-                          src={item.component.image}
-                          alt={item.component.name}
-                          className="w-full h-full object-contain p-2"
-                        />
-                      </div>
-
-                      {/* Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                              {item.component.brand}
-                            </p>
-                            <h3 className="font-semibold line-clamp-1">
-                              {item.component.name}
-                            </h3>
-                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                              <Package className="w-3 h-3" />
-                              Tồn kho: {item.component.stock}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive"
-                            onClick={() => removeFromCart(item.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-
-                        <div className="flex items-center justify-between mt-4">
-                          {/* Quantity */}
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() =>
-                                updateQuantity(
-                                  item.id,
-                                  item.quantity - 1,
-                                )
-                              }
-                            >
-                              <Minus className="w-3 h-3" />
-                            </Button>
-                            <span className="w-8 text-center font-medium">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() =>
-                                updateQuantity(
-                                  item.id,
-                                  item.quantity + 1,
-                                )
-                              }
-                            >
-                              <Plus className="w-3 h-3" />
-                            </Button>
-                          </div>
-
-                          {/* Price */}
-                          <p className="text-lg font-bold text-primary">
-                            {formatPrice(
-                              item.component.price * item.quantity,
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                {bundleGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">Combo đã chọn</Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {bundleGroups.length} combo
+                      </span>
                     </div>
-                  </Card>
-                ))}
+
+                    {bundleGroups.map((bundle, index) => (
+                      <Card
+                        key={bundle.id}
+                        className="glass border-primary/20 p-4"
+                        data-aos="fade-up"
+                        data-aos-delay={Math.min(index * 80, 320)}
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                              Combo
+                            </p>
+                            <h3 className="font-display text-lg font-semibold">
+                              {bundle.name}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {bundle.items.length} linh kiện
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-primary text-primary-foreground">
+                              {formatPrice(bundle.totalPrice)}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive"
+                              disabled={removingBundleId === String(bundle.id)}
+                              onClick={async () => {
+                                try {
+                                  setRemovingBundleId(String(bundle.id));
+                                  await removeBundle(bundle.id);
+                                } catch (error) {
+                                  setCheckoutError(
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Không thể xóa combo",
+                                  );
+                                } finally {
+                                  setRemovingBundleId("");
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {bundle.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/70 px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">
+                                  {item.component.name}
+                                </p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {item.component.brand}
+                                </p>
+                              </div>
+                              <span className="text-sm font-semibold text-primary">
+                                {formatPrice(item.component.price)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {standaloneItems.length > 0 && (
+                  <div className="space-y-4">
+                    {bundleGroups.length > 0 && (
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Linh kiện lẻ
+                      </p>
+                    )}
+
+                    {standaloneItems.map((item, index) => (
+                      <Card
+                        key={item.id}
+                        className="glass border-border/50 p-4"
+                        data-aos="flip-right"
+                        data-aos-delay={Math.min(index * 80, 320)}
+                      >
+                        <div className="flex gap-4">
+                          <div className="w-24 h-24 bg-secondary/50 rounded-lg flex-shrink-0 overflow-hidden">
+                            <img
+                              src={item.component.image}
+                              alt={item.component.name}
+                              className="w-full h-full object-contain p-2"
+                            />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                  {item.component.brand}
+                                </p>
+                                <h3 className="font-semibold line-clamp-1">
+                                  {item.component.name}
+                                </h3>
+                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                                  <Package className="w-3 h-3" />
+                                  Tồn kho: {item.component.stock}
+                                </span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                onClick={() => removeFromCart(item.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-4">
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </Button>
+                                <span className="w-8 text-center font-medium">
+                                  {item.quantity}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </div>
+
+                              <p className="text-lg font-bold text-primary">
+                                {formatPrice(item.component.price * item.quantity)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Right - Order Summary */}
@@ -659,6 +753,7 @@ export default function CartPage() {
                         if (result?.isWalletPaymentOnly) {
                           setCheckoutMessage(`Thanh toán bằng ví thành công. Mã đơn #${result.orderId}`);
                           await loadWallet();
+                          clearBundleMetadata();
                           return;
                         }
 
@@ -737,3 +832,35 @@ function validateVietnamPhone(value, required = false) {
   }
   return "";
 }
+
+function groupCartBundles(items, bundles) {
+  if (!Array.isArray(items) || !Array.isArray(bundles)) {
+    return [];
+  }
+
+  const itemByProductId = new Map(
+    items.map((item) => [String(item.component?.id ?? item.productId ?? item.id), item]),
+  );
+
+  return bundles
+    .map((bundle) => {
+      const expectedCount = Array.isArray(bundle.items) ? bundle.items.length : 0;
+      const bundleItems = Array.isArray(bundle.items)
+        ? bundle.items
+            .map((bundleItem) => itemByProductId.get(String(bundleItem.productId)))
+            .filter(Boolean)
+        : [];
+
+      if (bundleItems.length === 0 || bundleItems.length !== expectedCount) {
+        return null;
+      }
+
+      return {
+        ...bundle,
+        items: bundleItems,
+      };
+    })
+    .filter(Boolean);
+}
+
+
