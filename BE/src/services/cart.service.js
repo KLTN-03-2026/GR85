@@ -643,12 +643,12 @@ async function resolveSelectedCartItems({ cartId, selectedCartItemIds }) {
 
   const normalizedIds = isSelectionProvided
     ? Array.from(
-        new Set(
-          selectedCartItemIds
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value) && value > 0),
-        ),
-      )
+      new Set(
+        selectedCartItemIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0),
+      ),
+    )
     : [];
 
   if (isSelectionProvided && normalizedIds.length === 0) {

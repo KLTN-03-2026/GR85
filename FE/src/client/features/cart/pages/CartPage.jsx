@@ -486,52 +486,52 @@ export default function CartPage() {
                           data-aos-delay={Math.min(index * 80, 320)}
                         >
                           <div className="mb-3 flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <input
-                              type="checkbox"
-                              className="mt-1"
-                              checked={bundleChecked}
-                              onChange={(event) => toggleBundle(bundle, event.target.checked)}
-                            />
-                            <div>
-                              <p className="text-xs font-medium uppercase tracking-wider text-primary">
-                                Combo
-                              </p>
-                              <h3 className="font-display text-lg font-semibold">
-                                {bundle.name}
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                {bundle.items.length} linh kiện
-                              </p>
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={bundleChecked}
+                                onChange={(event) => toggleBundle(bundle, event.target.checked)}
+                              />
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                                  Combo
+                                </p>
+                                <h3 className="font-display text-lg font-semibold">
+                                  {bundle.name}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                  {bundle.items.length} linh kiện
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className="bg-primary text-primary-foreground">
-                              {formatPrice(bundle.totalPrice)}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive"
-                              disabled={removingBundleId === String(bundle.id)}
-                              onClick={async () => {
-                                try {
-                                  setRemovingBundleId(String(bundle.id));
-                                  await removeBundle(bundle.id);
-                                } catch (error) {
-                                  setCheckoutError(
-                                    error instanceof Error
-                                      ? error.message
-                                      : "Không thể xóa combo",
-                                  );
-                                } finally {
-                                  setRemovingBundleId("");
-                                }
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
+                            <div className="flex items-center gap-2">
+                              <Badge className="bg-primary text-primary-foreground">
+                                {formatPrice(bundle.totalPrice)}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                disabled={removingBundleId === String(bundle.id)}
+                                onClick={async () => {
+                                  try {
+                                    setRemovingBundleId(String(bundle.id));
+                                    await removeBundle(bundle.id);
+                                  } catch (error) {
+                                    setCheckoutError(
+                                      error instanceof Error
+                                        ? error.message
+                                        : "Không thể xóa combo",
+                                    );
+                                  } finally {
+                                    setRemovingBundleId("");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="space-y-2">
