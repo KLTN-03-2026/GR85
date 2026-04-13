@@ -4,7 +4,7 @@ const BuildContext = createContext(undefined);
 
 const createEmptyBuild = () => ({
   id: crypto.randomUUID(),
-  name: "My Build",
+  name: "Cấu hình của tôi",
   components: {},
   totalPrice: 0,
   createdAt: new Date(),

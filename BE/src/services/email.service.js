@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 export async function sendPaymentCodeEmail(userEmail, { paymentCode, orderId, totalAmount, qrCodeDataUrl }) {
   try {
     const mailOptions = {
-      from: `"PC Perfect" <${env.EMAIL}>`,
+      from: `"TechBuiltAI" <${env.EMAIL}>`,
       to: userEmail,
       subject: `Mã thanh toán tạm thời - Đơn hàng #${orderId}`,
       html: `
@@ -63,7 +63,7 @@ export async function sendPaymentCodeEmail(userEmail, { paymentCode, orderId, to
 export async function sendOrderConfirmationEmail(userEmail, { orderId, totalAmount, shippingAddress }) {
   try {
     const mailOptions = {
-      from: `"PC Perfect" <${env.EMAIL}>`,
+      from: `"TechBuiltAI" <${env.EMAIL}>`,
       to: userEmail,
       subject: `Xác nhận đơn hàng - Đơn hàng #${orderId}`,
       html: `
@@ -99,7 +99,7 @@ export async function sendWalletTopUpEmail(userEmail, { fullName, amount, balanc
     const formattedBalance = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(balance);
 
     const mailOptions = {
-      from: `"PC Perfect" <${env.EMAIL}>`,
+      from: `"TechBuiltAI" <${env.EMAIL}>`,
       to: userEmail,
       subject: `Xác nhận nạp tiền tài khoản${fullName ? ` - ${fullName}` : ""}`,
       html: `

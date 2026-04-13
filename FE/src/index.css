@@ -71,8 +71,30 @@
     font-family: "Times New Roman", Times, serif;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: "Times New Roman", Times, serif;
+  }
+
+  [data-aos] {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    [data-aos] {
+      opacity: 1 !important;
+      transform: none !important;
+      transition-duration: 0ms !important;
+      animation: none !important;
+    }
   }
 }
 

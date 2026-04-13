@@ -30,9 +30,13 @@ export function HeroSection() {
 
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 text-center">
-        <div className="max-w-4xl mx-auto space-y-8 animate-slide-up">
+        <div className="max-w-4xl mx-auto space-y-8">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/30">
+          <div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/30"
+            data-aos="fade-down"
+            data-aos-delay="40"
+          >
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium">
               Được hỗ trợ bởi AI thông minh
@@ -40,20 +44,32 @@ export function HeroSection() {
           </div>
 
           {/* Heading */}
-          <h1 className="font-display text-4xl sm:text-5xl md:text-7xl font-bold leading-tight">
+          <h1
+            className="font-display text-4xl sm:text-5xl md:text-7xl font-bold leading-tight"
+            data-aos="fade-up"
+            data-aos-delay="110"
+          >
             Lắp PC <span className="text-gradient-primary">hoàn hảo</span>
             <br />
             cho riêng bạn
           </h1>
 
           {/* Description */}
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p
+            className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto"
+            data-aos="fade-up"
+            data-aos-delay="180"
+          >
             Tự build từng linh kiện yêu thích hoặc để AI gợi ý cấu hình tối ưu
             theo ngân sách và nhu cầu sử dụng của bạn.
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            data-aos="fade-up"
+            data-aos-delay="240"
+          >
             <Link to="/builder">
               <Button variant="hero" size="xl" className="gap-2">
                 <Cpu className="w-5 h-5" />
@@ -73,18 +89,21 @@ export function HeroSection() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 pt-8 border-t border-border/50">
             <FeatureCard
               icon={Cpu}
+              delay={0}
               title="Build thủ công"
               description="Tự chọn từng linh kiện theo ý thích"
             />
 
             <FeatureCard
               icon={Sparkles}
+              delay={90}
               title="AI thông minh"
               description="Gợi ý cấu hình tối ưu theo ngân sách"
             />
 
             <FeatureCard
               icon={ShoppingBag}
+              delay={180}
               title="Mua sắm dễ dàng"
               description="Đặt hàng ngay với giá tốt nhất"
             />
@@ -93,18 +112,28 @@ export function HeroSection() {
       </div>
 
       {/* Floating Elements */}
-      <div className="absolute top-1/4 left-10 w-20 h-20 rounded-full bg-primary/20 blur-3xl animate-pulse-glow" />
+      <div
+        className="absolute top-1/4 left-10 w-20 h-20 rounded-full bg-primary/20 blur-3xl animate-pulse-glow"
+        data-aos="zoom-in"
+        data-aos-delay="260"
+      />
       <div
         className="absolute bottom-1/4 right-10 w-32 h-32 rounded-full bg-accent/20 blur-3xl animate-pulse-glow"
+        data-aos="zoom-in"
+        data-aos-delay="320"
         style={{ animationDelay: "1s" }}
       />
     </section>
   );
 }
 
-function FeatureCard({ icon: Icon, title, description }) {
+function FeatureCard({ icon: Icon, title, description, delay = 0 }) {
   return (
-    <div className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 group">
+    <div
+      className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 group"
+      data-aos="fade-up"
+      data-aos-delay={delay}
+    >
       <div className="w-12 h-12 rounded-lg gradient-primary mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-transform">
         <Icon className="w-6 h-6 text-primary-foreground" />
       </div>
