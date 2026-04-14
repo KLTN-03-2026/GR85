@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import {
   Activity,
   Building2,
@@ -22,7 +21,14 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -39,11 +45,132 @@ const navItems = [
   { id: "ai-build", label: "Cấu hình AI", icon: Sparkles },
   { id: "verification", label: "Email OTP", icon: MailCheck },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
-];
+].map((item) => ({
+  ...item,
+  hash: `#${slugifyTabLabel(item.label)}`,
+}));
+
+const schemaBySection = {
+  dashboard: {
+    headline: "Toan canh du lieu he thong",
+    tables: [
+      "Users",
+      "Products",
+      "Orders",
+      "Order_Items",
+      "Coupons",
+      "Reviews",
+      "Chat_Rooms",
+      "Wallet_Transactions",
+    ],
+    relations: [
+      "Users 1 - n Orders",
+      "Orders 1 - n Order_Items",
+      "Products 1 - n Order_Items",
+      "Users 1 - n Reviews",
+      "Users 1 - n Chat_Rooms",
+    ],
+  },
+  users: {
+    headline: "Du lieu nguoi dung va phan quyen",
+    tables: ["Users", "Roles", "Permissions", "Role_Permissions", "User_Addresses"],
+    relations: [
+      "Roles 1 - n Users",
+      "Roles n - n Permissions qua Role_Permissions",
+      "Users 1 - n User_Addresses",
+    ],
+  },
+  products: {
+    headline: "Du lieu quan ly san pham",
+    tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Products 1 - 1 Product_Details",
+      "Products 1 - n Product_Images",
+    ],
+  },
+  orders: {
+    headline: "Du lieu don hang va thanh toan",
+    tables: ["Orders", "Order_Items", "Order_Status_History", "Users", "Coupons", "Wallet_Transactions"],
+    relations: [
+      "Users 1 - n Orders",
+      "Orders 1 - n Order_Items",
+      "Orders 1 - n Order_Status_History",
+      "Coupons 1 - n Orders",
+      "Orders 1 - n Wallet_Transactions",
+    ],
+  },
+  catalog: {
+    headline: "Du lieu danh muc va nha cung cap",
+    tables: ["Categories", "Suppliers", "Products", "Batches"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Suppliers 1 - n Batches",
+    ],
+  },
+  vouchers: {
+    headline: "Du lieu ma giam gia",
+    tables: ["Coupons", "Orders"],
+    relations: [
+      "Coupons 1 - n Orders",
+      "Orders su dung coupon qua coupon_id",
+    ],
+  },
+  warehouse: {
+    headline: "Du lieu kho va serial",
+    tables: ["Warehouses", "Batches", "Serial_Numbers", "Products", "Suppliers"],
+    relations: [
+      "Warehouses 1 - n Batches",
+      "Products 1 - n Batches",
+      "Suppliers 1 - n Batches",
+      "Batches 1 - n Serial_Numbers",
+    ],
+  },
+  reviews: {
+    headline: "Du lieu danh gia",
+    tables: ["Reviews", "Users", "Products"],
+    relations: [
+      "Users 1 - n Reviews",
+      "Products 1 - n Reviews",
+    ],
+  },
+  chat: {
+    headline: "Du lieu chat ho tro",
+    tables: ["Chat_Rooms", "Messages", "Users"],
+    relations: [
+      "Users 1 - n Chat_Rooms",
+      "Chat_Rooms 1 - n Messages",
+      "Users 1 - n Messages",
+    ],
+  },
+  "ai-build": {
+    headline: "Du lieu cau hinh AI",
+    tables: ["AI_Saved_Builds", "AI_Build_Items", "Users", "Products"],
+    relations: [
+      "Users 1 - n AI_Saved_Builds",
+      "AI_Saved_Builds 1 - n AI_Build_Items",
+      "Products 1 - n AI_Build_Items",
+    ],
+  },
+  verification: {
+    headline: "Du lieu OTP xac minh email",
+    tables: ["Email_Verifications"],
+    relations: ["Bang luu OTP theo email, muc dich, thoi gian het han"],
+  },
+  roles: {
+    headline: "Du lieu vai tro va quyen he thong",
+    tables: ["Roles", "Permissions", "Role_Permissions", "Users"],
+    relations: [
+      "Roles n - n Permissions qua Role_Permissions",
+      "Roles 1 - n Users",
+    ],
+  },
+};
 
 export default function AdminPage() {
-  const { user, token, isAuthenticated, isHydrated, logout } = useAuth();
-  const navigate = useNavigate();
+  const { token, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboard, setDashboard] = useState(null);
@@ -74,6 +201,11 @@ export default function AdminPage() {
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
+  const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
+  const [selectedUserDetail, setSelectedUserDetail] = useState(null);
+  const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
+  const [isSavingUserDetail, setIsSavingUserDetail] = useState(false);
+  const [selectedUserDraft, setSelectedUserDraft] = useState(null);
   const [voucherForm, setVoucherForm] = useState({
     code: "",
     discountType: "PERCENT",
@@ -96,6 +228,34 @@ export default function AdminPage() {
     specificationsText: '{\n  "brand": "",\n  "model": ""\n}',
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const rawHash = normalizeHash(window.location.hash || "");
+    if (!rawHash) {
+      return;
+    }
+
+    const targetItem = navItems.find(
+      (item) => item.hash === rawHash || `#${item.id}` === rawHash,
+    );
+
+    if (targetItem) {
+      setActiveTab(targetItem.id);
+    }
+  }, []);
+
+  useEffect(() => {
+    const targetHash = navItems.find((item) => item.id === activeTab)?.hash;
+    if (!targetHash || normalizeHash(window.location.hash || "") === targetHash) {
+      return;
+    }
+
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}${targetHash}`,
+    );
+  }, [activeTab]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -127,7 +287,10 @@ export default function AdminPage() {
                 item.id,
                 {
                   fullName: item.fullName ?? "",
+                  email: item.email ?? "",
                   phone: item.phone ?? "",
+                  address: item.address ?? "",
+                  avatarUrl: item.avatarUrl ?? "",
                   roleId: item.roleId ? String(item.roleId) : "",
                   status: item.status ?? "ACTIVE",
                 },
@@ -416,7 +579,10 @@ export default function AdminPage() {
       ...prev,
       [item.id]: {
         fullName: item.fullName ?? "",
+        email: item.email ?? "",
         phone: item.phone ?? "",
+        address: item.address ?? "",
+        avatarUrl: item.avatarUrl ?? "",
         roleId: item.roleId ? String(item.roleId) : "",
         status: item.status ?? "ACTIVE",
       },
@@ -457,6 +623,26 @@ export default function AdminPage() {
       return;
     }
 
+    const emailError = validateEmail(draft.email);
+    if (emailError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: emailError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const avatarError = validateOptionalUrl(draft.avatarUrl);
+    if (avatarError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: avatarError,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSavingUserId(userId);
     try {
       const response = await fetch(`/api/admin/users/${userId}`, {
@@ -467,7 +653,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           fullName: draft.fullName,
+          email: draft.email?.trim(),
           phone: draft.phone?.trim() || undefined,
+          address: draft.address?.trim() || null,
+          avatarUrl: draft.avatarUrl?.trim() || null,
           roleId: draft.roleId ? Number(draft.roleId) : null,
           status: draft.status,
         }),
@@ -490,7 +679,10 @@ export default function AdminPage() {
               ? {
                   ...item,
                   fullName: payload.fullName,
+                  email: payload.email,
                   phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
                   status: payload.status,
                   roleId: payload.roleId,
                   role: payload.role,
@@ -502,6 +694,38 @@ export default function AdminPage() {
 
       setEditingUserId(null);
       toast({ title: "Đã cập nhật thông tin người dùng" });
+
+      if (selectedUserDetail?.id === userId) {
+        setSelectedUserDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
+            : prev,
+        );
+        setSelectedUserDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                fullName: payload.fullName ?? "",
+                email: payload.email ?? "",
+                phone: payload.phone ?? "",
+                address: payload.address ?? "",
+                avatarUrl: payload.avatarUrl ?? "",
+                roleId: payload.roleId ? String(payload.roleId) : "",
+                status: payload.status ?? "ACTIVE",
+              }
+            : prev,
+        );
+      }
     } catch (error) {
       toast({
         title: "Cập nhật thất bại",
@@ -510,6 +734,182 @@ export default function AdminPage() {
       });
     } finally {
       setSavingUserId(null);
+    }
+  }
+
+  async function loadUserDetail(userId) {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingUserDetail(true);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/detail`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được chi tiết người dùng");
+      }
+
+      setSelectedUserDetail(payload);
+      setSelectedUserDraft({
+        fullName: payload.fullName ?? "",
+        email: payload.email ?? "",
+        phone: payload.phone ?? "",
+        address: payload.address ?? "",
+        avatarUrl: payload.avatarUrl ?? "",
+        roleId: payload.roleId ? String(payload.roleId) : "",
+        status: payload.status ?? "ACTIVE",
+      });
+    } catch (error) {
+      toast({
+        title: "Không tải được hồ sơ người dùng",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingUserDetail(false);
+    }
+  }
+
+  async function saveSelectedUserDetail() {
+    if (!token || !selectedUserDetail?.id || !selectedUserDraft) {
+      return;
+    }
+
+    const fullNameError = validateDisplayName(selectedUserDraft.fullName);
+    if (fullNameError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: fullNameError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const emailError = validateEmail(selectedUserDraft.email);
+    if (emailError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: emailError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const phoneError = validateVietnamPhone(selectedUserDraft.phone);
+    if (phoneError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: phoneError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const avatarError = validateOptionalUrl(selectedUserDraft.avatarUrl);
+    if (avatarError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: avatarError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingUserDetail(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUserDetail.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fullName: selectedUserDraft.fullName,
+          email: selectedUserDraft.email?.trim(),
+          phone: selectedUserDraft.phone?.trim() || undefined,
+          address: selectedUserDraft.address?.trim() || null,
+          avatarUrl: selectedUserDraft.avatarUrl?.trim() || null,
+          roleId: selectedUserDraft.roleId ? Number(selectedUserDraft.roleId) : null,
+          status: selectedUserDraft.status,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật hồ sơ người dùng");
+      }
+
+      setDashboard((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          users: (prev.users ?? []).map((item) =>
+            item.id === selectedUserDetail.id
+              ? {
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
+              : item,
+          ),
+        };
+      });
+
+      setSelectedUserDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
+          : prev,
+      );
+
+      setSelectedUserDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
+          : prev,
+      );
+
+      toast({ title: "Đã cập nhật đầy đủ thông tin khách hàng" });
+    } catch (error) {
+      toast({
+        title: "Cập nhật thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingUserDetail(false);
     }
   }
 
@@ -808,22 +1208,96 @@ export default function AdminPage() {
   const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
   const summaryCards = [
     {
+      id: "users",
       label: "Người dùng",
       value: Number(dashboard?.summary?.totalUsers ?? 0),
     },
     {
+      id: "orders",
       label: "Đơn hàng",
       value: Number(dashboard?.summary?.totalOrders ?? 0),
     },
     {
+      id: "products",
       label: "Sản phẩm",
       value: Number(dashboard?.summary?.totalProducts ?? 0),
     },
     {
+      id: "revenue",
       label: "Doanh thu",
       value: formatMoney(totalRevenue),
     },
   ];
+
+  const summaryDetailByCard = useMemo(() => {
+    const usersRows = (dashboard?.users ?? []).slice(0, 8).map((item) => [
+      item.fullName ?? "-",
+      item.email ?? "-",
+      item.role?.name ?? "User",
+      statusBadge(formatEnum(item.status)),
+    ]);
+
+    const ordersRows = (adminOrders ?? []).slice(0, 8).map((item) => [
+      `#${item.id}`,
+      item.customer?.fullName ?? item.customer?.email ?? "-",
+      formatMoney(item.totalAmount),
+      statusBadge(formatEnum(item.paymentStatus)),
+      statusBadge(formatEnum(item.orderStatus)),
+    ]);
+
+    const productRows = (managedProducts ?? []).slice(0, 8).map((item) => [
+      item.name ?? "-",
+      item.productCode ?? "-",
+      formatMoney(item.price),
+      String(item.stockQuantity ?? 0),
+    ]);
+
+    const paidOrders = (adminOrders ?? []).filter(
+      (item) => String(item.paymentStatus ?? "").toUpperCase() === "PAID",
+    );
+    const pendingOrders = (adminOrders ?? []).filter(
+      (item) => String(item.paymentStatus ?? "").toUpperCase() === "PENDING",
+    );
+    const revenueRows = [
+      ["Tổng doanh thu", formatMoney(totalRevenue)],
+      ["Đơn đã thanh toán", String(paidOrders.length)],
+      ["Đơn chờ thanh toán", String(pendingOrders.length)],
+      [
+        "Giá trị trung bình / đơn",
+        formatMoney(paidOrders.length > 0 ? totalRevenue / paidOrders.length : 0),
+      ],
+    ];
+
+    return {
+      users: {
+        title: "Chi tiết người dùng",
+        description: "8 người dùng mới nhất trong hệ thống",
+        columns: ["Tên", "Email", "Role", "Trạng thái"],
+        rows: usersRows,
+      },
+      orders: {
+        title: "Chi tiết đơn hàng",
+        description: "8 đơn hàng gần nhất",
+        columns: ["Mã đơn", "Khách hàng", "Tổng tiền", "Thanh toán", "Trạng thái"],
+        rows: ordersRows,
+      },
+      products: {
+        title: "Chi tiết sản phẩm",
+        description: "8 sản phẩm gần nhất từ danh sách quản trị",
+        columns: ["Tên", "Mã", "Giá", "Tồn kho"],
+        rows: productRows,
+      },
+      revenue: {
+        title: "Chi tiết doanh thu",
+        description: "Số liệu tổng hợp từ dashboard và đơn hàng",
+        columns: ["Chỉ số", "Giá trị"],
+        rows: revenueRows,
+      },
+    };
+  }, [dashboard, adminOrders, managedProducts, totalRevenue]);
+
+  const selectedSummaryDetail =
+    summaryDetailByCard[selectedSummaryCard] ?? summaryDetailByCard.users;
 
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
@@ -832,9 +1306,9 @@ export default function AdminPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,1)_0%,_rgba(240,253,250,1)_100%)]">
       <Navbar />
 
-      <div className="mx-auto flex max-w-[1600px] gap-6 px-4 pb-10 pt-24 lg:px-6">
-        <aside className="hidden w-72 shrink-0 lg:block">
-          <div className="sticky top-24 space-y-4 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="mx-auto max-w-[1600px] px-4 pb-10 pt-24 lg:px-6">
+        <aside className="hidden lg:fixed lg:top-24 lg:block lg:w-72">
+          <div className="space-y-4 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
             <h1 className="text-xl font-bold">Trang quản trị</h1>
 
             <div className="space-y-1">
@@ -843,6 +1317,7 @@ export default function AdminPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
+                  title={item.hash}
                   className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
                     activeTab === item.id
                       ? "bg-primary text-primary-foreground"
@@ -860,7 +1335,7 @@ export default function AdminPage() {
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 space-y-6">
+        <main className="min-w-0 space-y-6 lg:ml-[19rem]">
           <div className="lg:hidden">
             <div className="rounded-2xl border border-border/60 bg-white/85 p-3 shadow-sm">
               <label className="mb-1 block text-xs font-semibold text-muted-foreground">
@@ -880,55 +1355,9 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <section className="overflow-hidden rounded-[32px] border border-border/60 bg-white/85 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl">
-                <Badge className="mb-4 bg-primary/10 text-primary hover:bg-primary/10">
-                  {isHydrated && isAuthenticated ? "Đang đăng nhập" : "Chưa đăng nhập"}
-                </Badge>
-                <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-                  Bảng điều khiển quản trị TechBuiltAI
-                </h2>
-                <p className="mt-3 text-muted-foreground">
-                  {isHydrated && isAuthenticated
-                    ? `Tài khoản hiện tại: ${user?.fullName ?? user?.email} · ${user?.role ?? "User"}`
-                    : "Bạn chưa đăng nhập."}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {isHydrated && isAuthenticated ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="w-full"
-                    onClick={() => {
-                      logout();
-                      navigate("/");
-                    }}
-                  >
-                    Đăng xuất
-                  </Button>
-                ) : (
-                  <>
-                    <Link to="/login">
-                      <Button variant="hero" size="lg" className="w-full">
-                        Đăng nhập
-                      </Button>
-                    </Link>
-                    <Link to="/register">
-                      <Button variant="outline" size="lg" className="w-full">
-                        Đăng ký
-                      </Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-
           <section id="dashboard" className={sectionClassName("dashboard")}>
             <SectionHeader
+              sectionId="dashboard"
               icon={LayoutDashboard}
               title="Bảng tổng quan"
               description="Dữ liệu tổng quan từ MySQL"
@@ -939,16 +1368,40 @@ export default function AdminPage() {
                 <p className="text-sm text-muted-foreground">Vui lòng chờ trong giây lát.</p>
               </Panel>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {summaryCards.map((card) => (
-                <div
-                  key={card.label}
-                  className="rounded-3xl border bg-white p-5 shadow-sm"
-                >
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <div className="mt-3 text-3xl font-bold">{card.value}</div>
-                </div>
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedSummaryCard(card.id)}
+                    className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                      selectedSummaryCard === card.id
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "hover:border-primary/50"
+                    }`}
+                  >
+                    <p className="text-sm text-muted-foreground">{card.label}</p>
+                    <div className="mt-3 text-3xl font-bold">{card.value}</div>
+                  </button>
               ))}
+                </div>
+
+                <Panel
+                  title={selectedSummaryDetail.title}
+                  description={selectedSummaryDetail.description}
+                >
+                  {selectedSummaryDetail.rows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có dữ liệu chi tiết cho mục này.
+                    </p>
+                  ) : (
+                    <DataTable
+                      columns={selectedSummaryDetail.columns}
+                      rows={selectedSummaryDetail.rows}
+                    />
+                  )}
+                </Panel>
               </div>
             )}
 
@@ -962,6 +1415,7 @@ export default function AdminPage() {
 
           <section id="users" className={sectionClassName("users")}>
             <SectionHeader
+              sectionId="users"
               icon={Users}
               title="Quản lý người dùng"
               description="Danh sách người dùng mới nhất, có thể chỉnh sửa trực tiếp"
@@ -989,7 +1443,14 @@ export default function AdminPage() {
                       }
                     />
                   ) : (
-                    item.fullName
+                    <button
+                      key={`open-user-${item.id}`}
+                      type="button"
+                      className="text-left text-primary underline"
+                      onClick={() => loadUserDetail(item.id)}
+                    >
+                      {item.fullName}
+                    </button>
                   ),
                   item.email,
                   editingUserId === item.id ? (
@@ -1101,15 +1562,231 @@ export default function AdminPage() {
                       >
                         Xem đơn
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1"
+                        onClick={() => loadUserDetail(item.id)}
+                      >
+                        Chi tiết
+                      </Button>
                     </div>
                   ),
                 ])}
               />
             </Panel>
+
+            {(isLoadingUserDetail || selectedUserDetail) && (
+              <Panel
+                title={
+                  selectedUserDetail
+                    ? `Hồ sơ khách hàng: ${selectedUserDetail.fullName ?? selectedUserDetail.email}`
+                    : "Đang tải hồ sơ khách hàng"
+                }
+                description="Xem và cập nhật đầy đủ thông tin, cùng dữ liệu liên quan của người dùng"
+              >
+                {isLoadingUserDetail && !selectedUserDetail ? (
+                  <p className="text-sm text-muted-foreground">Đang tải chi tiết người dùng...</p>
+                ) : selectedUserDetail && selectedUserDraft ? (
+                  <div className="space-y-6">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Họ và tên</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.fullName}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              fullName: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Email</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.email}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Điện thoại</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.phone}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              phone: event.target.value.replace(/\D/g, "").slice(0, 10),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Avatar URL</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.avatarUrl}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              avatarUrl: event.target.value,
+                            }))
+                          }
+                          placeholder="https://..."
+                        />
+                      </div>
+
+                      <div className="grid gap-2 md:col-span-2">
+                        <label className="text-sm font-medium">Địa chỉ tổng quát</label>
+                        <textarea
+                          className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.address}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              address: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Vai trò</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.roleId}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              roleId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Không gán role</option>
+                          {(dashboard?.roles ?? []).map((role) => (
+                            <option key={role.id} value={String(role.id)}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Trạng thái</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.status}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              status: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="ACTIVE">Đang hoạt động</option>
+                          <option value="UNVERIFIED">Chưa xác minh</option>
+                          <option value="BANNED">Đã khóa</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={saveSelectedUserDetail}
+                        disabled={isSavingUserDetail}
+                      >
+                        {isSavingUserDetail ? "Đang lưu..." : "Lưu hồ sơ khách hàng"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => loadUserDetail(selectedUserDetail.id)}
+                        disabled={isLoadingUserDetail}
+                      >
+                        Tải lại dữ liệu liên quan
+                      </Button>
+                      <div className="ml-auto text-sm text-muted-foreground">
+                        Số dư ví: {formatMoney(selectedUserDetail.walletBalance)}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Panel title="Địa chỉ giao hàng" description="Danh sách địa chỉ của khách hàng">
+                        <DataTable
+                          columns={["Nhãn", "Người nhận", "SĐT", "Địa chỉ", "Mặc định"]}
+                          rows={(selectedUserDetail.addresses ?? []).map((addr) => [
+                            addr.label ?? "-",
+                            addr.receiverName,
+                            addr.phoneNumber,
+                            addr.addressLine,
+                            addr.isDefault ? "Có" : "Không",
+                          ])}
+                        />
+                      </Panel>
+
+                      <Panel title="Đơn hàng liên quan" description="20 đơn gần nhất của khách hàng">
+                        <DataTable
+                          columns={["Mã đơn", "Tổng tiền", "Thanh toán", "Trạng thái", "Số món", "Ngày tạo"]}
+                          rows={(selectedUserDetail.orders ?? []).map((order) => [
+                            `#${order.id}`,
+                            formatMoney(order.totalAmount),
+                            statusBadge(formatEnum(order.paymentStatus)),
+                            statusBadge(formatEnum(order.orderStatus)),
+                            String(order.itemCount ?? 0),
+                            formatDate(order.createdAt),
+                          ])}
+                        />
+                      </Panel>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Panel title="Giao dịch ví" description="Lịch sử topup, thanh toán, hoàn tiền">
+                        <DataTable
+                          columns={["Loại", "Số tiền", "Đơn", "Ghi chú", "Thời gian"]}
+                          rows={(selectedUserDetail.walletTransactions ?? []).map((tx) => [
+                            formatEnum(tx.type),
+                            formatMoney(tx.amount),
+                            tx.orderId ? `#${tx.orderId}` : "-",
+                            tx.note ?? "-",
+                            formatDate(tx.createdAt),
+                          ])}
+                        />
+                      </Panel>
+
+                      <Panel title="Yêu cầu trả hàng" description="Các yêu cầu trả hàng của khách hàng">
+                        <DataTable
+                          columns={["Mã", "Đơn", "Lý do", "Trạng thái", "Hoàn", "Yêu cầu lúc"]}
+                          rows={(selectedUserDetail.returnRequests ?? []).map((request) => [
+                            `#${request.id}`,
+                            `#${request.orderId}`,
+                            request.reason ?? "-",
+                            statusBadge(formatEnum(request.status)),
+                            request.refundAmount ? formatMoney(request.refundAmount) : "-",
+                            formatDate(request.requestedAt),
+                          ])}
+                        />
+                      </Panel>
+                    </div>
+                  </div>
+                ) : null}
+              </Panel>
+            )}
           </section>
 
           <section id="products" className={sectionClassName("products")}>
             <SectionHeader
+              sectionId="products"
               icon={Package}
               title="Quản lý sản phẩm"
               description="Thêm, sửa, xóa, upload ảnh và tìm kiếm sản phẩm"
@@ -1469,6 +2146,7 @@ export default function AdminPage() {
 
           <section id="catalog" className={sectionClassName("catalog")}>
             <SectionHeader
+              sectionId="catalog"
               icon={Building2}
               title="Danh mục và nhà cung cấp"
               description="Danh sách nhà cung cấp"
@@ -1488,6 +2166,7 @@ export default function AdminPage() {
 
           <section id="vouchers" className={sectionClassName("vouchers")}>
             <SectionHeader
+              sectionId="vouchers"
               icon={TicketPercent}
               title="Mã giảm giá"
               description="Tạo mã giảm giá tại trang quản trị và theo dõi lượt dùng"
@@ -1667,6 +2346,7 @@ export default function AdminPage() {
 
           <section id="orders" className={sectionClassName("orders")}>
             <SectionHeader
+              sectionId="orders"
               icon={ClipboardList}
               title="Quản lý đơn hàng"
               description="Danh sách đơn mới nhất"
@@ -1772,6 +2452,7 @@ export default function AdminPage() {
 
           <section id="warehouse" className={sectionClassName("warehouse")}>
             <SectionHeader
+              sectionId="warehouse"
               icon={Warehouse}
               title="Quản lý kho"
               description="Danh sách kho và số lô"
@@ -1794,6 +2475,7 @@ export default function AdminPage() {
 
           <section id="reviews" className={sectionClassName("reviews")}>
             <SectionHeader
+              sectionId="reviews"
               icon={Star}
               title="Quản lý đánh giá"
               description="Đánh giá mới nhất"
@@ -1816,6 +2498,7 @@ export default function AdminPage() {
 
           <section id="chat" className={sectionClassName("chat")}>
             <SectionHeader
+              sectionId="chat"
               icon={MessageSquareMore}
               title="Chat khách hàng"
               description="Phòng chat mới nhất"
@@ -1838,6 +2521,7 @@ export default function AdminPage() {
 
           <section id="ai-build" className={sectionClassName("ai-build")}>
             <SectionHeader
+              sectionId="ai-build"
               icon={Sparkles}
               title="Cấu hình AI"
               description="Build được lưu gần đây"
@@ -1860,6 +2544,7 @@ export default function AdminPage() {
 
           <section id="verification" className={sectionClassName("verification")}>
             <SectionHeader
+              sectionId="verification"
               icon={MailCheck}
               title="Xác thực email"
               description="Danh sách OTP gần đây"
@@ -1884,6 +2569,7 @@ export default function AdminPage() {
 
           <section id="roles" className={sectionClassName("roles")}>
             <SectionHeader
+              sectionId="roles"
               icon={ShieldCheck}
               title="Phân quyền hệ thống"
               description="Vai trò và quyền truy cập"
@@ -1916,7 +2602,10 @@ export default function AdminPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title, description }) {
+function SectionHeader({ icon: Icon, title, description, sectionId }) {
+  const schema =
+    schemaBySection[sectionId] ?? schemaBySection.dashboard;
+
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
@@ -1927,10 +2616,53 @@ function SectionHeader({ icon: Icon, title, description }) {
         <h3 className="text-2xl font-bold">{title}</h3>
         <p className="mt-1 text-muted-foreground">{description}</p>
       </div>
-      <Button variant="outline" className="w-fit gap-2">
-        <Activity className="h-4 w-4" />
-        Bảng dữ liệu thực
-      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline" className="w-fit gap-2">
+            <Activity className="h-4 w-4" />
+            Bảng dữ liệu thực
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[85vh] w-[95vw] max-w-6xl overflow-hidden p-0">
+          <DialogHeader className="border-b bg-slate-50/80 px-6 py-4">
+            <DialogTitle>Sơ đồ dữ liệu: {title}</DialogTitle>
+            <DialogDescription>
+              {schema.headline}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[calc(85vh-88px)] overflow-y-auto p-6">
+            <div className="rounded-2xl border border-border/70 bg-white p-4">
+              <h4 className="text-base font-semibold">Bang lien quan</h4>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {schema.tables.map((tableName) => (
+                  <span
+                    key={tableName}
+                    className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                  >
+                    {tableName}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-border/70 bg-white p-4">
+              <h4 className="text-base font-semibold">Quan he du lieu chinh</h4>
+              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                {schema.relations.map((relation) => (
+                  <p key={relation} className="rounded-xl bg-slate-50 px-3 py-2">
+                    {relation}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Nguồn dữ liệu: BE/prisma/schema.prisma
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2105,4 +2837,50 @@ function validateVietnamPhone(value) {
     return "Số điện thoại phải đúng 10 chữ số";
   }
   return "";
+}
+
+function validateEmail(value) {
+  const email = String(value ?? "").trim();
+  if (!email) {
+    return "Email không được để trống";
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "Email không đúng định dạng";
+  }
+
+  return "";
+}
+
+function validateOptionalUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!url) {
+    return "";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    return "Avatar URL phải bắt đầu bằng http:// hoặc https://";
+  }
+
+  return "";
+}
+
+function slugifyTabLabel(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function normalizeHash(value) {
+  try {
+    return decodeURIComponent(String(value ?? "").trim().toLowerCase());
+  } catch {
+    return String(value ?? "").trim().toLowerCase();
+  }
 }
