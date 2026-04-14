@@ -8,7 +8,7 @@ import { useBuild } from "@/contexts/BuildContext";
 import { useState } from "react";
 import { ComponentDetailModal } from "./ComponentDetailModal";
 
-export function ComponentCard({ component, mode = "shop" }) {
+export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
   const [showDetail, setShowDetail] = useState(false);
@@ -51,9 +51,13 @@ export function ComponentCard({ component, mode = "shop" }) {
 
   return (
     <>
-      <Card className="group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]">
+      <Card
+        className={`group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)] ${compact ? "shadow-sm" : ""}`}
+        data-aos="flip-right"
+        data-aos-duration="1000"
+      >
         {/* Image */}
-        <div className="relative aspect-square bg-secondary/50 overflow-hidden">
+        <div className={`relative ${compact ? "aspect-[4/3]" : "aspect-square"} bg-secondary/50 overflow-hidden`}>
           <img
             src={component.image || fallbackImage}
             alt={component.name}
@@ -102,7 +106,7 @@ export function ComponentCard({ component, mode = "shop" }) {
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-3">
+        <div className={`${compact ? "p-3 space-y-2.5" : "p-4 space-y-3"}`}>
           {/* Brand & Rating */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
@@ -115,7 +119,7 @@ export function ComponentCard({ component, mode = "shop" }) {
           </div>
 
           {/* Name */}
-          <h3 className="font-semibold text-foreground line-clamp-2 min-h-[2.5rem]">
+          <h3 className={`font-semibold text-foreground line-clamp-2 ${compact ? "min-h-[2.25rem] text-[0.98rem]" : "min-h-[2.5rem]"}`}>
             <Link to={`/components/${component.slug || component.id}`} className="hover:underline">
               {component.name}
             </Link>
@@ -136,8 +140,8 @@ export function ComponentCard({ component, mode = "shop" }) {
           </div>
 
           {/* Price */}
-          <div className="pt-2 border-t border-border/50">
-            <p className="text-xl font-bold text-primary">
+          <div className={`pt-2 border-t border-border/50 ${compact ? "pt-1.5" : ""}`}>
+            <p className={`font-bold text-primary ${compact ? "text-lg" : "text-xl"}`}>
               {formatPrice(component.price)}
             </p>
           </div>
@@ -151,7 +155,7 @@ export function ComponentCard({ component, mode = "shop" }) {
                 onClick={() => addComponent(component.category, component)}
               >
                 <Plus className="w-4 h-4" />
-                Thêm vào Build
+                Thêm vào cấu hình
               </Button>
             ) : (
               <>

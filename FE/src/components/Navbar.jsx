@@ -37,11 +37,11 @@ export function Navbar() {
               <Cpu className="h-6 w-6 text-primary-foreground" />
             </div>
             <span className="font-display text-xl font-bold text-gradient-primary">
-              PC Perfect
+              TechBuiltAI
             </span>
           </Link>
 
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-1 overflow-x-auto md:flex md:max-w-[44vw] lg:max-w-none">
             {navLinks.map((link) => (
               <Link key={link.href} to={link.href}>
                 <Button
@@ -49,7 +49,7 @@ export function Navbar() {
                     location.pathname === link.href ? "default" : "ghost"
                   }
                   size="sm"
-                  className="gap-2"
+                  className="shrink-0 gap-2"
                 >
                   {link.icon && <link.icon className="h-4 w-4" />}
                   {link.label}
