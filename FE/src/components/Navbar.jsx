@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
+  ShieldCheck,
   Cpu,
   LogOut,
   Menu,
@@ -20,6 +21,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isAdmin = isAdminRole(user?.role);
 
   const navLinks = [
     { href: "/", label: "Trang chủ" },
@@ -29,7 +31,7 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 glass">
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border/70 bg-white shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <Link to="/" className="group flex items-center gap-2">
@@ -59,6 +61,19 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
+            {isHydrated && isAuthenticated && isAdmin ? (
+              <Link to="/admin">
+                <Button
+                  variant={location.pathname.startsWith("/admin") ? "default" : "outline"}
+                  size="sm"
+                  className="hidden gap-2 sm:flex"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Admin
+                </Button>
+              </Link>
+            ) : null}
+
             <Link to="/chat">
               <Button variant="ghost" size="icon" className="relative">
                 <MessageCircle className="h-5 w-5" />
@@ -155,6 +170,17 @@ export function Navbar() {
                   </Button>
                 </Link>
               ))}
+              {isHydrated && isAuthenticated && isAdmin ? (
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location.pathname.startsWith("/admin") ? "default" : "outline"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Admin
+                  </Button>
+                </Link>
+              ) : null}
               {isHydrated && isAuthenticated ? (
                 <Button
                   variant="outline"
@@ -191,5 +217,12 @@ function getInitials(value) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function isAdminRole(role) {
+  return String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .includes("admin");
 }
 
