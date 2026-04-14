@@ -19,6 +19,13 @@ export function ComponentDetailModal({
 }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
+  const stock = Number(component?.stock ?? 0);
+  const isInStock =
+    typeof component?.inStock === "boolean"
+      ? component.inStock
+      : typeof component?.isOutOfStock === "boolean"
+        ? !component.isOutOfStock
+        : stock > 0;
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -88,10 +95,12 @@ export function ComponentDetailModal({
 
             {/* Stock Status */}
             <div className="flex items-center gap-2">
-              {component.inStock ? (
+              {isInStock ? (
                 <>
                   <Check className="w-4 h-4 text-storage" />
-                  <span className="text-storage text-sm">Còn hàng</span>
+                  <span className="text-storage text-sm">
+                    Còn hàng{stock > 0 ? ` (${stock})` : ""}
+                  </span>
                 </>
               ) : (
                 <>
@@ -157,15 +166,19 @@ export function ComponentDetailModal({
                     variant="hero"
                     onClick={() => handleAddToCart(false)}
                     className="w-full gap-2"
+                    disabled={!isInStock}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    Mua mới - {formatPrice(component.price)}
+                    {isInStock
+                      ? `Mua mới - ${formatPrice(component.price)}`
+                      : "Hết hàng"}
                   </Button>
                   {component.usedPrice && (
                     <Button
                       variant="outline"
                       onClick={() => handleAddToCart(true)}
                       className="w-full gap-2 border-storage text-storage hover:bg-storage/10"
+                      disabled={!isInStock}
                     >
                       <Package className="w-4 h-4" />
                       Mua đồ cũ - {formatPrice(component.usedPrice)}
