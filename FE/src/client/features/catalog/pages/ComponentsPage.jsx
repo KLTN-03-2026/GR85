@@ -367,6 +367,68 @@ export default function ComponentsPage() {
                 </SheetHeader>
 
                 <div className="space-y-6 mt-6">
+                  <div className="space-y-3">
+                    <Label>Bộ lọc nhanh</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant={stockStatus === "in-stock" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
+                          setPage(1);
+                        }}
+                        className="gap-1"
+                      >
+                        {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
+                        Còn hàng
+                      </Button>
+                      <Button
+                        variant={priceRange[0] === 0 && priceRange[1] <= 5000000 ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setPriceRange((prev) => {
+                            if (prev[0] === 0 && prev[1] <= 5000000) {
+                              return [0, 50000000];
+                            }
+                            return [0, 5000000];
+                          });
+                          setPage(1);
+                        }}
+                      >
+                        Dưới 5 triệu
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Danh mục</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant={selectedCategory === "all" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCategory("all");
+                          setPage(1);
+                        }}
+                      >
+                        Tất cả
+                      </Button>
+                      {categoryButtons.map((category) => (
+                        <Button
+                          key={category.id}
+                          variant={selectedCategory === category.id ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCategory(category.id);
+                            setPage(1);
+                          }}
+                        >
+                          {category.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Hãng sản xuất</Label>
                     <select
@@ -456,7 +518,7 @@ export default function ComponentsPage() {
             </Link>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-4 mb-8 scrollbar-hide">
+          <div className="hidden">
             <Button
               variant={stockStatus === "in-stock" ? "default" : "outline"}
               size="sm"

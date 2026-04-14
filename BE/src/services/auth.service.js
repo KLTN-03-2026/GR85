@@ -439,8 +439,8 @@ async function getValidVerification({ email, purpose, otp }) {
 async function sendOtpEmail({ email, fullName, otp, purpose }) {
   const subject =
     purpose === verificationPurposes.PASSWORD_RESET
-      ? "Mã đặt lại mật khẩu PC Perfect"
-      : "Mã xác minh email PC Perfect";
+      ? "Mã đặt lại mật khẩu TechBuiltAI"
+      : "Mã xác minh email TechBuiltAI";
 
   const label =
     purpose === verificationPurposes.PASSWORD_RESET
@@ -448,7 +448,7 @@ async function sendOtpEmail({ email, fullName, otp, purpose }) {
       : "xác minh email";
 
   await mailTransport.sendMail({
-    from: `PC Perfect <${env.EMAIL}>`,
+    from: `TechBuiltAI <${env.EMAIL}>`,
     to: email,
     subject,
     text: [
