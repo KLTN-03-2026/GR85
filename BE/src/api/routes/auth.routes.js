@@ -301,32 +301,32 @@ function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
     return res
       .status(400)
-      .json({ message: "Invalid request data", issues: error.flatten() });
+      .json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
   }
 
   if (error instanceof Error) {
     const status =
-      error.message === "Email already exists"
+      error.message === "Email đã tồn tại"
         ? 409
-        : error.message === "Email not found"
+        : error.message === "Email không tồn tại"
           ? 404
-          : error.message === "User not found"
+          : error.message === "Người dùng không tồn tại"
             ? 404
-            : error.message === "Please verify your email first"
+            : error.message === "Vui lòng xác nhận email trước khi đăng nhập"
               ? 403
-              : error.message === "Unable to send verification email"
+              : error.message === "Không thể gửi email xác nhận"
                 ? 502
-                : error.message === "Invalid or expired verification code"
+                : error.message === "Mã xac minh không hợp lệ hoặc đã hết hạn"
                   ? 400
-                  : error.message === "Current password is incorrect"
+                  : error.message === "Mật khẩu hiện tại không chính xác"
                     ? 401
-                    : error.message.includes("Invalid")
+                    : error.message.includes("Không hợp lệ")
                       ? 401
                       : 400;
     return res.status(status).json({ message: error.message });
   }
 
-  return res.status(500).json({ message: "Unexpected server error" });
+  return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
 }
 
 export { router as authRouter };
