@@ -61,7 +61,7 @@ export default function CartPage() {
     removeFromCart,
     totalPrice,
     clearCart,
-    clearBundleMetadata,
+    removeCartItemsByIds,
     removeBundle,
     checkout,
     previewPricing,
@@ -913,7 +913,7 @@ export default function CartPage() {
                         if (result?.isWalletPaymentOnly) {
                           setCheckoutMessage(`Thanh toán bằng ví thành công. Mã đơn #${result.orderId}`);
                           await loadWallet();
-                          clearBundleMetadata();
+                          await removeCartItemsByIds(selectedCartItemIds);
                           return;
                         }
 
@@ -959,7 +959,7 @@ export default function CartPage() {
         isOpen={showQRModal}
         onClose={() => {
           setShowQRModal(false);
-          clearCart();
+          removeCartItemsByIds(selectedCartItemIds);
           loadWallet();
         }}
         paymentData={paymentQRData}

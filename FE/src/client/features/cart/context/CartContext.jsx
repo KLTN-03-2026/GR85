@@ -192,6 +192,50 @@ export function CartProvider({ children }) {
     setBundles([]);
   }, []);
 
+  const removeCartItemsByIds = useCallback(
+    async (cartItemIds) => {
+      if (!isAuthenticated || !token) {
+        return;
+      }
+
+      const ids = Array.from(
+        new Set(
+          (Array.isArray(cartItemIds) ? cartItemIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id)),
+        ),
+      );
+
+      if (ids.length === 0) {
+        return;
+      }
+
+      const removedProductIds = new Set(
+        cart.items
+          .filter((item) => ids.includes(Number(item.id)))
+          .map((item) => Number(item.component?.id))
+          .filter((productId) => Number.isFinite(productId)),
+      );
+
+      for (const cartItemId of ids) {
+        await callCartApi(`/items/${cartItemId}`, {
+          method: "DELETE",
+        });
+      }
+
+      if (removedProductIds.size > 0) {
+        setBundles((prev) =>
+          prev.filter((bundle) =>
+            !(bundle.items ?? []).some((item) => removedProductIds.has(Number(item.productId))),
+          ),
+        );
+      }
+
+      await refreshCart();
+    },
+    [callCartApi, cart.items, isAuthenticated, refreshCart, token],
+  );
+
   const removeBundle = useCallback(
     async (bundleId) => {
       const targetBundle = bundles.find((bundle) => String(bundle.id) === String(bundleId));
@@ -300,6 +344,7 @@ export function CartProvider({ children }) {
       updateQuantity,
       clearCart,
       clearBundleMetadata,
+      removeCartItemsByIds,
       removeBundle,
       bundles,
       addBuildToCart,
@@ -317,6 +362,7 @@ export function CartProvider({ children }) {
       updateQuantity,
       clearCart,
       clearBundleMetadata,
+      removeCartItemsByIds,
       removeBundle,
       bundles,
       addBuildToCart,
