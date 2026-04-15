@@ -740,12 +740,12 @@ function mapProductToCardData(product) {
 
 function sanitizeSpecs(specifications) {
   if (!specifications || typeof specifications !== "object") {
-    return { thongTin: "San pham linh kien" };
+    return { thongTin: "Sản phẩm linh kiện" };
   }
 
   const entries = Object.entries(specifications).slice(0, 3);
   if (entries.length === 0) {
-    return { thongTin: "San pham linh kien" };
+    return { thongTin: "Sản phẩm linh kiện" };
   }
 
   return Object.fromEntries(entries);
