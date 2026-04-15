@@ -315,12 +315,12 @@ export async function createProduct(input) {
         : {},
       images: input.imageUrl
         ? {
-            create: {
-              imageUrl: input.imageUrl,
-              isPrimary: true,
-              sortOrder: 0,
-            },
-          }
+          create: {
+            imageUrl: input.imageUrl,
+            isPrimary: true,
+            sortOrder: 0,
+          },
+        }
         : undefined,
     },
     include: {
