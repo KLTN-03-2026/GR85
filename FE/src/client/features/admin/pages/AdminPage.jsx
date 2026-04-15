@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import {
   Activity,
   Building2,
@@ -22,7 +21,6 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -42,8 +40,7 @@ const navItems = [
 ];
 
 export default function AdminPage() {
-  const { user, token, isAuthenticated, isHydrated, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user, token, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboard, setDashboard] = useState(null);
@@ -367,10 +364,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-                ...order,
-                orderStatus: payload.orderStatus,
-                updatedAt: payload.updatedAt,
-              }
+              ...order,
+              orderStatus: payload.orderStatus,
+              updatedAt: payload.updatedAt,
+            }
             : order,
         ),
       );
@@ -488,13 +485,13 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === userId
               ? {
-                  ...item,
-                  fullName: payload.fullName,
-                  phone: payload.phone,
-                  status: payload.status,
-                  roleId: payload.roleId,
-                  role: payload.role,
-                }
+                ...item,
+                fullName: payload.fullName,
+                phone: payload.phone,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
               : item,
           ),
         };
@@ -843,11 +840,10 @@ export default function AdminPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    activeTab === item.id
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${activeTab === item.id
                       ? "bg-primary text-primary-foreground"
                       : "text-slate-700 hover:bg-secondary hover:text-primary"
-                  }`}
+                    }`}
                 >
                   <span className="flex items-center gap-3">
                     <item.icon className="h-4 w-4" />
@@ -880,53 +876,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <section className="overflow-hidden rounded-[32px] border border-border/60 bg-white/85 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl">
-                <Badge className="mb-4 bg-primary/10 text-primary hover:bg-primary/10">
-                  {isHydrated && isAuthenticated ? "Đang đăng nhập" : "Chưa đăng nhập"}
-                </Badge>
-                <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-                  Bảng điều khiển quản trị TechBuiltAI
-                </h2>
-                <p className="mt-3 text-muted-foreground">
-                  {isHydrated && isAuthenticated
-                    ? `Tài khoản hiện tại: ${user?.fullName ?? user?.email} · ${user?.role ?? "User"}`
-                    : "Bạn chưa đăng nhập."}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {isHydrated && isAuthenticated ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="w-full"
-                    onClick={() => {
-                      logout();
-                      navigate("/");
-                    }}
-                  >
-                    Đăng xuất
-                  </Button>
-                ) : (
-                  <>
-                    <Link to="/login">
-                      <Button variant="hero" size="lg" className="w-full">
-                        Đăng nhập
-                      </Button>
-                    </Link>
-                    <Link to="/register">
-                      <Button variant="outline" size="lg" className="w-full">
-                        Đăng ký
-                      </Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-
           <section id="dashboard" className={sectionClassName("dashboard")}>
             <SectionHeader
               icon={LayoutDashboard}
@@ -941,14 +890,14 @@ export default function AdminPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {summaryCards.map((card) => (
-                <div
-                  key={card.label}
-                  className="rounded-3xl border bg-white p-5 shadow-sm"
-                >
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <div className="mt-3 text-3xl font-bold">{card.value}</div>
-                </div>
-              ))}
+                  <div
+                    key={card.label}
+                    className="rounded-3xl border bg-white p-5 shadow-sm"
+                  >
+                    <p className="text-sm text-muted-foreground">{card.label}</p>
+                    <div className="mt-3 text-3xl font-bold">{card.value}</div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -1982,26 +1931,26 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-    value === "Đã thanh toán" ||
-    value === "Đã giao" ||
-    value === "Đã kết nối" ||
-    value === "Đã đăng" ||
-    value === "Phổ biến" ||
-    value === "Đã xác minh" ||
-    value === "Còn hàng" ||
-    value === "Đã dùng"
+      value === "Đã thanh toán" ||
+      value === "Đã giao" ||
+      value === "Đã kết nối" ||
+      value === "Đã đăng" ||
+      value === "Phổ biến" ||
+      value === "Đã xác minh" ||
+      value === "Còn hàng" ||
+      value === "Đã dùng"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-          value === "Đang xử lý" ||
-          value === "Tạm dừng" ||
-          value === "Cần xem xét" ||
-          value === "Bản nháp" ||
-          value === "Ổn định"
+        value === "Đang xử lý" ||
+        value === "Tạm dừng" ||
+        value === "Cần xem xét" ||
+        value === "Bản nháp" ||
+        value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-            value === "Quản trị viên" ||
-            value === "Nhân viên" ||
-            value === "Mở"
+          value === "Quản trị viên" ||
+          value === "Nhân viên" ||
+          value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : "bg-rose-100 text-rose-700";
 
