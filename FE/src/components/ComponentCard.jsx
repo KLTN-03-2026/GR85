@@ -162,7 +162,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
               <>
                 <Button
                   variant="default"
-                  className="flex-1 gap-2"
+                  className="flex-1 gap-1"
                   onClick={async () => {
                     try {
                       await addToCart(component);
@@ -181,7 +181,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                 </Button>
                 <Button
                   variant="hero"
-                  className="flex-1 gap-2"
+                  className="flex-1 gap-0.8"
                   onClick={async () => {
                     try {
                       await addToCart(component);
@@ -199,14 +199,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                   disabled={Number(component.stock ?? 0) <= 0}
                 >
                   <Plus className="w-4 h-4" />
-                  Thanh toán ngay
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowDetail(true)}
-                >
-                  <Eye className="w-4 h-4" />
+                  Mua ngay
                 </Button>
               </>
             )}

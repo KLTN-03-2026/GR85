@@ -6,9 +6,11 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { getCatalogOverview } from "../../services/product.service.js";
 import {
+  createProductReviewBySlug,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
+  listProductReviewsBySlug,
   listProducts,
   updateProductById,
 } from "../../services/product.service.js";
@@ -55,6 +57,11 @@ const productSchema = z.object({
 
 const updateProductSchema = productSchema.partial();
 
+const reviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
+
 router.get("/overview", async (_req, res) => {
   try {
     const data = await getCatalogOverview();
@@ -81,6 +88,25 @@ router.get("/:slug", async (req, res) => {
   try {
     const data = await getProductDetailBySlug(req.params.slug);
     return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/:slug/reviews", async (req, res) => {
+  try {
+    const data = await listProductReviewsBySlug(req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:slug/reviews", requireAuth, async (req, res) => {
+  try {
+    const parsed = reviewSchema.parse(req.body ?? {});
+    const data = await createProductReviewBySlug(Number(req.auth?.sub), req.params.slug, parsed);
+    return res.status(201).json(data);
   } catch (error) {
     return handleRouteError(error, res);
   }
