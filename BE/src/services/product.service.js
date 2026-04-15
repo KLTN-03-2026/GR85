@@ -53,8 +53,10 @@ export async function listProducts(query = {}) {
     }),
   ]);
 
+  const productsWithRating = await attachProductRatings(items);
+
   return serializeData({
-    items: items.map(mapProductListItem),
+    items: productsWithRating.map(mapProductListItem),
     pagination: {
       page,
       pageSize,
@@ -86,7 +88,8 @@ export async function getProductDetailBySlug(slug) {
     throw new Error("Product not found");
   }
 
-  return serializeData(mapProductDetail(product));
+  const [productWithRating] = await attachProductRatings([product]);
+  return serializeData(mapProductDetail(productWithRating));
 }
 
 export async function listProductReviewsBySlug(slug) {
@@ -256,6 +259,8 @@ export async function getCatalogOverview() {
     }),
   ]);
 
+  const productsWithRating = await attachProductRatings(products);
+
   return serializeData({
     categories: categories.map((category) => ({
       id: category.slug,
@@ -263,7 +268,7 @@ export async function getCatalogOverview() {
       slug: category.slug,
       productCount: category._count.products,
     })),
-    products: products.map(mapProductListItem),
+    products: productsWithRating.map(mapProductListItem),
   });
 }
 
@@ -535,6 +540,14 @@ function resolveProductOrderBy(sort) {
 }
 
 function mapProductListItem(product) {
+  const averageRatingRaw = Number(product.averageRating ?? 5);
+  const normalizedRating = Number.isFinite(averageRatingRaw)
+    ? Math.max(0, Math.min(5, averageRatingRaw))
+    : 5;
+
+  const reviewCountRaw = Number(product.reviewCount ?? 0);
+  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+
   return {
     id: product.id,
     name: product.name,
@@ -547,6 +560,8 @@ function mapProductListItem(product) {
     specifications: product.specifications,
     category: product.category,
     supplier: product.supplier,
+    rating: Number(normalizedRating.toFixed(1)),
+    reviewCount,
     imageUrl: product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
   };
 }
@@ -568,4 +583,56 @@ function normalizeProductCode(value) {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+async function attachProductRatings(products) {
+  const productList = Array.isArray(products) ? products : [];
+  if (productList.length === 0) {
+    return [];
+  }
+
+  const productIds = productList
+    .map((product) => Number(product?.id))
+    .filter((id) => Number.isFinite(id));
+
+  if (productIds.length === 0) {
+    return productList.map((product) => ({ ...product, averageRating: 5, reviewCount: 0 }));
+  }
+
+  const aggregates = await prisma.review.groupBy({
+    by: ["productId"],
+    where: {
+      productId: {
+        in: productIds,
+      },
+    },
+    _avg: {
+      rating: true,
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  const aggregateByProductId = new Map(
+    aggregates.map((aggregate) => [
+      Number(aggregate.productId),
+      {
+        averageRating:
+          aggregate._avg?.rating === null || aggregate._avg?.rating === undefined
+            ? 5
+            : Number(aggregate._avg.rating),
+        reviewCount: Number(aggregate._count?._all ?? 0),
+      },
+    ]),
+  );
+
+  return productList.map((product) => {
+    const aggregate = aggregateByProductId.get(Number(product.id));
+    return {
+      ...product,
+      averageRating: aggregate?.averageRating ?? 5,
+      reviewCount: aggregate?.reviewCount ?? 0,
+    };
+  });
 }

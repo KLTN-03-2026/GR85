@@ -707,6 +707,13 @@ function mapProductToCardData(product) {
   const categorySlug = String(product?.category?.slug ?? "cpu").toLowerCase();
   const category = categoryMap[categorySlug] ?? "cpu";
 
+  const reviewCountRaw = Number(product?.reviewCount ?? product?.reviews ?? 0);
+  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+  const ratingRaw = Number(product?.rating);
+  const rating = reviewCount > 0 && Number.isFinite(ratingRaw)
+    ? Math.max(0, Math.min(5, ratingRaw))
+    : 5;
+
   return {
     id: product.id,
     slug: product.slug,
@@ -720,8 +727,8 @@ function mapProductToCardData(product) {
     price: Number(product.price ?? 0),
     usedPrice: null,
     stock: Number(product.stockQuantity ?? 0),
-    rating: 5,
-    reviews: 0,
+    rating,
+    reviews: reviewCount,
     image: product.imageUrl || "/images/component-placeholder.svg",
     isNew: false,
     isOutOfStock: Boolean(product.isOutOfStock),
