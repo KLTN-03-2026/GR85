@@ -16,7 +16,7 @@ import {
   ArrowRight,
   Package,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { profileApi } from "@/client/features/profile/data/profile.api";
 
 export default function CartPage() {
@@ -54,6 +54,17 @@ export default function CartPage() {
   const [removingBundleId, setRemovingBundleId] = useState("");
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
   const hasInitializedSelectionRef = useRef(false);
+  const location = useLocation();
+  const checkoutProductIds = useMemo(() => {
+    const stateProductIds = location.state?.checkoutProductIds;
+    if (!Array.isArray(stateProductIds)) {
+      return [];
+    }
+
+    return stateProductIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id));
+  }, [location.state]);
 
   const {
     items,
@@ -202,14 +213,25 @@ export default function CartPage() {
 
     if (!hasInitializedSelectionRef.current) {
       hasInitializedSelectionRef.current = true;
-      setSelectedCartItemIds(selectableItemIds);
+      if (checkoutProductIds.length > 0) {
+        const selectedIds = items
+          .filter((item) =>
+            checkoutProductIds.includes(Number(item.component?.id ?? item.productId ?? item.id)),
+          )
+          .map((item) => Number(item.id))
+          .filter((id) => Number.isFinite(id));
+
+        setSelectedCartItemIds(selectedIds.length > 0 ? selectedIds : selectableItemIds);
+      } else {
+        setSelectedCartItemIds(selectableItemIds);
+      }
       return;
     }
 
     setSelectedCartItemIds((prev) =>
       prev.filter((id) => validIds.has(Number(id))),
     );
-  }, [selectableItemIds]);
+  }, [checkoutProductIds, items, selectableItemIds]);
 
   function toggleSelectAll(checked) {
     setSelectedCartItemIds(checked ? selectableItemIds : []);
