@@ -25,6 +25,7 @@ export default function ComponentsPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedBrand, setSelectedBrand] = useState("all");
   const [stockStatus, setStockStatus] = useState("all");
+  const [featuredOnly, setFeaturedOnly] = useState(false);
   const [sortBy, setSortBy] = useState("display_order");
   const [priceRange, setPriceRange] = useState([0, 50000000]);
   const [customMinPrice, setCustomMinPrice] = useState(0);
@@ -46,6 +47,7 @@ export default function ComponentsPage() {
     selectedCategory !== "all" ||
     selectedBrand !== "all" ||
     stockStatus !== "all" ||
+    featuredOnly ||
     sortBy !== "display_order" ||
     priceRange[0] > 0 ||
     priceRange[1] < 50000000;
@@ -141,6 +143,10 @@ export default function ComponentsPage() {
           query.set("stockStatus", stockStatus);
         }
 
+        if (featuredOnly) {
+          query.set("featuredOnly", "true");
+        }
+
         if (sortBy !== "display_order") {
           query.set("sort", sortBy);
         }
@@ -190,7 +196,7 @@ export default function ComponentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [keyword, selectedCategory, selectedBrand, stockStatus, sortBy, priceRange, page]);
+  }, [keyword, selectedCategory, selectedBrand, stockStatus, featuredOnly, sortBy, priceRange, page]);
 
   useEffect(() => {
     setCustomMinPrice(priceRange[0]);
@@ -225,6 +231,7 @@ export default function ComponentsPage() {
     setSelectedCategory("all");
     setSelectedBrand("all");
     setStockStatus("all");
+    setFeaturedOnly(false);
     setSortBy("display_order");
     setPriceRange([0, 50000000]);
     setCustomMinPrice(0);
@@ -364,6 +371,7 @@ export default function ComponentsPage() {
               }}
             >
               <option value="display_order">Thứ tự ưu tiên</option>
+              <option value="best_selling">Đang bán chạy</option>
               <option value="newest">Mới nhất</option>
               <option value="price_asc">Giá tăng dần</option>
               <option value="price_desc">Giá giảm dần</option>
@@ -647,6 +655,18 @@ export default function ComponentsPage() {
                   />
                 </Badge>
               )}
+              {featuredOnly && (
+                <Badge variant="secondary" className="gap-1">
+                  Sản phẩm nổi bật
+                  <X
+                    className="w-3 h-3 cursor-pointer"
+                    onClick={() => {
+                      setFeaturedOnly(false);
+                      setPage(1);
+                    }}
+                  />
+                </Badge>
+              )}
             </div>
           )}
 
@@ -673,6 +693,11 @@ export default function ComponentsPage() {
           ) : (
             <div className="text-center py-20">
               <p className="text-muted-foreground mb-4">Không tìm thấy sản phẩm</p>
+              {featuredOnly && (
+                <p className="mb-4 text-xs text-amber-600">
+                  Chưa có sản phẩm nổi bật. Vào trang admin sản phẩm để bật nút "Đặt nổi bật".
+                </p>
+              )}
               <Button variant="outline" onClick={clearFilters}>
                 Xóa bộ lọc
               </Button>

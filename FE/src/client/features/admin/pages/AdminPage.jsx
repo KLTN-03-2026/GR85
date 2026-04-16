@@ -482,6 +482,10 @@ export default function AdminPage() {
   const [editingProductId, setEditingProductId] = useState(null);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [displayOrderDraft, setDisplayOrderDraft] = useState([]);
+  const [isSavingDisplayOrder, setIsSavingDisplayOrder] = useState(false);
+  const [isLoadingDisplayOrder, setIsLoadingDisplayOrder] = useState(false);
+  const [productDisplayMode, setProductDisplayMode] = useState("priority");
   const [productSpellCheckSuggestions, setProductSpellCheckSuggestions] = useState({});
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
@@ -772,6 +776,52 @@ export default function AdminPage() {
     token,
     toast,
   ]);
+
+  async function loadDisplayOrderDraft() {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingDisplayOrder(true);
+    try {
+      const response = await fetch("/api/products/display-order", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được thứ tự hiển thị");
+      }
+
+      setDisplayOrderDraft(
+        (Array.isArray(payload) ? payload : []).map((item) => ({
+          id: Number(item.id),
+          name: String(item.name ?? ""),
+          displayOrder: Number(item.displayOrder ?? 9999),
+          isHomepageFeatured: Boolean(item.isHomepageFeatured),
+          stockQuantity: Number(item.stockQuantity ?? 0),
+        })),
+      );
+    } catch (error) {
+      toast({
+        title: "Không tải được thứ tự hiển thị",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDisplayOrder(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "products") {
+      return;
+    }
+
+    loadDisplayOrderDraft();
+  }, [activeTab, isAuthenticated, isHydrated, token]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -1602,6 +1652,220 @@ export default function AdminPage() {
       });
     } finally {
       setIsSavingProduct(false);
+    }
+  }
+
+  async function saveDisplayOrderDraft() {
+    if (!token || displayOrderDraft.length === 0) {
+      return;
+    }
+
+    setIsSavingDisplayOrder(true);
+    try {
+      const payload = {
+        items: displayOrderDraft.map((item, index) => ({
+          id: Number(item.id),
+          displayOrder: index,
+        })),
+      };
+
+      const response = await fetch("/api/products/display-order", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.message ?? "Không thể cập nhật thứ tự hiển thị");
+      }
+
+      await Promise.all([refreshManagedProducts(), refreshDashboardSummary()]);
+      await loadDisplayOrderDraft();
+      toast({ title: "Đã lưu thứ tự hiển thị" });
+    } catch (error) {
+      toast({
+        title: "Lưu thứ tự thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingDisplayOrder(false);
+    }
+  }
+
+  function prioritizeByName() {
+    setDisplayOrderDraft((prev) =>
+      [...prev].sort((a, b) => a.name.localeCompare(b.name, "vi")),
+    );
+  }
+
+  async function fetchProductRankByQuery({ sort, featuredOnly = false }) {
+    const pageSize = 50;
+    let page = 1;
+    const rankedItems = [];
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const query = new URLSearchParams();
+      query.set("page", String(page));
+      query.set("pageSize", String(pageSize));
+      if (sort) {
+        query.set("sort", sort);
+      }
+      if (featuredOnly) {
+        query.set("featuredOnly", "true");
+      }
+
+      const response = await fetch(`/api/products?${query.toString()}`);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được dữ liệu xếp hạng sản phẩm");
+      }
+
+      rankedItems.push(...(Array.isArray(payload?.items) ? payload.items : []));
+      totalPages = Number(payload?.pagination?.totalPages ?? 1);
+      page += 1;
+    }
+
+    return rankedItems;
+  }
+
+  function reorderDraftByRankedItems(rankedItems) {
+    setDisplayOrderDraft((prev) => {
+      const prevById = new Map(prev.map((item) => [Number(item.id), item]));
+      const used = new Set();
+
+      const ordered = rankedItems
+        .map((item) => {
+          const id = Number(item?.id);
+          const existing = prevById.get(id);
+          if (!existing) {
+            return null;
+          }
+          used.add(id);
+          return {
+            ...existing,
+            stockQuantity: Number(item?.stockQuantity ?? existing.stockQuantity ?? 0),
+            isHomepageFeatured: Boolean(
+              item?.isHomepageFeatured ?? existing.isHomepageFeatured,
+            ),
+          };
+        })
+        .filter(Boolean);
+
+      const remaining = prev.filter((item) => !used.has(Number(item.id)));
+      return [...ordered, ...remaining];
+    });
+  }
+
+  async function applyProductDisplayMode(mode) {
+    setProductDisplayMode(mode);
+
+    try {
+      if (mode === "priority") {
+        await loadDisplayOrderDraft();
+        return;
+      }
+
+      if (mode === "name") {
+        prioritizeByName();
+        return;
+      }
+
+      if (mode === "stock") {
+        setDisplayOrderDraft((prev) =>
+          [...prev].sort((a, b) =>
+            Number(b.stockQuantity ?? 0) - Number(a.stockQuantity ?? 0) ||
+            a.name.localeCompare(b.name, "vi"),
+          ),
+        );
+        return;
+      }
+
+      if (mode === "featured") {
+        setDisplayOrderDraft((prev) =>
+          [...prev].sort((a, b) =>
+            Number(Boolean(b.isHomepageFeatured)) - Number(Boolean(a.isHomepageFeatured)) ||
+            Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
+          ),
+        );
+        return;
+      }
+
+      const sortMap = {
+        bestSelling: "best_selling",
+        newest: "newest",
+        priceAsc: "price_asc",
+        priceDesc: "price_desc",
+      };
+
+      const sort = sortMap[mode];
+      if (!sort) {
+        return;
+      }
+
+      const rankedItems = await fetchProductRankByQuery({ sort });
+      reorderDraftByRankedItems(rankedItems);
+    } catch (error) {
+      toast({
+        title: "Không áp dụng được chế độ hiển thị",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
+
+  function moveDisplayOrderItem(fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+      return;
+    }
+
+    setDisplayOrderDraft((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      if (!moved) {
+        return prev;
+      }
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }
+
+  async function toggleHomepageFeatured(product) {
+    if (!token || !product?.id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          isHomepageFeatured: !Boolean(product.isHomepageFeatured),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật trạng thái nổi bật");
+      }
+
+      await Promise.all([refreshManagedProducts(), refreshDashboardSummary()]);
+      await loadDisplayOrderDraft();
+      toast({ title: "Đã cập nhật sản phẩm nổi bật" });
+    } catch (error) {
+      toast({
+        title: "Không thể cập nhật nổi bật",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
     }
   }
 
@@ -3304,6 +3568,121 @@ export default function AdminPage() {
                   title="Kho sản phẩm"
                   description="Task #31 + #32: tìm kiếm nhanh, phân trang 12 sản phẩm/trang"
                 >
+                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Chế độ hiển thị
+                    </p>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priority" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priority")}
+                      >
+                        Ưu tiên thủ công
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "stock" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("stock")}
+                      >
+                        Nhiều hàng
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "bestSelling" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("bestSelling")}
+                      >
+                        Bán chạy
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "featured" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("featured")}
+                      >
+                        Sản phẩm nổi bật
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "newest" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("newest")}
+                      >
+                        Mới nhất
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priceAsc" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priceAsc")}
+                      >
+                        Giá tăng dần
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priceDesc" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priceDesc")}
+                      >
+                        Giá giảm dần
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "name" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("name")}
+                      >
+                        Theo tên
+                      </Button>
+                    </div>
+
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={prioritizeByName}>
+                        Ưu tiên theo tên A-Z
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={saveDisplayOrderDraft}
+                        disabled={isSavingDisplayOrder || displayOrderDraft.length === 0}
+                      >
+                        {isSavingDisplayOrder ? "Đang lưu..." : "Lưu thứ tự kéo-thả"}
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-2 text-xs text-muted-foreground">
+                      <p>Kéo-thả danh sách dưới đây để đổi thứ tự hiển thị trên trang linh kiện.</p>
+                      <div className="max-h-72 overflow-auto rounded-md border bg-background/70 p-2">
+                        {isLoadingDisplayOrder ? (
+                          <p className="px-2 py-1 text-xs text-muted-foreground">Đang tải danh sách...</p>
+                        ) : displayOrderDraft.length === 0 ? (
+                          <p className="px-2 py-1 text-xs text-muted-foreground">Chưa có dữ liệu sản phẩm.</p>
+                        ) : displayOrderDraft.map((item, index) => (
+                          <div
+                            key={`order-${item.id}`}
+                            className="flex cursor-move items-center justify-between rounded border px-2 py-1"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData("text/plain", String(index));
+                            }}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              const from = Number(event.dataTransfer.getData("text/plain"));
+                              moveDisplayOrderItem(from, index);
+                            }}
+                          >
+                            <div className="min-w-0">
+                              <p className="line-clamp-1">#{index + 1} {item.name}</p>
+                              <p className="text-[10px] text-muted-foreground">Tồn: {item.stockQuantity}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {item.isHomepageFeatured && (
+                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  Nổi bật
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <input
                       className="w-full max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
@@ -3422,6 +3801,14 @@ export default function AdminPage() {
                         key={`actions-${item.id}`}
                         className="flex flex-wrap gap-2"
                       >
+                        <Button
+                          size="sm"
+                          variant={item.isHomepageFeatured ? "default" : "outline"}
+                          className="gap-1"
+                          onClick={() => toggleHomepageFeatured(item)}
+                        >
+                          {item.isHomepageFeatured ? "Đang nổi bật" : "Đặt nổi bật"}
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"

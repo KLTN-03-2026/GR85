@@ -15,6 +15,8 @@ export async function listProducts(query = {}) {
   const brand = String(query.brand ?? "").trim();
   const sort = String(query.sort ?? "display_order").trim().toLowerCase();
   const stockStatus = String(query.stockStatus ?? "all").trim().toLowerCase();
+  const featuredOnly =
+    String(query.featuredOnly ?? "").trim().toLowerCase() === "true";
   const minPrice =
     query.minPrice === undefined || query.minPrice === ""
       ? undefined
@@ -29,6 +31,7 @@ export async function listProducts(query = {}) {
     category,
     brand,
     stockStatus,
+    featuredOnly,
     minPrice,
     maxPrice,
   });
@@ -527,6 +530,69 @@ export async function updateProductById(productId, input) {
   return serializeData(mapProductDetail(updatedWithDetail));
 }
 
+export async function batchUpdateProductDisplayOrder(input = {}) {
+  const items = Array.isArray(input.items) ? input.items : [];
+
+  if (items.length === 0) {
+    throw new Error("Display order items are required");
+  }
+
+  const normalized = items.map((item, index) => {
+    const id = Number(item?.id);
+    const displayOrder = Number(item?.displayOrder ?? index);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error("Invalid product id in display order payload");
+    }
+
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      throw new Error("Display order must be >= 0");
+    }
+
+    return {
+      id,
+      displayOrder: Math.trunc(displayOrder),
+    };
+  });
+
+  await prisma.$transaction(
+    normalized.map((item) =>
+      prisma.product.update({
+        where: { id: item.id },
+        data: { displayOrder: item.displayOrder },
+      }),
+    ),
+  );
+
+  return serializeData({
+    success: true,
+    updatedCount: normalized.length,
+  });
+}
+
+export async function listProductDisplayOrderItems() {
+  const items = await prisma.product.findMany({
+    orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      displayOrder: true,
+      isHomepageFeatured: true,
+      stockQuantity: true,
+    },
+  });
+
+  return serializeData(
+    items.map((item) => ({
+      id: Number(item.id),
+      name: item.name,
+      displayOrder: Number(item.displayOrder ?? 9999),
+      isHomepageFeatured: Boolean(item.isHomepageFeatured),
+      stockQuantity: Number(item.stockQuantity ?? 0),
+    })),
+  );
+}
+
 export async function deleteProductById(productId) {
   const id = Number(productId);
   if (!Number.isFinite(id)) {
@@ -597,6 +663,10 @@ function buildProductWhere(filters) {
     and.push({ stockQuantity: { lte: 0 } });
   }
 
+  if (filters.featuredOnly) {
+    and.push({ isHomepageFeatured: true });
+  }
+
   if (and.length === 0) {
     return {};
   }
@@ -606,6 +676,12 @@ function buildProductWhere(filters) {
 
 function resolveProductOrderBy(sort) {
   switch (sort) {
+    case "best_selling":
+      return [
+        { orderItems: { _count: "desc" } },
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ];
     case "display_order":
       return [
         { displayOrder: "asc" },
