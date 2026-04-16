@@ -42,7 +42,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -486,7 +485,6 @@ export default function AdminPage() {
   const [isSavingDisplayOrder, setIsSavingDisplayOrder] = useState(false);
   const [isLoadingDisplayOrder, setIsLoadingDisplayOrder] = useState(false);
   const [productDisplayMode, setProductDisplayMode] = useState("priority");
-  const [productSpellCheckSuggestions, setProductSpellCheckSuggestions] = useState({});
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
   const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
@@ -1522,29 +1520,7 @@ export default function AdminPage() {
       errors.push("Vui lòng upload ảnh sản phẩm hoặc dán URL ảnh");
     }
 
-    // Spell check for Brand and Model
-    const suggestions = {};
-    
-    if (productForm.specBrand.trim()) {
-      const brandSuggestion = suggestSpelling(productForm.specBrand);
-      if (brandSuggestion && brandSuggestion !== productForm.specBrand) {
-        suggestions.brand = { current: productForm.specBrand, suggested: brandSuggestion };
-      }
-    }
-    
-    if (productForm.specModel.trim()) {
-      const modelSuggestion = suggestSpelling(productForm.specModel);
-      if (modelSuggestion && modelSuggestion !== productForm.specModel) {
-        suggestions.model = { current: productForm.specModel, suggested: modelSuggestion };
-      }
-    }
-    
-    // Save suggestions to state if any
-    if (Object.keys(suggestions).length > 0) {
-      setProductSpellCheckSuggestions(suggestions);
-    }
-
-    return { errors, suggestions };
+    return { errors };
   }
 
   async function saveProduct() {
@@ -1556,7 +1532,7 @@ export default function AdminPage() {
     try {
       // Validate dữ liệu
       const validation = validateProductForm();
-      const { errors: validationErrors, suggestions } = validation;
+      const { errors: validationErrors } = validation;
       
       if (validationErrors.length > 0) {
         toast({
@@ -1586,7 +1562,7 @@ export default function AdminPage() {
       }
 
       // Validate mã sản phẩm không trùng lặp
-      const existingProduct = managedProducts.items.find(
+      const existingProduct = managedProducts.find(
         (p) => p.productCode.toLowerCase() === resolvedProductCode.toLowerCase() 
           && p.id !== editingProductId
       );
@@ -3120,9 +3096,14 @@ export default function AdminPage() {
                       ? "Chỉnh sửa sản phẩm"
                       : "Thêm sản phẩm mới"
                   }
-                  description="Task #11: validate giá, tồn kho, mã sản phẩm và upload ảnh"
+                  description="Điền thông tin cơ bản, giá bán, tồn kho và hình ảnh sản phẩm"
                 >
                   <div className="space-y-3">
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+                      <p className="font-semibold">Hướng dẫn nhanh</p>
+                      <p className="mt-1">1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu.</p>
+                    </div>
+
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">
                         Tên sản phẩm
@@ -3316,7 +3297,7 @@ export default function AdminPage() {
                       <input
                         type="text"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
-                        placeholder="Hoặc dán trực tiếp imageUrl"
+                        placeholder="Hoặc dán trực tiếp đường dẫn ảnh (https://...)"
                         value={productForm.imageUrl}
                         onChange={(event) =>
                           setProductForm((prev) => ({
@@ -3326,56 +3307,19 @@ export default function AdminPage() {
                         }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Chấp nhận jpg/jpeg/png. Nếu chọn file, hệ thống sẽ
-                        upload và tự gắn URL.
+                        Hỗ trợ JPG/JPEG/PNG. Nếu đã chọn file, hệ thống tự upload ảnh khi bấm lưu.
                       </p>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="text-sm font-medium">
-                          Thông số kỹ thuật ({CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.label || CATEGORY_SPEC_CONFIG.default.label})
-                        </label>
-                        {Object.keys(productSpellCheckSuggestions).length > 0 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-xs text-blue-600"
-                            onClick={() => {
-                              setProductForm((prev) => ({
-                                ...prev,
-                                ...(productSpellCheckSuggestions.brand && {
-                                  specBrand: productSpellCheckSuggestions.brand.suggested,
-                                }),
-                                ...(productSpellCheckSuggestions.model && {
-                                  specModel: productSpellCheckSuggestions.model.suggested,
-                                }),
-                              }));
-                              setProductSpellCheckSuggestions({});
-                            }}
-                          >
-                            ✓ Áp dụng gợi ý
-                          </Button>
-                        )}
-                      </div>
-                      {Object.keys(productSpellCheckSuggestions).length > 0 && (
-                        <div className="rounded-md bg-blue-50 p-2 text-xs">
-                          {productSpellCheckSuggestions.brand && (
-                            <p>🔤 Hãng: "{productSpellCheckSuggestions.brand.current}" → "{productSpellCheckSuggestions.brand.suggested}"</p>
-                          )}
-                          {productSpellCheckSuggestions.model && (
-                            <p>🔤 Mẫu: "{productSpellCheckSuggestions.model.current}" → "{productSpellCheckSuggestions.model.suggested}"</p>
-                          )}
-                        </div>
-                      )}
+                      <label className="text-sm font-medium">
+                        Thông số kỹ thuật ({CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.label || CATEGORY_SPEC_CONFIG.default.label})
+                      </label>
                       <div className="grid grid-cols-2 gap-3">
                         {(CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.fields || CATEGORY_SPEC_CONFIG.default.fields).map((fieldName) => {
                           const config = CATEGORY_SPEC_CONFIG[productForm.categorySlug] || CATEGORY_SPEC_CONFIG.default;
                           const isRequired = config.required?.includes(fieldName);
                           const fieldLabel = {
-                            brand: "Hãng sản xuất",
-                            model: "Mẫu",
                             cpu: "CPU",
                             ram: "RAM",
                             storage: "Storage",
