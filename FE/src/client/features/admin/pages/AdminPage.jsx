@@ -496,6 +496,10 @@ export default function AdminPage() {
     specRam: "",
     specStorage: "",
     specGpu: "",
+    fullDescription: "",
+    inTheBox: "",
+    manualUrl: "",
+    warrantyPolicy: "",
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -1271,6 +1275,10 @@ export default function AdminPage() {
       specRam: "",
       specStorage: "",
       specGpu: "",
+      fullDescription: "",
+      inTheBox: "",
+      manualUrl: "",
+      warrantyPolicy: "",
     });
   }
 
@@ -1278,6 +1286,7 @@ export default function AdminPage() {
     setEditingProductId(product.id);
     setSelectedImageFile(null);
     const specs = product.specifications ?? {};
+    const detail = product.detail ?? {};
     setProductForm({
       name: String(product.name ?? ""),
       productCode: String(product.productCode ?? product.slug ?? ""),
@@ -1293,6 +1302,10 @@ export default function AdminPage() {
       specRam: String(specs.ram ?? ""),
       specStorage: String(specs.storage ?? ""),
       specGpu: String(specs.gpu ?? ""),
+      fullDescription: String(detail.fullDescription ?? ""),
+      inTheBox: String(detail.inTheBox ?? ""),
+      manualUrl: String(detail.manualUrl ?? ""),
+      warrantyPolicy: String(detail.warrantyPolicy ?? ""),
     });
   }
 
@@ -1430,6 +1443,12 @@ export default function AdminPage() {
         warrantyMonths: Number(productForm.warrantyMonths || 0),
         imageUrl: uploadedImageUrl,
         specifications,
+        detail: {
+          fullDescription: productForm.fullDescription.trim(),
+          inTheBox: productForm.inTheBox.trim(),
+          manualUrl: productForm.manualUrl.trim() || null,
+          warrantyPolicy: productForm.warrantyPolicy.trim(),
+        },
       };
 
       const endpoint = editingProductId
@@ -2528,7 +2547,72 @@ export default function AdminPage() {
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="space-y-3 pt-3 border-t">
+                      <h3 className="text-sm font-semibold">Chi tiết sản phẩm</h3>
+                      
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Mô tả đầy đủ</label>
+                        <textarea
+                          className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Mô tả chi tiết sản phẩm, công nghệ, cảm nhận, ưu và nhược điểm..."
+                          value={productForm.fullDescription}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              fullDescription: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Gì trong hộp</label>
+                        <textarea
+                          className="min-h-16 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Liệt kê những gì có trong hộp sản phẩm. VD: Sản phẩm chính, Hộp bao bì, Sách hướng dẫn, Cáp USB, ..."
+                          value={productForm.inTheBox}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              inTheBox: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Link tài liệu hướng dẫn</label>
+                        <input
+                          type="url"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="https://example.com/manual.pdf"
+                          value={productForm.manualUrl}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              manualUrl: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Chính sách bảo hành</label>
+                        <textarea
+                          className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Mô tả điều kiện bảo hành, cách thức yêu cầu bảo hành, thời hạn bảo hành..."
+                          value={productForm.warrantyPolicy}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              warrantyPolicy: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-3">
                       <Button
                         className="gap-2"
                         onClick={saveProduct}
