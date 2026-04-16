@@ -319,6 +319,26 @@ export function CartProvider({ children }) {
     [callCartApi, isAuthenticated, token, refreshCart],
   );
 
+  const confirmMockPayment = useCallback(
+    async ({ orderId, paymentCode }) => {
+      if (!isAuthenticated || !token) {
+        throw new Error("Vui lòng đăng nhập để xác nhận thanh toán");
+      }
+
+      const result = await callCartApi("/mock-vnpay/confirm", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: Number(orderId),
+          paymentCode: String(paymentCode ?? "").trim() || undefined,
+        }),
+      });
+
+      await refreshCart();
+      return result;
+    },
+    [callCartApi, isAuthenticated, refreshCart, token],
+  );
+
   const previewPricing = useCallback(
     async ({ couponCode, selectedCartItemIds }) => {
       if (!isAuthenticated || !token) {
@@ -349,6 +369,7 @@ export function CartProvider({ children }) {
       bundles,
       addBuildToCart,
       checkout,
+      confirmMockPayment,
       previewPricing,
       refreshCart,
     }),
@@ -367,6 +388,7 @@ export function CartProvider({ children }) {
       bundles,
       addBuildToCart,
       checkout,
+      confirmMockPayment,
       previewPricing,
       refreshCart,
     ],

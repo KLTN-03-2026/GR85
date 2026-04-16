@@ -6,6 +6,7 @@ import ProductDetailPage from "@/client/features/catalog/pages/ProductDetailPage
 import BuilderPage from "@/client/features/builder/pages/BuilderPage";
 import AIRecommendPage from "@/client/features/recommend/pages/AIRecommendPage";
 import CartPage from "@/client/features/cart/pages/CartPage";
+import PaymentQrPage from "@/client/features/cart/pages/PaymentQrPage";
 import PaymentResultPage from "@/client/features/cart/pages/PaymentResultPage";
 import ChatPage from "@/client/features/chat/pages/ChatPage";
 import AdminPage from "@/client/features/admin/pages/AdminPage";
@@ -31,6 +32,7 @@ export function AppRouter() {
         <Route path="/builder" element={<UserRoute><BuilderPage /></UserRoute>} />
         <Route path="/ai-recommend" element={<UserRoute><AIRecommendPage /></UserRoute>} />
         <Route path="/cart" element={<UserRoute><CartPage /></UserRoute>} />
+        <Route path="/payment-qr" element={<UserRoute><PaymentQrPage /></UserRoute>} />
         <Route path="/payment-result" element={<UserRoute><PaymentResultPage /></UserRoute>} />
         <Route path="/chat" element={<UserRoute><ChatPage /></UserRoute>} />
         <Route path="*" element={<NotFoundPage />} />
