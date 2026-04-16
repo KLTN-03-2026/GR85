@@ -6,11 +6,13 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { getCatalogOverview } from "../../services/product.service.js";
 import {
+  batchUpdateProductDisplayOrder,
   createProductReviewBySlug,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
   listProductReviewsBySlug,
+  listProductDisplayOrderItems,
   listProducts,
   updateProductById,
 } from "../../services/product.service.js";
@@ -65,6 +67,15 @@ const productSchema = z.object({
 
 const updateProductSchema = productSchema.partial();
 
+const updateDisplayOrderSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      displayOrder: z.number().int().min(0),
+    }),
+  ).min(1),
+});
+
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().max(1000).optional(),
@@ -86,6 +97,15 @@ router.get("/overview", async (_req, res) => {
 router.get("/", async (req, res) => {
   try {
     const data = await listProducts(req.query);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/display-order", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const data = await listProductDisplayOrderItems();
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
@@ -143,6 +163,16 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const parsed = updateProductSchema.parse(req.body);
     const data = await updateProductById(req.params.id, parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.patch("/display-order", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parsed = updateDisplayOrderSchema.parse(req.body ?? {});
+    const data = await batchUpdateProductDisplayOrder(parsed);
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
