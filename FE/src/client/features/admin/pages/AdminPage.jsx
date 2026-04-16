@@ -804,10 +804,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-                ...order,
-                orderStatus: payload.orderStatus,
-                updatedAt: payload.updatedAt,
-              }
+              ...order,
+              orderStatus: payload.orderStatus,
+              updatedAt: payload.updatedAt,
+            }
             : order,
         ),
       );
@@ -1781,11 +1781,10 @@ export default function AdminPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    activeTab === item.id
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${activeTab === item.id
                       ? "bg-primary text-primary-foreground"
                       : "text-slate-700 hover:bg-secondary hover:text-primary"
-                  }`}
+                    }`}
                 >
                   <span className="flex items-center gap-3">
                     <item.icon className="h-4 w-4" />
@@ -3494,26 +3493,26 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-    value === "Đã thanh toán" ||
-    value === "Đã giao" ||
-    value === "Đã kết nối" ||
-    value === "Đã đăng" ||
-    value === "Phổ biến" ||
-    value === "Đã xác minh" ||
-    value === "Còn hàng" ||
-    value === "Đã dùng"
+      value === "Đã thanh toán" ||
+      value === "Đã giao" ||
+      value === "Đã kết nối" ||
+      value === "Đã đăng" ||
+      value === "Phổ biến" ||
+      value === "Đã xác minh" ||
+      value === "Còn hàng" ||
+      value === "Đã dùng"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-          value === "Đang xử lý" ||
-          value === "Tạm dừng" ||
-          value === "Cần xem xét" ||
-          value === "Bản nháp" ||
-          value === "Ổn định"
+        value === "Đang xử lý" ||
+        value === "Tạm dừng" ||
+        value === "Cần xem xét" ||
+        value === "Bản nháp" ||
+        value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-            value === "Quản trị viên" ||
-            value === "Nhân viên" ||
-            value === "Mở"
+          value === "Quản trị viên" ||
+          value === "Nhân viên" ||
+          value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : "bg-rose-100 text-rose-700";
 

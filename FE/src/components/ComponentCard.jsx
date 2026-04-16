@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Star, Plus, Eye, ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useBuild } from "@/contexts/BuildContext";
@@ -11,6 +11,7 @@ import { ComponentDetailModal } from "./ComponentDetailModal";
 export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
+  const navigate = useNavigate();
   const [showDetail, setShowDetail] = useState(false);
   const fallbackImage = "/images/component-placeholder.svg";
 
@@ -161,7 +162,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
               <>
                 <Button
                   variant="default"
-                  className="flex-1 gap-2"
+                  className="flex-1 gap-1"
                   onClick={async () => {
                     try {
                       await addToCart(component);
@@ -176,14 +177,29 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                   disabled={Number(component.stock ?? 0) <= 0}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  {Number(component.stock ?? 0) <= 0 ? "Hết hàng" : "Mua ngay"}
+                  {Number(component.stock ?? 0) <= 0 ? "Hết hàng" : "Thêm vào giỏ hàng"}
                 </Button>
                 <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowDetail(true)}
+                  variant="hero"
+                  className="flex-1 gap-0.8"
+                  onClick={async () => {
+                    try {
+                      await addToCart(component);
+                      navigate("/cart", {
+                        state: { checkoutProductIds: [Number(component.id)] },
+                      });
+                    } catch (error) {
+                      window.alert(
+                        error instanceof Error
+                          ? error.message
+                          : "Không thể thanh toán ngay",
+                      );
+                    }
+                  }}
+                  disabled={Number(component.stock ?? 0) <= 0}
                 >
-                  <Eye className="w-4 h-4" />
+                  <Plus className="w-4 h-4" />
+                  Mua ngay
                 </Button>
               </>
             )}
