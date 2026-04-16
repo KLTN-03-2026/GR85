@@ -449,7 +449,8 @@ export default function AdminPage() {
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
   const [managedProductPage, setManagedProductPage] = useState(1);
-  const [managedProductKeywordInput, setManagedProductKeywordInput] = useState("");
+  const [managedProductKeywordInput, setManagedProductKeywordInput] =
+    useState("");
   const [managedProductKeyword, setManagedProductKeyword] = useState("");
   const [managedProductCategory, setManagedProductCategory] = useState("all");
   const [managedProductBrand, setManagedProductBrand] = useState("all");
@@ -543,7 +544,9 @@ export default function AdminPage() {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message || "Không tải được dữ liệu quản trị");
+          throw new Error(
+            payload?.message || "Không tải được dữ liệu quản trị",
+          );
         }
 
         const payload = await response.json();
@@ -609,7 +612,9 @@ export default function AdminPage() {
           const categories = Array.isArray(payload.categories)
             ? payload.categories
             : [];
-          const products = Array.isArray(payload.products) ? payload.products : [];
+          const products = Array.isArray(payload.products)
+            ? payload.products
+            : [];
           const brands = Array.from(
             new Set(
               products
@@ -754,7 +759,8 @@ export default function AdminPage() {
         if (!cancelled) {
           toast({
             title: "Không tải được đơn hàng",
-            description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+            description:
+              error instanceof Error ? error.message : "Đã xảy ra lỗi",
             variant: "destructive",
           });
         }
@@ -1471,7 +1477,9 @@ export default function AdminPage() {
       }
 
       toast({
-        title: editingProductId ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới",
+        title: editingProductId
+          ? "Đã cập nhật sản phẩm"
+          : "Đã thêm sản phẩm mới",
       });
 
       resetProductForm();
@@ -1610,7 +1618,8 @@ export default function AdminPage() {
     }
 
     return adminOrders.filter(
-      (item) => Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
+      (item) =>
+        Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
     );
   }, [adminOrders, selectedOrderUserFilter, selectedOrderUserOrders]);
 
@@ -1808,7 +1817,6 @@ export default function AdminPage() {
               </select>
             </div>
           </div>
-
           <section id="dashboard" className={sectionClassName("dashboard")}>
             <SectionHeader
               sectionId="dashboard"
@@ -1819,26 +1827,28 @@ export default function AdminPage() {
 
             {isLoading ? (
               <Panel title="Đang tải" description="Đang lấy dữ liệu từ máy chủ">
-                <p className="text-sm text-muted-foreground">Vui lòng chờ trong giây lát.</p>
+                <p className="text-sm text-muted-foreground">
+                  Vui lòng chờ trong giây lát.
+                </p>
               </Panel>
             ) : (
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {summaryCards.map((card) => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => setSelectedSummaryCard(card.id)}
-                    className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
-                      selectedSummaryCard === card.id
-                        ? "border-primary ring-2 ring-primary/20"
-                        : "hover:border-primary/50"
-                    }`}
-                  >
-                    <p className="text-sm text-muted-foreground">{card.label}</p>
-                    <div className="mt-3 text-3xl font-bold">{card.value}</div>
-                  </button>
-              ))}
+                  {summaryCards.map((card) => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => setSelectedSummaryCard(card.id)}
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                        selectedSummaryCard === card.id
+                          ? "border-primary ring-2 ring-primary/20"
+                          : "hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="text-sm text-muted-foreground">{card.label}</p>
+                      <div className="mt-3 text-3xl font-bold">{card.value}</div>
+                    </button>
+                  ))}
                 </div>
 
                 <Panel
@@ -1859,7 +1869,10 @@ export default function AdminPage() {
               </div>
             )}
 
-            <Panel title="Trạng thái đơn hàng" description="Số lượng theo trạng thái">
+            <Panel
+              title="Trạng thái đơn hàng"
+              description="Số lượng theo trạng thái"
+            >
               <DataTable
                 columns={["Trạng thái", "Số lượng"]}
                 rows={orderStatusRows}
@@ -1879,7 +1892,14 @@ export default function AdminPage() {
               description="Dữ liệu trực tiếp từ bảng Users"
             >
               <DataTable
-                columns={["Tên", "Email", "Điện thoại", "Role", "Trạng thái", "Thao tác"]}
+                columns={[
+                  "Tên",
+                  "Email",
+                  "Điện thoại",
+                  "Role",
+                  "Trạng thái",
+                  "Thao tác",
+                ]}
                 rows={(dashboard?.users ?? []).map((item) => [
                   editingUserId === item.id ? (
                     <input
@@ -1917,13 +1937,15 @@ export default function AdminPage() {
                           ...prev,
                           [item.id]: {
                             ...prev[item.id],
-                            phone: event.target.value.replace(/\D/g, "").slice(0, 10),
+                            phone: event.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 10),
                           },
                         }))
                       }
                     />
                   ) : (
-                    item.phone ?? "-"
+                    (item.phone ?? "-")
                   ),
                   editingUserId === item.id ? (
                     <select
@@ -1992,7 +2014,10 @@ export default function AdminPage() {
                       </Button>
                     </div>
                   ) : (
-                    <div key={`edit-${item.id}`} className="flex flex-wrap gap-2">
+                    <div
+                      key={`edit-${item.id}`}
+                      className="flex flex-wrap gap-2"
+                    >
                       <Button
                         size="sm"
                         variant="outline"
@@ -2246,18 +2271,27 @@ export default function AdminPage() {
             <div className="grid gap-6 xl:grid-cols-5">
               <div className="xl:col-span-2">
                 <Panel
-                  title={editingProductId ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
+                  title={
+                    editingProductId
+                      ? "Chỉnh sửa sản phẩm"
+                      : "Thêm sản phẩm mới"
+                  }
                   description="Task #11: validate giá, tồn kho, mã sản phẩm và upload ảnh"
                 >
                   <div className="space-y-3">
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Tên sản phẩm</label>
+                      <label className="text-sm font-medium">
+                        Tên sản phẩm
+                      </label>
                       <input
                         className="rounded-md border bg-background px-3 py-2 text-sm"
                         placeholder="VD: RTX 4060 8GB GDDR6"
                         value={productForm.name}
                         onChange={(event) =>
-                          setProductForm((prev) => ({ ...prev, name: event.target.value }))
+                          setProductForm((prev) => ({
+                            ...prev,
+                            name: event.target.value,
+                          }))
                         }
                       />
                     </div>
@@ -2312,7 +2346,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Nhà cung cấp</label>
+                      <label className="text-sm font-medium">
+                        Nhà cung cấp
+                      </label>
                       <select
                         className="rounded-md border bg-background px-3 py-2 text-sm"
                         value={productForm.supplierId}
@@ -2341,7 +2377,10 @@ export default function AdminPage() {
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={productForm.price}
                           onChange={(event) =>
-                            setProductForm((prev) => ({ ...prev, price: event.target.value }))
+                            setProductForm((prev) => ({
+                              ...prev,
+                              price: event.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -2363,7 +2402,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Bảo hành (tháng)</label>
+                      <label className="text-sm font-medium">
+                        Bảo hành (tháng)
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -2379,7 +2420,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Ảnh sản phẩm</label>
+                      <label className="text-sm font-medium">
+                        Ảnh sản phẩm
+                      </label>
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg"
@@ -2401,7 +2444,8 @@ export default function AdminPage() {
                         }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Chấp nhận jpg/jpeg/png. Nếu chọn file, hệ thống sẽ upload và tự gắn URL.
+                        Chấp nhận jpg/jpeg/png. Nếu chọn file, hệ thống sẽ
+                        upload và tự gắn URL.
                       </p>
                     </div>
 
@@ -2618,7 +2662,11 @@ export default function AdminPage() {
                         onClick={saveProduct}
                         disabled={isSavingProduct}
                       >
-                        {editingProductId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {editingProductId ? (
+                          <Pencil className="h-4 w-4" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
                         {editingProductId ? "Cập nhật" : "Thêm sản phẩm"}
                       </Button>
                       <Button
@@ -2643,11 +2691,15 @@ export default function AdminPage() {
                       className="w-full max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
                       placeholder="Tìm theo tên hoặc mã sản phẩm"
                       value={managedProductKeywordInput}
-                      onChange={(event) => setManagedProductKeywordInput(event.target.value)}
+                      onChange={(event) =>
+                        setManagedProductKeywordInput(event.target.value)
+                      }
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           setManagedProductPage(1);
-                          setManagedProductKeyword(managedProductKeywordInput.trim());
+                          setManagedProductKeyword(
+                            managedProductKeywordInput.trim(),
+                          );
                         }
                       }}
                     />
@@ -2655,7 +2707,9 @@ export default function AdminPage() {
                       variant="outline"
                       onClick={() => {
                         setManagedProductPage(1);
-                        setManagedProductKeyword(managedProductKeywordInput.trim());
+                        setManagedProductKeyword(
+                          managedProductKeywordInput.trim(),
+                        );
                       }}
                     >
                       Tìm
@@ -2723,7 +2777,11 @@ export default function AdminPage() {
                       item.category?.name ?? "-",
                       formatMoney(item.price),
                       String(item.stockQuantity ?? 0),
-                      statusBadge(Number(item.stockQuantity ?? 0) > 0 ? "Còn hàng" : "Hết hàng"),
+                      statusBadge(
+                        Number(item.stockQuantity ?? 0) > 0
+                          ? "Còn hàng"
+                          : "Hết hàng",
+                      ),
                       item.imageUrl ? (
                         <a
                           key={`image-${item.id}`}
@@ -2738,7 +2796,10 @@ export default function AdminPage() {
                       ) : (
                         "-"
                       ),
-                      <div key={`actions-${item.id}`} className="flex flex-wrap gap-2">
+                      <div
+                        key={`actions-${item.id}`}
+                        className="flex flex-wrap gap-2"
+                      >
                         <Button
                           size="sm"
                           variant="outline"
@@ -2778,7 +2839,8 @@ export default function AdminPage() {
                         Trước
                       </Button>
                       <span>
-                        Trang {managedProductPagination.page} / {managedProductPagination.totalPages}
+                        Trang {managedProductPagination.page} /{" "}
+                        {managedProductPagination.totalPages}
                       </span>
                       <Button
                         size="sm"
@@ -2812,7 +2874,10 @@ export default function AdminPage() {
               title="Danh mục và nhà cung cấp"
               description="Danh sách nhà cung cấp"
             />
-            <Panel title="Nhà cung cấp" description="Dữ liệu trực tiếp từ bảng Suppliers">
+            <Panel
+              title="Nhà cung cấp"
+              description="Dữ liệu trực tiếp từ bảng Suppliers"
+            >
               <DataTable
                 columns={["Tên", "Email", "Điện thoại", "Người liên hệ"]}
                 rows={(dashboard?.suppliers ?? []).map((item) => [
@@ -2835,7 +2900,10 @@ export default function AdminPage() {
 
             <div className="grid gap-6 xl:grid-cols-5">
               <div className="xl:col-span-2">
-                <Panel title="Tạo mã giảm giá" description="Áp dụng cho thanh toán giỏ hàng">
+                <Panel
+                  title="Tạo mã giảm giá"
+                  description="Áp dụng cho thanh toán giỏ hàng"
+                >
                   <div className="space-y-3">
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Mã giảm giá</label>
@@ -2871,7 +2939,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Giá trị giảm</label>
+                        <label className="text-sm font-medium">
+                          Giá trị giảm
+                        </label>
                         <input
                           type="number"
                           min="1"
@@ -2889,7 +2959,9 @@ export default function AdminPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Đơn tối thiểu</label>
+                        <label className="text-sm font-medium">
+                          Đơn tối thiểu
+                        </label>
                         <input
                           type="number"
                           min="0"
@@ -2904,7 +2976,9 @@ export default function AdminPage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Số lượt dùng</label>
+                        <label className="text-sm font-medium">
+                          Số lượt dùng
+                        </label>
                         <input
                           type="number"
                           min="1"
@@ -2921,7 +2995,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                      <label className="text-sm font-medium">
+                        Thời gian bắt đầu
+                      </label>
                       <input
                         type="datetime-local"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -2936,7 +3012,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thời gian kết thúc</label>
+                      <label className="text-sm font-medium">
+                        Thời gian kết thúc
+                      </label>
                       <input
                         type="datetime-local"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -2968,7 +3046,11 @@ export default function AdminPage() {
                       </select>
                     </div>
 
-                    <Button onClick={createVoucher} disabled={isSavingVoucher} className="gap-2">
+                    <Button
+                      onClick={createVoucher}
+                      disabled={isSavingVoucher}
+                      className="gap-2"
+                    >
                       <Plus className="h-4 w-4" />
                       Tạo mã giảm giá
                     </Button>
@@ -2977,7 +3059,10 @@ export default function AdminPage() {
               </div>
 
               <div className="xl:col-span-3">
-                <Panel title="Danh sách mã giảm giá" description="Mã giảm giá được tạo từ trang quản trị">
+                <Panel
+                  title="Danh sách mã giảm giá"
+                  description="Mã giảm giá được tạo từ trang quản trị"
+                >
                   <DataTable
                     columns={[
                       "Mã",
@@ -3035,7 +3120,14 @@ export default function AdminPage() {
               )}
 
               <DataTable
-                columns={["Mã đơn", "Khách hàng", "Tổng tiền", "Thanh toán", "Trạng thái", "Cập nhật"]}
+                columns={[
+                  "Mã đơn",
+                  "Khách hàng",
+                  "Tổng tiền",
+                  "Thanh toán",
+                  "Trạng thái",
+                  "Cập nhật",
+                ]}
                 rows={(displayedOrders ?? []).map((item) => [
                   <button
                     key={`order-${item.id}`}
@@ -3049,7 +3141,9 @@ export default function AdminPage() {
                   statusBadge(formatEnum(item.paymentStatus)),
                   statusBadge(formatEnum(item.orderStatus)),
                   item.orderStatus === "DELIVERED" ? (
-                    <span className="text-xs text-muted-foreground">Đã hoàn thành</span>
+                    <span className="text-xs text-muted-foreground">
+                      Đã hoàn thành
+                    </span>
                   ) : (
                     <div className="flex items-center gap-2">
                       <select
@@ -3080,7 +3174,9 @@ export default function AdminPage() {
                 ])}
               />
               {displayedOrders.length === 0 && (
-                <p className="mt-3 text-sm text-muted-foreground">Không có đơn hàng phù hợp.</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Không có đơn hàng phù hợp.
+                </p>
               )}
             </Panel>
 
@@ -3099,15 +3195,19 @@ export default function AdminPage() {
                   ])}
                 />
                 <div className="mt-4">
-                  <h4 className="mb-2 text-sm font-semibold">Lịch sử trạng thái</h4>
+                  <h4 className="mb-2 text-sm font-semibold">
+                    Lịch sử trạng thái
+                  </h4>
                   <DataTable
                     columns={["Từ", "Sang", "Thời gian", "Ghi chú"]}
-                    rows={(selectedOrderDetail.statusHistory ?? []).map((history) => [
-                      formatEnum(history.fromStatus),
-                      formatEnum(history.toStatus),
-                      formatDate(history.createdAt),
-                      history.note ?? "-",
-                    ])}
+                    rows={(selectedOrderDetail.statusHistory ?? []).map(
+                      (history) => [
+                        formatEnum(history.fromStatus),
+                        formatEnum(history.toStatus),
+                        formatDate(history.createdAt),
+                        history.note ?? "-",
+                      ],
+                    )}
                   />
                 </div>
               </Panel>
@@ -3125,15 +3225,21 @@ export default function AdminPage() {
               title="Tình trạng kho"
               description="Dữ liệu trực tiếp từ bảng Warehouses"
             >
-              <DataTable
-                columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
-                rows={(dashboard?.warehouses ?? []).map((item) => [
-                  item.name,
-                  item.address ?? "-",
-                  item.managerName ?? "-",
-                  String(item.batches?.length ?? 0),
-                ])}
-              />
+              {(dashboard?.warehouses ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Chưa có dữ liệu kho
+                </p>
+              ) : (
+                <DataTable
+                  columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
+                  rows={(dashboard?.warehouses ?? []).map((item) => [
+                    item.name,
+                    item.address ?? "-",
+                    item.managerName ?? "-",
+                    String(item.batches?.length ?? 0),
+                  ])}
+                />
+              )}
             </Panel>
           </section>
 
@@ -3206,7 +3312,10 @@ export default function AdminPage() {
             </Panel>
           </section>
 
-          <section id="verification" className={sectionClassName("verification")}>
+          <section
+            id="verification"
+            className={sectionClassName("verification")}
+          >
             <SectionHeader
               sectionId="verification"
               icon={MailCheck}
@@ -3218,7 +3327,14 @@ export default function AdminPage() {
               description="Dữ liệu trực tiếp từ bảng Email_Verifications"
             >
               <DataTable
-                columns={["Email", "OTP", "Mục đích", "Tạo lúc", "Hết hạn", "Trạng thái"]}
+                columns={[
+                  "Email",
+                  "OTP",
+                  "Mục đích",
+                  "Tạo lúc",
+                  "Hết hạn",
+                  "Trạng thái",
+                ]}
                 rows={(dashboard?.emailVerifications ?? []).map((item) => [
                   item.email,
                   item.otp,

@@ -58,6 +58,21 @@ export function Navbar() {
                 </Button>
               </Link>
             ))}
+
+            {isHydrated && isAuthenticated && isAdmin ? (
+              <Link to="/admin">
+                <Button
+                  variant={
+                    location.pathname.startsWith("/admin") ? "default" : "ghost"
+                  }
+                  size="sm"
+                  className="shrink-0 gap-2"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Trang quản trị
+                </Button>
+              </Link>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -170,14 +185,19 @@ export function Navbar() {
                   </Button>
                 </Link>
               ))}
+
               {isHydrated && isAuthenticated && isAdmin ? (
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
                   <Button
-                    variant={location.pathname.startsWith("/admin") ? "default" : "outline"}
+                    variant={
+                      location.pathname.startsWith("/admin")
+                        ? "default"
+                        : "ghost"
+                    }
                     className="w-full justify-start gap-2"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    Admin
+                    Trang quản trị
                   </Button>
                 </Link>
               ) : null}
@@ -225,4 +245,3 @@ function isAdminRole(role) {
     .toLowerCase()
     .includes("admin");
 }
-

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Bot, User, Sparkles, Loader2 } from "lucide-react";
+import { requestAiBuildChatReply } from "@/client/features/recommend/data/aiChat.api.js";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([
@@ -41,25 +42,42 @@ export default function ChatPage() {
     setInput("");
     setIsLoading(true);
 
-    // Simulate AI response
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const history = messages.slice(-10).map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
 
-    const responses = [
-      "Đó là một câu hỏi hay! Để tư vấn chính xác, bạn có thể cho tôi biết thêm về ngân sách và mục đích sử dụng chính của bạn không?",
-      "Dựa trên yêu cầu của bạn, tôi gợi ý cấu hình với CPU Ryzen 7 7800X3D + RTX 4070 Ti Super. Đây là combo gaming tuyệt vời trong tầm giá!",
-      "RAM 32GB DDR5 6000MHz là lựa chọn tối ưu cho gaming và làm việc đa nhiệm. Bạn có muốn tôi gợi ý thêm các linh kiện khác không?",
-      "Với ngân sách 30 triệu, bạn có thể build được một PC gaming chơi tốt các game AAA ở độ phân giải 1440p. Để tôi gợi ý chi tiết nhé!",
-    ];
+      const aiReply = await requestAiBuildChatReply({
+        message: userMessage.content,
+        history,
+      });
 
-    const aiMessage = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: responses[Math.floor(Math.random() * responses.length)],
-      timestamp: new Date(),
-    };
+      const aiMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          aiReply.content ||
+          "Mình đã nhận yêu cầu, nhưng backend chưa trả về nội dung phản hồi.",
+        timestamp: new Date(),
+      };
 
-    setMessages((prev) => [...prev, aiMessage]);
-    setIsLoading(false);
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      const fallbackMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          error instanceof Error
+            ? error.message
+            : "Không thể gửi tin nhắn lên backend AI.",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, fallbackMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e) => {
