@@ -376,6 +376,44 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   });
 }
 
+export async function deleteWalletTransaction(transactionId) {
+  const id = Number(transactionId);
+  if (!Number.isFinite(id)) {
+    throw new Error("Invalid transaction ID");
+  }
+
+  const transaction = await prisma.walletTransaction.findUnique({
+    where: { id },
+    include: { user: true },
+  });
+
+  if (!transaction) {
+    throw new Error("Wallet transaction not found");
+  }
+
+  // If transaction added credits to wallet, subtract them back
+  if (
+    transaction.type === WalletTransactionType.TOPUP_CREDIT ||
+    transaction.type === WalletTransactionType.REFUND_CREDIT
+  ) {
+    const newBalance = Number(transaction.user.walletBalance ?? 0) - Number(transaction.amount);
+    
+    await prisma.user.update({
+      where: { id: transaction.userId },
+      data: { walletBalance: Math.max(0, newBalance) },
+    });
+  }
+
+  await prisma.walletTransaction.delete({
+    where: { id },
+  });
+
+  return serializeData({
+    success: true,
+    message: "Wallet transaction deleted successfully",
+  });
+}
+
 function mapReturnRequest(item) {
   return {
     id: item.id,
