@@ -5,6 +5,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  ShieldCheck,
   ShoppingCart,
   User,
   X,
@@ -20,6 +21,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isAdmin = isAdminRole(user?.role);
 
   const navLinks = [
     { href: "/", label: "Trang chủ" },
@@ -56,6 +58,21 @@ export function Navbar() {
                 </Button>
               </Link>
             ))}
+
+            {isHydrated && isAuthenticated && isAdmin ? (
+              <Link to="/admin">
+                <Button
+                  variant={
+                    location.pathname.startsWith("/admin") ? "default" : "ghost"
+                  }
+                  size="sm"
+                  className="shrink-0 gap-2"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Trang quản trị
+                </Button>
+              </Link>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -155,6 +172,23 @@ export function Navbar() {
                   </Button>
                 </Link>
               ))}
+
+              {isHydrated && isAuthenticated && isAdmin ? (
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={
+                      location.pathname.startsWith("/admin")
+                        ? "default"
+                        : "ghost"
+                    }
+                    className="w-full justify-start gap-2"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Trang quản trị
+                  </Button>
+                </Link>
+              ) : null}
+
               {isHydrated && isAuthenticated ? (
                 <Button
                   variant="outline"
@@ -193,3 +227,9 @@ function getInitials(value) {
     .join("");
 }
 
+function isAdminRole(role) {
+  return String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .includes("admin");
+}
