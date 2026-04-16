@@ -35,6 +35,17 @@ const categoryIcons = {
   psu: Zap,
   case: Box,
   cooling: Fan,
+  monitor: Monitor,
+  mouse: Package,
+  keyboard: Package,
+  headset: Package,
+  speaker: Package,
+  webcam: Package,
+  microphone: Package,
+  cable: Package,
+  hub: Package,
+  stand: Package,
+  pad: Package,
 };
 
 const defaultBuilderCategories = [
@@ -46,6 +57,17 @@ const defaultBuilderCategories = [
   { id: "psu", name: "PSU", color: "psu" },
   { id: "case", name: "Case", color: "case" },
   { id: "cooling", name: "Tản nhiệt", color: "cooling" },
+  { id: "monitor", name: "Màn hình", color: "monitor" },
+  { id: "mouse", name: "Chuột", color: "mouse" },
+  { id: "keyboard", name: "Bàn phím", color: "keyboard" },
+  { id: "headset", name: "Tai nghe", color: "headset" },
+  { id: "speaker", name: "Loa", color: "speaker" },
+  { id: "webcam", name: "Webcam", color: "webcam" },
+  { id: "microphone", name: "Microphone", color: "microphone" },
+  { id: "cable", name: "Cáp", color: "cable" },
+  { id: "hub", name: "Hub", color: "hub" },
+  { id: "stand", name: "Giá đỡ", color: "stand" },
+  { id: "pad", name: "Lót chuột", color: "pad" },
 ];
 
 export default function BuilderPage() {
