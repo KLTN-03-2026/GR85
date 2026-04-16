@@ -145,7 +145,10 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
 
           {/* Name */}
           <h3 className={`font-semibold text-foreground line-clamp-2 ${compact ? "min-h-[2.25rem] text-[0.98rem]" : "min-h-[2.5rem]"}`}>
-            <Link to={`/components/${component.slug || component.id}`} className="hover:underline">
+            <Link
+              to={`/components/${component.slug || component.id}`}
+              className="text-left hover:underline"
+            >
               {component.name}
             </Link>
           </h3>
