@@ -169,6 +169,268 @@ const schemaBySection = {
   },
 };
 
+// Predefined options for product specifications
+const SPEC_OPTIONS = {
+  ram: ["4GB", "8GB", "16GB", "32GB", "64GB", "128GB", "256GB"],
+  gpuRam: ["2GB", "4GB", "6GB", "8GB", "10GB", "12GB", "16GB", "20GB", "24GB", "48GB"],
+  storage: ["256GB", "512GB", "1TB", "2TB", "4TB", "8TB", "10TB", "12TB", "16TB"],
+  brand: {
+    gpu: ["NVIDIA", "AMD", "Intel"],
+    cpu: ["Intel", "AMD"],
+    ram: ["Corsair", "G.Skill", "Kingston", "Samsung", "Crucial", "Patriot", "ADATA"],
+    storage: ["Samsung", "SK Hynix", "Micron", "Western Digital", "Seagate", "Intel", "Kioxia", "SanDisk"],
+    motherboard: ["ASUS", "MSI", "Gigabyte", "ASRock"],
+    cooler: ["Noctua", "Corsair", "NZXT", "Scythe", "be quiet!"],
+    case: ["NZXT", "Corsair", "Lian Li", "Fractal Design", "Phanteks"],
+    power: ["Corsair", "MSI", "Seasonic", "EVGA", "Thermaltake"],
+    monitor: ["ASUS", "LG", "Dell", "BenQ", "AOC", "MSI", "Samsung"],
+  },
+};
+
+// Spell checker for PC components - common misspellings
+const SPELL_CHECK_DICTIONARY = {
+  // GPU brands
+  "nvdia": "NVIDIA",
+  "nvidia": "NVIDIA",
+  "amd": "AMD",
+  "intel": "Intel",
+  "intelgraphics": "Intel",
+  
+  // GPU models
+  "rtx": "RTX",
+  "gtx": "GTX",
+  "radeon": "Radeon",
+  "arc": "Arc",
+  
+  // CPU brands
+  "core": "Intel Core",
+  "ryzen": "AMD Ryzen",
+  "xeon": "Intel Xeon",
+  
+  // RAM brands
+  "corsair": "Corsair",
+  "gskill": "G.Skill",
+  "kingston": "Kingston",
+  "samsung": "Samsung",
+  "crucial": "Crucial",
+  "patriot": "Patriot",
+  
+  // SSD brands
+  "seagate": "Seagate",
+  "wd": "Western Digital",
+  "sandisk": "SanDisk",
+  "samsung": "Samsung",
+  "crucial": "Crucial",
+  "kioxia": "Kioxia",
+  
+  // Motherboard brands
+  "asus": "ASUS",
+  "msi": "MSI",
+  "gigabyte": "Gigabyte",
+  "asrock": "ASRock",
+  
+  // Others
+  "noctua": "Noctua",
+  "be quiet": "be quiet!",
+};
+
+function suggestSpelling(text) {
+  if (!text || text.length < 2) return null;
+  
+  const normalized = text.toLowerCase().trim();
+  const known = SPELL_CHECK_DICTIONARY[normalized];
+  if (known) return known;
+  
+  // Fuzzy matching cho các từ dài
+  for (const [misspelled, correct] of Object.entries(SPELL_CHECK_DICTIONARY)) {
+    if (similarity(normalized, misspelled) > 0.8) {
+      return correct;
+    }
+  }
+  
+  return null;
+}
+
+// Simple string similarity (Levenshtein-like)
+function similarity(s1, s2) {
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = getEditDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function getEditDistance(s1, s2) {
+  const costs = [];
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i;
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j;
+      } else if (j > 0) {
+        let newValue = costs[j - 1];
+        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+        }
+        costs[j - 1] = lastValue;
+        lastValue = newValue;
+      }
+    }
+    if (i > 0) costs[s2.length] = lastValue;
+  }
+  return costs[s2.length];
+}
+
+// Category-specific spec configuration
+const CATEGORY_SPEC_CONFIG = {
+  default: {
+    label: "Danh mục chung",
+    fields: ["brand", "model", "cpu", "ram", "storage", "gpu"],
+    required: [],
+    hints: {
+      brand: "Hãng sản xuất",
+      model: "Tên mẫu sản phẩm",
+      cpu: "Loại CPU/chip",
+      ram: "Dung lượng hoặc loại RAM",
+      storage: "Dung lượng lưu trữ",
+      gpu: "Loại GPU/chip đồ họa",
+    },
+  },
+  gpu: {
+    label: "Card Đồ họa",
+    fields: ["brand", "model", "ram", "gpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NVIDIA, AMD, Intel, v.v.",
+      model: "RTX 4060, RTX 4070, RX 7900 XT, Arc B580",
+      ram: "8GB, 12GB, 16GB, 24GB",
+      gpu: "AD107, AD104, RDNA3, Arc Alchemist",
+    },
+  },
+  "card-do-hoa": {
+    label: "Card Đồ họa",
+    fields: ["brand", "model", "ram", "gpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NVIDIA, AMD, Intel",
+      model: "RTX 4060, RTX 4070, RX 7900 XT",
+      ram: "8GB, 12GB, 16GB",
+      gpu: "Ada Lovelace, RDNA3",
+    },
+  },
+  cpu: {
+    label: "Bộ xử lý CPU",
+    fields: ["brand", "model", "cpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Intel, AMD",
+      model: "Core i7-14700K, Ryzen 9 7950X3D",
+      cpu: "Raptor Lake, Zen 5",
+    },
+  },
+  "chip-xu-ly": {
+    label: "Bộ xử lý CPU",
+    fields: ["brand", "model", "cpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Intel, AMD",
+      model: "Core i7-14700K, Ryzen 9 7950X3D",
+      cpu: "Raptor Lake Refresh, Zen 5",
+    },
+  },
+  ram: {
+    label: "Bộ nhớ RAM",
+    fields: ["brand", "model", "ram", "storage"],
+    required: ["brand", "ram"],
+    hints: {
+      brand: "Corsair, G.Skill, Kingston, Samsung",
+      model: "Vengeance RGB, Trident Z, FURY Beast",
+      ram: "16GB, 32GB, 64GB",
+      storage: "DDR5-6000, DDR4-3600, DDR5-5600",
+    },
+  },
+  "bo-nho": {
+    label: "Bộ nhớ RAM",
+    fields: ["brand", "model", "ram", "storage"],
+    required: ["brand", "ram"],
+    hints: {
+      brand: "Corsair, G.Skill, Kingston",
+      model: "Vengeance, Trident Z",
+      ram: "16GB, 32GB, 64GB",
+      storage: "DDR5, DDR4, Speed",
+    },
+  },
+  motherboard: {
+    label: "Mainboard",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "ASUS, MSI, Gigabyte, ASRock",
+      model: "ROG STRIX Z870-E, MPG B850-E EDGE",
+    },
+  },
+  ssd: {
+    label: "Ổ SSD",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "storage"],
+    hints: {
+      brand: "Samsung, SK Hynix, Micron, Western Digital",
+      model: "990 Pro, P5 Plus, Rocket 4 Plus",
+      storage: "250GB, 500GB, 1TB, 2TB, 4TB",
+    },
+  },
+  hdd: {
+    label: "Ổ HDD",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "storage"],
+    hints: {
+      brand: "Seagate, Western Digital, Toshiba",
+      model: "Barracuda, Blue, IronWolf",
+      storage: "500GB, 1TB, 2TB, 4TB, 8TB, 10TB",
+    },
+  },
+  cooler: {
+    label: "Tản nhiệt",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Noctua, Corsair, NZXT, Scythe",
+      model: "NH-D15, Liquid Freezer, Kraken X73",
+    },
+  },
+  case: {
+    label: "Vỏ máy",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NZXT, Corsair, Lian Li, Fractal Design",
+      model: "H7 Flow, 5000D, O11 Dynamic, North",
+    },
+  },
+  power: {
+    label: "Nguồn điện",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Corsair, MSI, Seasonic, EVGA",
+      model: "HX1200i, MEG A850P+, Focus GX-850",
+      storage: "650W, 750W, 850W, 1000W",
+    },
+  },
+  monitor: {
+    label: "Màn hình",
+    fields: ["brand", "model", "ram"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "ASUS, LG, Dell, BenQ, AOC",
+      model: "ProArt Display PA278QV, UltraGear",
+      ram: "1080p, 1440p, 4K, 27\", 32\", 34\"",
+    },
+  },
+};
+
 export default function AdminPage() {
   const { token, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
@@ -200,6 +462,7 @@ export default function AdminPage() {
   const [editingProductId, setEditingProductId] = useState(null);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [productSpellCheckSuggestions, setProductSpellCheckSuggestions] = useState({});
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
   const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
@@ -227,28 +490,27 @@ export default function AdminPage() {
     stockQuantity: "",
     warrantyMonths: "12",
     imageUrl: "",
-    specificationsText: '{\n  "brand": "",\n  "model": ""\n}',
+    specBrand: "",
+    specModel: "",
+    specCpu: "",
+    specRam: "",
+    specStorage: "",
+    specGpu: "",
   });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const rawHash = normalizeHash(window.location.hash || "");
-    if (!rawHash) {
-      return;
-    }
-
-    const targetItem = navItems.find(
-      (item) => item.hash === rawHash || `#${item.id}` === rawHash,
-    );
-
-    if (targetItem) {
-      setActiveTab(targetItem.id);
+    const tabIdFromUrl = resolveTabIdFromLocation();
+    if (tabIdFromUrl) {
+      setActiveTab(tabIdFromUrl);
     }
   }, []);
 
   useEffect(() => {
-    const targetHash = navItems.find((item) => item.id === activeTab)?.hash;
-    if (!targetHash || normalizeHash(window.location.hash || "") === targetHash) {
+    const currentTabFromUrl = resolveTabIdFromLocation();
+    const targetHash = `#${activeTab}`;
+
+    if (currentTabFromUrl === activeTab && normalizeHash(window.location.hash || "") === targetHash) {
       return;
     }
 
@@ -1003,13 +1265,19 @@ export default function AdminPage() {
       stockQuantity: "",
       warrantyMonths: "12",
       imageUrl: "",
-      specificationsText: '{\n  "brand": "",\n  "model": ""\n}',
+      specBrand: "",
+      specModel: "",
+      specCpu: "",
+      specRam: "",
+      specStorage: "",
+      specGpu: "",
     });
   }
 
   function startEditingProduct(product) {
     setEditingProductId(product.id);
     setSelectedImageFile(null);
+    const specs = product.specifications ?? {};
     setProductForm({
       name: String(product.name ?? ""),
       productCode: String(product.productCode ?? product.slug ?? ""),
@@ -1019,8 +1287,88 @@ export default function AdminPage() {
       stockQuantity: String(Number(product.stockQuantity ?? 0)),
       warrantyMonths: String(Number(product.warrantyMonths ?? 12)),
       imageUrl: String(product.imageUrl ?? ""),
-      specificationsText: JSON.stringify(product.specifications ?? {}, null, 2),
+      specBrand: String(specs.brand ?? ""),
+      specModel: String(specs.model ?? ""),
+      specCpu: String(specs.cpu ?? ""),
+      specRam: String(specs.ram ?? ""),
+      specStorage: String(specs.storage ?? ""),
+      specGpu: String(specs.gpu ?? ""),
     });
+  }
+
+  function validateProductForm() {
+    const errors = [];
+
+    // Validate tên sản phẩm
+    if (!productForm.name.trim()) {
+      errors.push("Tên sản phẩm không được để trống");
+    }
+
+    // Validate danh mục
+    if (!productForm.categorySlug) {
+      errors.push("Vui lòng chọn danh mục");
+    }
+
+    // Validate giá
+    const price = Number(productForm.price);
+    if (!productForm.price || price <= 0) {
+      errors.push("Giá sản phẩm phải lớn hơn 0");
+    }
+
+    // Validate tồn kho
+    const stockQuantity = Number(productForm.stockQuantity);
+    if (productForm.stockQuantity === "" || stockQuantity < 0) {
+      errors.push("Tồn kho không được âm");
+    }
+
+    // Validate field bắt buộc theo category
+    const categoryConfig = CATEGORY_SPEC_CONFIG[productForm.categorySlug] || CATEGORY_SPEC_CONFIG.default;
+    const requiredFields = categoryConfig.required || [];
+
+    requiredFields.forEach((fieldName) => {
+      const formKey = `spec${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
+      const fieldLabel = {
+        brand: "Hãng sản xuất",
+        model: "Mẫu",
+        cpu: "CPU",
+        ram: "RAM",
+        storage: "Storage",
+        gpu: "GPU",
+      }[fieldName];
+
+      if (!productForm[formKey]?.trim()) {
+        errors.push(`${fieldLabel} là bắt buộc đối với danh mục này`);
+      }
+    });
+
+    // Validate ảnh sản phẩm
+    if (!productForm.imageUrl.trim() && !selectedImageFile) {
+      errors.push("Vui lòng upload ảnh sản phẩm hoặc dán URL ảnh");
+    }
+
+    // Spell check for Brand and Model
+    const suggestions = {};
+    
+    if (productForm.specBrand.trim()) {
+      const brandSuggestion = suggestSpelling(productForm.specBrand);
+      if (brandSuggestion && brandSuggestion !== productForm.specBrand) {
+        suggestions.brand = { current: productForm.specBrand, suggested: brandSuggestion };
+      }
+    }
+    
+    if (productForm.specModel.trim()) {
+      const modelSuggestion = suggestSpelling(productForm.specModel);
+      if (modelSuggestion && modelSuggestion !== productForm.specModel) {
+        suggestions.model = { current: productForm.specModel, suggested: modelSuggestion };
+      }
+    }
+    
+    // Save suggestions to state if any
+    if (Object.keys(suggestions).length > 0) {
+      setProductSpellCheckSuggestions(suggestions);
+    }
+
+    return { errors, suggestions };
   }
 
   async function saveProduct() {
@@ -1030,17 +1378,49 @@ export default function AdminPage() {
 
     setIsSavingProduct(true);
     try {
-      let specifications = {};
-      try {
-        specifications = JSON.parse(productForm.specificationsText || "{}");
-      } catch {
-        throw new Error("Thông số kỹ thuật phải là JSON hợp lệ");
+      // Validate dữ liệu
+      const validation = validateProductForm();
+      const { errors: validationErrors, suggestions } = validation;
+      
+      if (validationErrors.length > 0) {
+        toast({
+          title: "Dữ liệu không hợp lệ",
+          description: validationErrors.join("\n"),
+          variant: "destructive",
+        });
+        setIsSavingProduct(false);
+        return;
       }
 
+      const specifications = {
+        brand: productForm.specBrand.trim(),
+        model: productForm.specModel.trim(),
+        cpu: productForm.specCpu.trim(),
+        ram: productForm.specRam.trim(),
+        storage: productForm.specStorage.trim(),
+        gpu: productForm.specGpu.trim(),
+      };
+
       const uploadedImageUrl = await uploadProductImageIfNeeded();
+      const resolvedProductCode =
+        productForm.productCode.trim() || buildProductCode(productForm.name);
+
+      if (!resolvedProductCode) {
+        throw new Error("Vui lòng nhập tên sản phẩm để hệ thống tạo mã tự động");
+      }
+
+      // Validate mã sản phẩm không trùng lặp
+      const existingProduct = managedProducts.items.find(
+        (p) => p.productCode.toLowerCase() === resolvedProductCode.toLowerCase() 
+          && p.id !== editingProductId
+      );
+      if (existingProduct) {
+        throw new Error(`Mã sản phẩm "${resolvedProductCode}" đã tồn tại. Vui lòng sử dụng mã khác.`);
+      }
+
       const payload = {
         name: productForm.name.trim(),
-        productCode: productForm.productCode.trim(),
+        productCode: resolvedProductCode,
         categorySlug: productForm.categorySlug,
         supplierId: productForm.supplierId
           ? Number(productForm.supplierId)
@@ -1383,24 +1763,7 @@ export default function AdminPage() {
                     <item.icon className="h-4 w-4" />
                     {item.label}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <a
-                      href={item.hash}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setActiveTab(item.id);
-                      }}
-                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                        activeTab === item.id
-                          ? "bg-white/20 text-primary-foreground"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                      title={`Đi đến ${item.hash}`}
-                    >
-                      {item.hash}
-                    </a>
-                    <ChevronRight className="h-4 w-4 opacity-50" />
-                  </span>
+                  <ChevronRight className="h-4 w-4 opacity-50" />
                 </button>
               ))}
             </div>
@@ -1872,6 +2235,7 @@ export default function AdminPage() {
                       <label className="text-sm font-medium">Tên sản phẩm</label>
                       <input
                         className="rounded-md border bg-background px-3 py-2 text-sm"
+                        placeholder="VD: RTX 4060 8GB GDDR6"
                         value={productForm.name}
                         onChange={(event) =>
                           setProductForm((prev) => ({ ...prev, name: event.target.value }))
@@ -1881,16 +2245,31 @@ export default function AdminPage() {
 
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Mã sản phẩm (duy nhất)</label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        value={productForm.productCode}
-                        onChange={(event) =>
-                          setProductForm((prev) => ({
-                            ...prev,
-                            productCode: event.target.value,
-                          }))
-                        }
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Để trống sẽ tự tạo theo tên"
+                          value={productForm.productCode}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              productCode: event.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              productCode: buildProductCode(prev.name),
+                            }))
+                          }
+                        >
+                          Tự tạo
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -2007,18 +2386,146 @@ export default function AdminPage() {
                       </p>
                     </div>
 
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thông số kỹ thuật (JSON)</label>
-                      <textarea
-                        className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm"
-                        value={productForm.specificationsText}
-                        onChange={(event) =>
-                          setProductForm((prev) => ({
-                            ...prev,
-                            specificationsText: event.target.value,
-                          }))
-                        }
-                      />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-sm font-medium">
+                          Thông số kỹ thuật ({CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.label || CATEGORY_SPEC_CONFIG.default.label})
+                        </label>
+                        {Object.keys(productSpellCheckSuggestions).length > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-xs text-blue-600"
+                            onClick={() => {
+                              setProductForm((prev) => ({
+                                ...prev,
+                                ...(productSpellCheckSuggestions.brand && {
+                                  specBrand: productSpellCheckSuggestions.brand.suggested,
+                                }),
+                                ...(productSpellCheckSuggestions.model && {
+                                  specModel: productSpellCheckSuggestions.model.suggested,
+                                }),
+                              }));
+                              setProductSpellCheckSuggestions({});
+                            }}
+                          >
+                            ✓ Áp dụng gợi ý
+                          </Button>
+                        )}
+                      </div>
+                      {Object.keys(productSpellCheckSuggestions).length > 0 && (
+                        <div className="rounded-md bg-blue-50 p-2 text-xs">
+                          {productSpellCheckSuggestions.brand && (
+                            <p>🔤 Hãng: "{productSpellCheckSuggestions.brand.current}" → "{productSpellCheckSuggestions.brand.suggested}"</p>
+                          )}
+                          {productSpellCheckSuggestions.model && (
+                            <p>🔤 Mẫu: "{productSpellCheckSuggestions.model.current}" → "{productSpellCheckSuggestions.model.suggested}"</p>
+                          )}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-3">
+                        {(CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.fields || CATEGORY_SPEC_CONFIG.default.fields).map((fieldName) => {
+                          const config = CATEGORY_SPEC_CONFIG[productForm.categorySlug] || CATEGORY_SPEC_CONFIG.default;
+                          const isRequired = config.required?.includes(fieldName);
+                          const fieldLabel = {
+                            brand: "Hãng sản xuất",
+                            model: "Mẫu",
+                            cpu: "CPU",
+                            ram: "RAM",
+                            storage: "Storage",
+                            gpu: "GPU",
+                          }[fieldName];
+                          const formKey = `spec${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
+                          const hint = config.hints?.[fieldName] || "";
+                          
+                          // Determine field type and options
+                          let fieldOptions = [];
+                          let inputType = "text";
+                          
+                          if (fieldName === "brand") {
+                            // Brand is datalist (combobox)
+                            inputType = "datalist";
+                            const categorySlug = productForm.categorySlug;
+                            fieldOptions = SPEC_OPTIONS.brand[categorySlug] || SPEC_OPTIONS.brand.gpu;
+                          } else if (fieldName === "ram") {
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.ram;
+                          } else if (fieldName === "storage" && productForm.categorySlug?.includes("gpu")) {
+                            // For GPU, storage is VRAM
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.gpuRam;
+                          } else if (fieldName === "storage") {
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.storage;
+                          }
+
+                          return (
+                            <div key={fieldName} className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">
+                                {fieldLabel}
+                                {isRequired && <span className="text-red-500 ml-0.5">*</span>}
+                              </label>
+                              {inputType === "select" ? (
+                                <select
+                                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                                  value={productForm[formKey] || ""}
+                                  onChange={(event) =>
+                                    setProductForm((prev) => ({
+                                      ...prev,
+                                      [formKey]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">Chọn {fieldLabel.toLowerCase()}</option>
+                                  {fieldOptions.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : inputType === "datalist" ? (
+                                <>
+                                  <input
+                                    type="text"
+                                    placeholder={hint}
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    value={productForm[formKey] || ""}
+                                    onChange={(event) =>
+                                      setProductForm((prev) => ({
+                                        ...prev,
+                                        [formKey]: event.target.value,
+                                      }))
+                                    }
+                                    list={`${fieldName}-options-${productForm.categorySlug}`}
+                                  />
+                                  <datalist id={`${fieldName}-options-${productForm.categorySlug}`}>
+                                    {fieldOptions.map((opt) => (
+                                      <option key={opt} value={opt} />
+                                    ))}
+                                  </datalist>
+                                </>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder={hint}
+                                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                                  value={productForm[formKey] || ""}
+                                  onChange={(event) =>
+                                    setProductForm((prev) => ({
+                                      ...prev,
+                                      [formKey]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Điền các thông số phù hợp với danh mục được chọn. <span className="text-red-500">*</span> = bắt buộc
+                      </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -2938,6 +3445,26 @@ function validateOptionalUrl(value) {
   return "";
 }
 
+function buildProductCode(name) {
+  const base = String(name ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "D")
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 18);
+
+  if (!base) {
+    return "";
+  }
+
+  const suffix = String(Date.now()).slice(-6);
+  return `${base}-${suffix}`;
+}
+
 function slugifyTabLabel(value) {
   return String(value ?? "")
     .trim()
@@ -2956,4 +3483,57 @@ function normalizeHash(value) {
   } catch {
     return String(value ?? "").trim().toLowerCase();
   }
+}
+
+function normalizeTabToken(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/^#+/, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getTabAliases(item) {
+  const compactSlug = slugifyTabLabel(item.label).replace(/-/g, "");
+  const aliases = [
+    item.id,
+    item.hash,
+    item.label,
+    slugifyTabLabel(item.label),
+    compactSlug,
+  ];
+
+  if (item.id === "products") {
+    aliases.push("sanpham", "san-pham", "sp");
+  }
+  if (item.id === "users") {
+    aliases.push("nguoidung", "nguoi-dung", "user");
+  }
+  if (item.id === "orders") {
+    aliases.push("donhang", "don-hang", "order");
+  }
+
+  return aliases.map(normalizeTabToken).filter(Boolean);
+}
+
+function resolveTabIdFromLocation() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const hashToken = normalizeTabToken(normalizeHash(window.location.hash || ""));
+  const queryToken = normalizeTabToken(
+    new URLSearchParams(window.location.search).get("tab") ?? "",
+  );
+  const token = hashToken || queryToken;
+
+  if (!token) {
+    return null;
+  }
+
+  const match = navItems.find((item) => getTabAliases(item).includes(token));
+  return match?.id ?? null;
 }
