@@ -27,6 +27,7 @@ export default function CartPage() {
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [editingAddressId, setEditingAddressId] = useState(null);
+  const [isAddressFormOpen, setIsAddressFormOpen] = useState(false);
   const [addressForm, setAddressForm] = useState({
     label: "",
     receiverName: "",
@@ -251,6 +252,7 @@ export default function CartPage() {
 
   function beginCreateAddress() {
     setEditingAddressId(null);
+    setIsAddressFormOpen(true);
     setAddressForm({
       label: "",
       receiverName: "",
@@ -269,6 +271,7 @@ export default function CartPage() {
     }
 
     setEditingAddressId(selectedAddress.id);
+    setIsAddressFormOpen(true);
     setAddressForm({
       label: selectedAddress.label || "",
       receiverName: selectedAddress.receiverName || "",
@@ -295,15 +298,20 @@ export default function CartPage() {
         throw new Error(phoneError);
       }
 
-      if (!addressForm.addressLine.trim()) {
+      const normalizedAddressLine = String(addressForm.addressLine ?? "").trim();
+      if (!normalizedAddressLine) {
         throw new Error("Địa chỉ không được trống");
       }
 
+      if (normalizedAddressLine.length < 5) {
+        throw new Error("Địa chỉ phải có ít nhất 5 ký tự");
+      }
+
       const payload = {
-        label: addressForm.label,
-        receiverName: addressForm.receiverName,
-        phoneNumber: addressForm.phoneNumber,
-        addressLine: addressForm.addressLine,
+        label: String(addressForm.label ?? "").trim(),
+        receiverName: String(addressForm.receiverName ?? "").trim(),
+        phoneNumber: String(addressForm.phoneNumber ?? "").trim(),
+        addressLine: normalizedAddressLine,
         isDefault: addressForm.isDefault,
       };
 
@@ -313,6 +321,7 @@ export default function CartPage() {
 
       setAddressMessage(editingAddressId ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ mới");
       setEditingAddressId(null);
+      setIsAddressFormOpen(false);
       await loadAddresses();
       if (result?.id) {
         setSelectedAddressId(String(result.id));
@@ -751,7 +760,7 @@ export default function CartPage() {
                       )}
                     </select>
 
-                    {(editingAddressId !== null || addresses.length === 0) && (
+                    {(isAddressFormOpen || addresses.length === 0) && (
                       <div className="space-y-2 rounded-md border border-border/50 p-3">
                         <Input
                           placeholder="Nhãn địa chỉ (Nhà riêng, Công ty...)"
@@ -795,12 +804,15 @@ export default function CartPage() {
                           <Button type="button" variant="hero" size="sm" onClick={submitAddressForm}>
                             {editingAddressId ? "Lưu địa chỉ" : "Thêm địa chỉ"}
                           </Button>
-                          {editingAddressId !== null && (
+                          {(editingAddressId !== null || isAddressFormOpen) && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => setEditingAddressId(null)}
+                              onClick={() => {
+                                setEditingAddressId(null);
+                                setIsAddressFormOpen(false);
+                              }}
                             >
                               Hủy
                             </Button>

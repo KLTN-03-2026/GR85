@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import {
-  mockComponents,
   usageTypes,
   brands,
 } from "@/client/features/catalog/data/mock-components";
@@ -12,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { requestAiBuildRecommendation } from "@/client/features/recommend/data/aiRecommend.api.js";
 import {
   Sparkles,
   Loader2,
@@ -33,6 +33,8 @@ export default function AIRecommendPage() {
   const [allowUsed, setAllowUsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [recommendation, setRecommendation] = useState(null);
+  const [aiSummary, setAiSummary] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -50,55 +52,29 @@ export default function AIRecommendPage() {
 
   const generateRecommendation = async () => {
     setIsLoading(true);
-    // Simulate AI processing
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    setErrorMessage("");
 
-    // Simple recommendation logic based on budget
-    const budgetPerCategory = budget / 8;
-    const recommended = [];
-    const categories = [
-      "cpu",
-      "gpu",
-      "ram",
-      "storage",
-      "motherboard",
-      "psu",
-      "case",
-      "cooling",
-    ];
+    try {
+      const response = await requestAiBuildRecommendation({
+        budget,
+        usage,
+        preferredBrands,
+        allowUsed,
+      });
 
-    categories.forEach((category) => {
-      let categoryBudget = budgetPerCategory;
-      // Adjust budget based on usage
-      if (usage === "gaming") {
-        if (category === "gpu") categoryBudget = budget * 0.35;
-        else if (category === "cpu") categoryBudget = budget * 0.2;
-        else categoryBudget = budget * 0.0625;
-      } else if (usage === "workstation") {
-        if (category === "cpu") categoryBudget = budget * 0.3;
-        else if (category === "ram") categoryBudget = budget * 0.15;
-        else categoryBudget = budget * 0.07;
-      }
-
-      const categoryComponents = mockComponents
-        .filter((c) => c.category === category)
-        .filter((c) => {
-          const price = allowUsed && c.usedPrice ? c.usedPrice : c.price;
-          return price <= categoryBudget * 1.2;
-        })
-        .filter(
-          (c) =>
-            preferredBrands.length === 0 || preferredBrands.includes(c.brand),
-        )
-        .sort((a, b) => b.rating - a.rating);
-
-      if (categoryComponents.length > 0) {
-        recommended.push(categoryComponents[0]);
-      }
-    });
-
-    setRecommendation(recommended);
-    setIsLoading(false);
+      setRecommendation(response.items);
+      setAiSummary(response.summary || "");
+    } catch (error) {
+      setRecommendation(null);
+      setAiSummary("");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Không thể gửi yêu cầu AI tới backend",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const totalPrice =
@@ -260,6 +236,11 @@ export default function AIRecommendPage() {
                     Điền thông tin ở bên trái và nhấn "Gợi ý cấu hình" để nhận
                     cấu hình PC tối ưu từ AI
                   </p>
+                  {errorMessage && (
+                    <p className="text-destructive text-sm mt-4">
+                      {errorMessage}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -274,6 +255,11 @@ export default function AIRecommendPage() {
                           {recommendation.length} linh kiện • Tối ưu cho{" "}
                           {usageTypes.find((u) => u.id === usage)?.name}
                         </p>
+                        {aiSummary && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {aiSummary}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-muted-foreground">
@@ -287,51 +273,60 @@ export default function AIRecommendPage() {
                   </Card>
 
                   {/* Components List */}
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {recommendation.map((component) => {
-                      const Icon = categoryIcons[component.category];
-                      return (
-                        <Card
-                          key={component.id}
-                          className="glass border-border/50 p-4"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div
-                              className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{
-                                backgroundColor: `hsl(var(--${component.category}) / 0.2)`,
-                              }}
-                            >
-                              <Icon
-                                className="w-6 h-6"
+                  {recommendation.length > 0 ? (
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {recommendation.map((component) => {
+                        const Icon = categoryIcons[component.category] || Cpu;
+                        return (
+                          <Card
+                            key={component.id}
+                            className="glass border-border/50 p-4"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div
+                                className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
                                 style={{
-                                  color: `hsl(var(--${component.category}))`,
+                                  backgroundColor: `hsl(var(--${component.category}) / 0.2)`,
                                 }}
-                              />
+                              >
+                                <Icon
+                                  className="w-6 h-6"
+                                  style={{
+                                    color: `hsl(var(--${component.category}))`,
+                                  }}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                                  {component.category}
+                                </p>
+                                <p className="font-semibold line-clamp-1">
+                                  {component.name}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {component.brand}
+                                </p>
+                                <p className="text-lg font-bold text-primary mt-1">
+                                  {formatPrice(
+                                    allowUsed && component.usedPrice
+                                      ? component.usedPrice
+                                      : component.price,
+                                  )}
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                                {component.category}
-                              </p>
-                              <p className="font-semibold line-clamp-1">
-                                {component.name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {component.brand}
-                              </p>
-                              <p className="text-lg font-bold text-primary mt-1">
-                                {formatPrice(
-                                  allowUsed && component.usedPrice
-                                    ? component.usedPrice
-                                    : component.price,
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </Card>
-                      );
-                    })}
-                  </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Card className="glass border-border/50 p-6">
+                      <p className="text-sm text-muted-foreground">
+                        Backend đã nhận yêu cầu nhưng chưa trả về linh kiện cụ
+                        thể.
+                      </p>
+                    </Card>
+                  )}
                 </div>
               )}
             </div>
