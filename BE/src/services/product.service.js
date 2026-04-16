@@ -106,6 +106,7 @@ export async function getCatalogOverview() {
       include: {
         category: true,
         supplier: true,
+        detail: true,
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
           take: 1,
@@ -121,7 +122,7 @@ export async function getCatalogOverview() {
       slug: category.slug,
       productCount: category._count.products,
     })),
-    products: products.map(mapProductListItem),
+    products: products.map(mapProductDetail),
   });
 }
 
@@ -188,7 +189,37 @@ export async function createProduct(input) {
     },
   });
 
-  return serializeData(mapProductDetail(created));
+  // Create ProductDetail if provided
+  if (input.detail && typeof input.detail === "object") {
+    await prisma.productDetail.upsert({
+      where: { productId: created.id },
+      create: {
+        productId: created.id,
+        fullDescription: input.detail.fullDescription?.trim() || null,
+        inTheBox: input.detail.inTheBox?.trim() || null,
+        manualUrl: input.detail.manualUrl?.trim() || null,
+        warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+      },
+      update: {
+        fullDescription: input.detail.fullDescription?.trim() || null,
+        inTheBox: input.detail.inTheBox?.trim() || null,
+        manualUrl: input.detail.manualUrl?.trim() || null,
+        warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+      },
+    });
+  }
+
+  const createdWithDetail = await prisma.product.findUnique({
+    where: { id: created.id },
+    include: {
+      category: true,
+      supplier: true,
+      detail: true,
+      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+    },
+  });
+
+  return serializeData(mapProductDetail(createdWithDetail));
 }
 
 export async function updateProductById(productId, input) {
@@ -293,10 +324,40 @@ export async function updateProductById(productId, input) {
       }
     }
 
+    // Handle ProductDetail
+    if (input.detail !== undefined && input.detail && typeof input.detail === "object") {
+      await tx.productDetail.upsert({
+        where: { productId: id },
+        create: {
+          productId: id,
+          fullDescription: input.detail.fullDescription?.trim() || null,
+          inTheBox: input.detail.inTheBox?.trim() || null,
+          manualUrl: input.detail.manualUrl?.trim() || null,
+          warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+        },
+        update: {
+          fullDescription: input.detail.fullDescription?.trim() || null,
+          inTheBox: input.detail.inTheBox?.trim() || null,
+          manualUrl: input.detail.manualUrl?.trim() || null,
+          warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+        },
+      });
+    }
+
     return product;
   });
 
-  return serializeData(mapProductDetail(updated));
+  const updatedWithDetail = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      category: true,
+      supplier: true,
+      detail: true,
+      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+    },
+  });
+
+  return serializeData(mapProductDetail(updatedWithDetail));
 }
 
 export async function deleteProductById(productId) {
