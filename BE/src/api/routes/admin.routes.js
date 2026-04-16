@@ -32,7 +32,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -66,13 +66,24 @@ const reviewReturnSchema = z.object({
   refundAmount: z.number().positive().optional(),
 });
 
+function isAdminRole(role) {
+  const normalizedRole = String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+}
+
 router.get(
   "/dashboard",
   requireAuth,
   async (req, res) => {
     try {
       // Check if user is Admin
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -93,7 +104,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -120,7 +131,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -141,7 +152,7 @@ router.post(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -168,7 +179,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -189,7 +200,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
