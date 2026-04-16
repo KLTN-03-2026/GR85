@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import {
   addItemToCart,
+  confirmMockVnpayPayment,
   checkoutCart,
   getMyCart,
   handleVnpayIpn,
@@ -37,6 +38,11 @@ const checkoutSchema = z.object({
 const previewPricingSchema = z.object({
   couponCode: z.string().max(50).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
+});
+
+const confirmMockPaymentSchema = z.object({
+  orderId: z.number().int().positive(),
+  paymentCode: z.string().max(64).optional(),
 });
 
 router.get("/vnpay-ipn", async (req, res) => {
@@ -125,6 +131,16 @@ router.post("/preview-pricing", requireAuth, async (req, res) => {
   try {
     const parsed = previewPricingSchema.parse(req.body ?? {});
     const data = await previewCartPricing(Number(req.auth?.sub), parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/mock-vnpay/confirm", requireAuth, async (req, res) => {
+  try {
+    const parsed = confirmMockPaymentSchema.parse(req.body ?? {});
+    const data = await confirmMockVnpayPayment(Number(req.auth?.sub), parsed);
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);

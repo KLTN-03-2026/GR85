@@ -30,6 +30,7 @@ export default function ComponentsPage() {
   const [customMinPrice, setCustomMinPrice] = useState(0);
   const [customMaxPrice, setCustomMaxPrice] = useState(50000000);
   const [page, setPage] = useState(1);
+  const [jumpPageInput, setJumpPageInput] = useState("1");
   const [searchPool, setSearchPool] = useState([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -197,12 +198,20 @@ export default function ComponentsPage() {
   }, [priceRange]);
 
   const totalPages = Math.max(1, Number(pagination.totalPages ?? 1));
+  const visiblePageItems = useMemo(
+    () => buildVisiblePageItems(page, totalPages),
+    [page, totalPages],
+  );
 
   useEffect(() => {
     if (page > totalPages) {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    setJumpPageInput(String(page));
+  }, [page]);
 
   const applyKeywordSearch = () => {
     setPage(1);
@@ -261,6 +270,18 @@ export default function ComponentsPage() {
     const normalizedMax = Math.max(min, max);
     setPriceRange([normalizedMin, normalizedMax]);
     setPage(1);
+  };
+
+  const jumpToPage = () => {
+    const parsed = Number.parseInt(jumpPageInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setJumpPageInput(String(page));
+      return;
+    }
+
+    const targetPage = Math.max(1, Math.min(totalPages, parsed));
+    setPage(targetPage);
+    setJumpPageInput(String(targetPage));
   };
 
   const categoryButtons = useMemo(
@@ -658,35 +679,62 @@ export default function ComponentsPage() {
           )}
 
           {!isLoading && totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              >
-                Trước
-              </Button>
-
-              {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageItem) => (
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button
-                  key={pageItem}
-                  variant={page === pageItem ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => setPage(pageItem)}
+                  disabled={page === 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 >
-                  {pageItem}
+                  Trước
                 </Button>
-              ))}
 
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === totalPages}
-                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              >
-                Sau
-              </Button>
+                {visiblePageItems.map((item, index) =>
+                  item === "..." ? (
+                    <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                      ...
+                    </span>
+                  ) : (
+                    <Button
+                      key={item}
+                      variant={page === item ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </Button>
+                  ),
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === totalPages}
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                >
+                  Sau
+                </Button>
+              </div>
+
+              <div className="ml-0 flex items-center gap-2 sm:ml-4">
+                <Input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpPageInput}
+                  onChange={(event) => setJumpPageInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      jumpToPage();
+                    }
+                  }}
+                  className="h-9 w-24"
+                />
+                <Button size="sm" variant="secondary" onClick={jumpToPage}>
+                  Đến
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -695,17 +743,53 @@ export default function ComponentsPage() {
   );
 }
 
+function buildVisiblePageItems(page, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const slidingStart = Math.max(1, Math.min(page - 1, totalPages - 5));
+
+  return [
+    slidingStart,
+    slidingStart + 1,
+    slidingStart + 2,
+    "...",
+    totalPages - 2,
+    totalPages - 1,
+    totalPages,
+  ];
+}
+
 function mapProductToCardData(product) {
   const categoryMap = {
     cpu: "cpu",
+    gpu: "gpu",
     ram: "ram",
+    storage: "storage",
+    motherboard: "motherboard",
+    psu: "psu",
+    case: "case",
+    cooling: "cooling",
+    hdd: "hdd",
+    monitor: "monitor",
+    mouse: "mouse",
+    keyboard: "keyboard",
+    headset: "headset",
+    speaker: "speaker",
+    webcam: "webcam",
+    microphone: "microphone",
+    cable: "cable",
+    hub: "hub",
+    stand: "stand",
+    pad: "pad",
     vga: "gpu",
     ssd: "storage",
     mainboard: "motherboard",
   };
 
   const categorySlug = String(product?.category?.slug ?? "cpu").toLowerCase();
-  const category = categoryMap[categorySlug] ?? "cpu";
+  const category = categoryMap[categorySlug] ?? categorySlug;
 
   const reviewCountRaw = Number(product?.reviewCount ?? product?.reviews ?? 0);
   const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;

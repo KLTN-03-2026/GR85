@@ -321,7 +321,7 @@ export default function ProductDetailPage() {
           <div className="mt-12 rounded-2xl border border-border/50 bg-secondary/30 p-8">
             <h2 className="text-2xl font-bold mb-6">Mô tả chi tiết</h2>
             <div 
-              className="prose prose-sm dark:prose-invert max-w-none"
+              className="text-sm leading-relaxed text-foreground [&_p]:mb-3 [&_p]:last:mb-0 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
               dangerouslySetInnerHTML={{ __html: product.detail.fullDescription }}
             />
           </div>

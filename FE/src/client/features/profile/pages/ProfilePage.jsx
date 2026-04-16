@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import PaymentQRModal from "@/components/PaymentQRModal";
 import {
   ArrowLeft,
   AlertCircle,
@@ -67,13 +66,6 @@ export default function ProfilePage() {
   const [showPendingOrders, setShowPendingOrders] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [walletMessage, setWalletMessage] = useState(null);
-  const [walletError, setWalletError] = useState(null);
-  const [topUpAmount, setTopUpAmount] = useState("");
-  const [showTopUpQRModal, setShowTopUpQRModal] = useState(false);
-  const [topUpQRData, setTopUpQRData] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
   const [showPasswords, setShowPasswords] = useState({
@@ -113,7 +105,6 @@ export default function ProfilePage() {
       setLoading(true);
       const data = await profileApi.getProfile();
       setProfileData(data);
-      setWalletBalance(Number(data.walletBalance ?? 0));
       setFormData({
         fullName: data.fullName || "",
         phone: data.phone || "",
@@ -126,18 +117,6 @@ export default function ProfilePage() {
       });
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadWallet() {
-    try {
-      setWalletLoading(true);
-      const data = await profileApi.getWallet();
-      setWalletBalance(Number(data?.balance ?? 0));
-    } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Không thể tải số dư ví");
-    } finally {
-      setWalletLoading(false);
     }
   }
 
@@ -178,7 +157,6 @@ export default function ProfilePage() {
       });
       setSession({ token, user: updatedUser });
       setProfileData(updatedUser);
-      setWalletBalance(Number(updatedUser.walletBalance ?? walletBalance));
       setMessage({
         type: "success",
         text: "Cập nhật thông tin thành công",
@@ -255,34 +233,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleTopUpWallet(e) {
-    e.preventDefault();
-
-    try {
-      setWalletError(null);
-      setWalletMessage(null);
-
-      const amount = Number(topUpAmount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Số tiền nạp phải lớn hơn 0");
-      }
-
-      const result = await profileApi.topUpWallet({
-        amount,
-        note: "Nạp tiền từ trang thông tin cá nhân",
-      });
-
-      setWalletBalance(Number(result?.balance ?? walletBalance));
-      setWalletMessage("Đã tạo mã QR nạp tiền và gửi email xác nhận");
-      setTopUpQRData(result);
-      setShowTopUpQRModal(true);
-      setTopUpAmount("");
-      await loadProfile();
-    } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Nạp tiền thất bại");
-    }
-  }
-
   useEffect(() => {
     if (activeTab !== "orders") {
       return;
@@ -290,14 +240,6 @@ export default function ProfilePage() {
 
     loadMyOrders();
   }, [activeTab]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated) {
-      return;
-    }
-
-    loadWallet();
-  }, [isHydrated, isAuthenticated]);
 
   async function handleChangePassword(e) {
     e.preventDefault();
@@ -425,14 +367,6 @@ export default function ProfilePage() {
                       {new Date(profileData?.createdAt).toLocaleDateString(
                         "vi-VN"
                       )}
-                    </p>
-                  </div>
-                  <div className="text-left">
-                    <p className="text-xs font-semibold text-muted-foreground">
-                      SỐ DƯ VÍ
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-sky-700">
-                      {formatMoney(profileData?.walletBalance ?? 0)}
                     </p>
                   </div>
                 </div>
@@ -641,39 +575,6 @@ export default function ProfilePage() {
                       "Lưu thay đổi"
                     )}
                   </Button>
-                  </form>
-                </Card>
-
-                <Card className="p-6">
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">Ví thanh toán</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Nạp tiền và dùng số dư để thanh toán đơn hàng.
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Số dư hiện tại</p>
-                      <p className="text-xl font-bold text-sky-700">{formatMoney(walletBalance)}</p>
-                    </div>
-                  </div>
-
-                  <form className="space-y-3" onSubmit={handleTopUpWallet}>
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <Input
-                        type="number"
-                        min="1000"
-                        step="1000"
-                        placeholder="Nhập số tiền muốn nạp"
-                        value={topUpAmount}
-                        onChange={(event) => setTopUpAmount(event.target.value)}
-                      />
-                      <Button type="submit" disabled={walletLoading}>
-                        {walletLoading ? "Đang xử lý..." : "Nạp tiền"}
-                      </Button>
-                    </div>
-                    {walletMessage ? <p className="text-xs text-emerald-600">{walletMessage}</p> : null}
-                    {walletError ? <p className="text-xs text-destructive">{walletError}</p> : null}
                   </form>
                 </Card>
               </div>
@@ -993,18 +894,6 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
-
-      <PaymentQRModal
-        isOpen={showTopUpQRModal}
-        onClose={() => setShowTopUpQRModal(false)}
-        paymentData={topUpQRData}
-        title="Nạp tiền vào tài khoản"
-        description="Quét mã QR để nạp tiền, sau đó hệ thống sẽ gửi email xác nhận giao dịch cho bạn."
-        actionLabel="Đã quét mã"
-        confirmNote="Email sẽ được gửi về ngay sau khi giao dịch nạp tiền được tạo."
-        codeLabel="Mã nạp tiền"
-        amountLabel="Số tiền nạp"
-      />
     </div>
   );
 }
