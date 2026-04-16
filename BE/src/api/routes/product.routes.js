@@ -51,6 +51,8 @@ const productSchema = z.object({
   price: z.number().positive(),
   stockQuantity: z.number().int().min(0),
   warrantyMonths: z.number().int().min(0).optional(),
+  isHomepageFeatured: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).optional(),
   imageUrl: z.string().optional(),
   specifications: z.record(z.any()).optional(),
   detail: z.object({

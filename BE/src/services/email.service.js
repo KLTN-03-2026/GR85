@@ -9,7 +9,10 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendPaymentCodeEmail(userEmail, { paymentCode, orderId, totalAmount, qrCodeDataUrl }) {
+export async function sendPaymentCodeEmail(
+  userEmail,
+  { paymentCode, orderId, totalAmount, qrCodeDataUrl, bankTransfer },
+) {
   try {
     const mailOptions = {
       from: `"TechBuiltAI" <${env.EMAIL}>`,
@@ -35,6 +38,16 @@ export async function sendPaymentCodeEmail(userEmail, { paymentCode, orderId, to
               <div style="text-align: center; margin: 25px 0;">
                 <p style="color: #4b5563; margin-bottom: 10px;">Quét mã QR để xác nhận thanh toán:</p>
                 <img src="${qrCodeDataUrl}" alt="Payment QR Code" style="width: 250px; height: 250px; border: 2px solid #e5e7eb; border-radius: 8px;" />
+              </div>
+            ` : ""}
+
+            ${bankTransfer ? `
+              <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 5px 0; color: #92400e;"><strong>Ngân hàng:</strong> ${bankTransfer.bankName || "-"}</p>
+                <p style="margin: 5px 0; color: #92400e;"><strong>Số tài khoản:</strong> ${bankTransfer.accountNumber || "-"}</p>
+                <p style="margin: 5px 0; color: #92400e;"><strong>Chủ tài khoản:</strong> ${bankTransfer.accountName || "-"}</p>
+                <p style="margin: 5px 0; color: #92400e;"><strong>Số tiền chuyển:</strong> ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(bankTransfer.amount || totalAmount || 0))}</p>
+                <p style="margin: 5px 0; color: #92400e;"><strong>Nội dung CK:</strong> ${bankTransfer.transferContent || paymentCode}</p>
               </div>
             ` : ""}
 

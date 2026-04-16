@@ -386,6 +386,231 @@ export async function createCouponByAdmin(input) {
   return serializeData(mapCoupon(created));
 }
 
+export async function getWarehouseOverviewByAdmin() {
+  const [warehouses, recentBatches, suppliers, products] = await Promise.all([
+    prisma.warehouse.findMany({
+      orderBy: [{ id: "desc" }],
+      include: {
+        batches: {
+          orderBy: [{ createdAt: "desc" }],
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                stockQuantity: true,
+              },
+            },
+            supplier: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          take: 20,
+        },
+      },
+    }),
+    prisma.batch.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      take: 200,
+    }),
+    prisma.supplier.findMany({
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+      },
+    }),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        stockQuantity: true,
+      },
+    }),
+  ]);
+
+  return serializeData({
+    summary: {
+      totalWarehouses: warehouses.length,
+      totalBatches: recentBatches.length,
+      totalProducts: products.length,
+      totalStockQuantity: products.reduce(
+        (sum, item) => sum + Number(item.stockQuantity ?? 0),
+        0,
+      ),
+    },
+    warehouses,
+    batches: recentBatches,
+    suppliers,
+    products,
+  });
+}
+
+export async function createWarehouseByAdmin(input) {
+  const name = String(input.name ?? "").trim();
+  const address = String(input.address ?? "").trim();
+  const managerName = String(input.managerName ?? "").trim();
+
+  if (!name) {
+    throw new Error("Warehouse name is required");
+  }
+
+  const created = await prisma.warehouse.create({
+    data: {
+      name,
+      address: address || null,
+      managerName: managerName || null,
+    },
+  });
+
+  return serializeData(created);
+}
+
+export async function updateWarehouseByAdmin(warehouseId, input) {
+  const id = Number(warehouseId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid warehouse id");
+  }
+
+  const existing = await prisma.warehouse.findUnique({ where: { id } });
+  if (!existing) {
+    throw new Error("Warehouse not found");
+  }
+
+  const data = {};
+  if (input.name !== undefined) {
+    const name = String(input.name ?? "").trim();
+    if (!name) {
+      throw new Error("Warehouse name is required");
+    }
+    data.name = name;
+  }
+
+  if (input.address !== undefined) {
+    data.address = String(input.address ?? "").trim() || null;
+  }
+
+  if (input.managerName !== undefined) {
+    data.managerName = String(input.managerName ?? "").trim() || null;
+  }
+
+  const updated = await prisma.warehouse.update({
+    where: { id },
+    data,
+  });
+
+  return serializeData(updated);
+}
+
+export async function createBatchImportByAdmin(input) {
+  const warehouseId = Number(input.warehouseId);
+  const productId = Number(input.productId);
+  const supplierId = Number(input.supplierId);
+  const quantity = Number(input.quantity);
+  const importPrice = Number(input.importPrice);
+  const customBatchCode = String(input.batchCode ?? "").trim();
+
+  if (!Number.isFinite(warehouseId) || warehouseId <= 0) {
+    throw new Error("Invalid warehouse id");
+  }
+  if (!Number.isFinite(productId) || productId <= 0) {
+    throw new Error("Invalid product id");
+  }
+  if (!Number.isFinite(supplierId) || supplierId <= 0) {
+    throw new Error("Invalid supplier id");
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error("Quantity must be greater than 0");
+  }
+  if (!Number.isFinite(importPrice) || importPrice <= 0) {
+    throw new Error("Import price must be greater than 0");
+  }
+
+  const [warehouse, product, supplier] = await Promise.all([
+    prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { id: true } }),
+    prisma.product.findUnique({ where: { id: productId }, select: { id: true } }),
+    prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } }),
+  ]);
+
+  if (!warehouse) {
+    throw new Error("Warehouse not found");
+  }
+  if (!product) {
+    throw new Error("Product not found");
+  }
+  if (!supplier) {
+    throw new Error("Supplier not found");
+  }
+
+  const batchCode = customBatchCode || buildBatchCode(productId, warehouseId);
+
+  const existingBatch = await prisma.batch.findUnique({ where: { batchCode } });
+  if (existingBatch) {
+    throw new Error("Batch code already exists");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const batch = await tx.batch.create({
+      data: {
+        batchCode,
+        productId,
+        warehouseId,
+        supplierId,
+        importPrice,
+        quantity,
+      },
+      include: {
+        warehouse: true,
+        product: true,
+        supplier: true,
+      },
+    });
+
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        stockQuantity: {
+          increment: quantity,
+        },
+      },
+    });
+
+    return batch;
+  });
+
+  return serializeData(created);
+}
+
+function buildBatchCode(productId, warehouseId) {
+  const dateText = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const randomPart = Math.floor(1000 + Math.random() * 9000);
+  return `B${dateText}-P${productId}-W${warehouseId}-${randomPart}`;
+}
+
 function mapCoupon(coupon) {
   return {
     id: coupon.id,

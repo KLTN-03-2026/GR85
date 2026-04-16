@@ -25,7 +25,7 @@ export default function ComponentsPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedBrand, setSelectedBrand] = useState("all");
   const [stockStatus, setStockStatus] = useState("all");
-  const [sortBy, setSortBy] = useState("newest");
+  const [sortBy, setSortBy] = useState("display_order");
   const [priceRange, setPriceRange] = useState([0, 50000000]);
   const [customMinPrice, setCustomMinPrice] = useState(0);
   const [customMaxPrice, setCustomMaxPrice] = useState(50000000);
@@ -46,7 +46,7 @@ export default function ComponentsPage() {
     selectedCategory !== "all" ||
     selectedBrand !== "all" ||
     stockStatus !== "all" ||
-    sortBy !== "newest" ||
+    sortBy !== "display_order" ||
     priceRange[0] > 0 ||
     priceRange[1] < 50000000;
 
@@ -141,7 +141,7 @@ export default function ComponentsPage() {
           query.set("stockStatus", stockStatus);
         }
 
-        if (sortBy !== "newest") {
+        if (sortBy !== "display_order") {
           query.set("sort", sortBy);
         }
 
@@ -225,7 +225,7 @@ export default function ComponentsPage() {
     setSelectedCategory("all");
     setSelectedBrand("all");
     setStockStatus("all");
-    setSortBy("newest");
+    setSortBy("display_order");
     setPriceRange([0, 50000000]);
     setCustomMinPrice(0);
     setCustomMaxPrice(50000000);
@@ -363,6 +363,7 @@ export default function ComponentsPage() {
                 setPage(1);
               }}
             >
+              <option value="display_order">Thứ tự ưu tiên</option>
               <option value="newest">Mới nhất</option>
               <option value="price_asc">Giá tăng dần</option>
               <option value="price_desc">Giá giảm dần</option>

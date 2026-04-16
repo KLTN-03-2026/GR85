@@ -72,7 +72,18 @@ const Index = () => {
   }, []);
 
   const featuredComponents = useMemo(() => {
-    return catalog.products.slice(0, 4).map(mapProductToCardData);
+    const prioritized = catalog.products
+      .filter((item) => Boolean(item.isHomepageFeatured))
+      .sort(
+        (a, b) =>
+          Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
+      );
+
+    const fallback = catalog.products.filter(
+      (item) => !Boolean(item.isHomepageFeatured),
+    );
+
+    return [...prioritized, ...fallback].slice(0, 4).map(mapProductToCardData);
   }, [catalog.products]);
 
   const categoryCards = useMemo(() => {

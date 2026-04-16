@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { requestAiBuildRecommendation } from "@/client/features/recommend/data/aiRecommend.api.js";
+import { useCart } from "@/contexts/CartContext";
 import {
   Sparkles,
   Loader2,
@@ -25,7 +26,7 @@ import {
   Fan,
   ArrowRight,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 function getScoreLabel(score) {
   const value = Number(score ?? 0);
@@ -50,6 +51,8 @@ function getScoreClass(score) {
 }
 
 export default function AIRecommendPage() {
+  const navigate = useNavigate();
+  const { addBuildToCart } = useCart();
   const [budget, setBudget] = useState(30000000);
   const [usage, setUsage] = useState("gaming");
   const [preferredBrands, setPreferredBrands] = useState([]);
@@ -57,6 +60,7 @@ export default function AIRecommendPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [recommendationData, setRecommendationData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isAddingCombo, setIsAddingCombo] = useState(false);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -114,6 +118,39 @@ export default function AIRecommendPage() {
     psu: Zap,
     case: Box,
     cooling: Fan,
+  };
+
+  const addRecommendedComboToCart = async () => {
+    if (!Array.isArray(recommendation) || recommendation.length === 0) {
+      return;
+    }
+
+    setIsAddingCombo(true);
+    try {
+      await addBuildToCart({
+        name: `Combo AI - ${usageTypes.find((u) => u.id === usage)?.name ?? "Tu van"}`,
+        components: recommendation.map((item) => ({
+          id: item.id,
+          name: item.name,
+          brand: item.brand,
+          category: item.category,
+          price: Number(item.price ?? 0),
+          image: item.image,
+        })),
+        totalPrice,
+        useUsedPrices: false,
+      });
+
+      navigate("/cart");
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Khong the them combo AI vao gio hang",
+      );
+    } finally {
+      setIsAddingCombo(false);
+    }
   };
 
   return (
@@ -294,6 +331,18 @@ export default function AIRecommendPage() {
                           Điểm tổng: {Number(recommendationData?.buildScore?.overall ?? 0)}/100
                         </p>
                       </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        variant="hero"
+                        className="gap-2"
+                        onClick={addRecommendedComboToCart}
+                        disabled={recommendation.length === 0 || isAddingCombo}
+                      >
+                        {isAddingCombo ? "Dang them combo..." : "Mua ca combo"}
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
                     </div>
 
                     <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">

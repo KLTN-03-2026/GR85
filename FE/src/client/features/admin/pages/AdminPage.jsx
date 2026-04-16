@@ -509,6 +509,8 @@ export default function AdminPage() {
     price: "",
     stockQuantity: "",
     warrantyMonths: "12",
+    isHomepageFeatured: false,
+    displayOrder: "9999",
     imageUrl: "",
     specBrand: "",
     specModel: "",
@@ -529,6 +531,23 @@ export default function AdminPage() {
   const [voucherSearchKeyword, setVoucherSearchKeyword] = useState("");
   const [voucherStatusFilter, setVoucherStatusFilter] = useState("all");
   const [warehouseSearchKeyword, setWarehouseSearchKeyword] = useState("");
+  const [warehouseOverview, setWarehouseOverview] = useState(null);
+  const [isLoadingWarehouse, setIsLoadingWarehouse] = useState(false);
+  const [isSavingWarehouse, setIsSavingWarehouse] = useState(false);
+  const [isImportingBatch, setIsImportingBatch] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({
+    name: "",
+    address: "",
+    managerName: "",
+  });
+  const [batchForm, setBatchForm] = useState({
+    warehouseId: "",
+    productId: "",
+    supplierId: "",
+    importPrice: "",
+    quantity: "",
+    batchCode: "",
+  });
   const [reviewSearchKeyword, setReviewSearchKeyword] = useState("");
   const [reviewSortBy, setReviewSortBy] = useState("newest");
 
@@ -801,6 +820,57 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isHydrated, token, toast]);
+
+  async function loadWarehouseOverview() {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingWarehouse(true);
+    try {
+      const response = await fetch("/api/admin/warehouse/overview", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được dữ liệu kho");
+      }
+
+      setWarehouseOverview(payload);
+      setBatchForm((prev) => ({
+        ...prev,
+        warehouseId:
+          prev.warehouseId || String(payload?.warehouses?.[0]?.id ?? ""),
+        productId: prev.productId || String(payload?.products?.[0]?.id ?? ""),
+        supplierId:
+          prev.supplierId || String(payload?.suppliers?.[0]?.id ?? ""),
+      }));
+    } catch (error) {
+      setWarehouseOverview(null);
+      toast({
+        title: "Không tải được dữ liệu kho",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingWarehouse(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token) {
+      return;
+    }
+
+    if (activeTab !== "warehouse") {
+      return;
+    }
+
+    loadWarehouseOverview();
+  }, [activeTab, isAuthenticated, isHydrated, token]);
 
   async function updateOrderStatus(orderId) {
     if (!token) {
@@ -1302,6 +1372,8 @@ export default function AdminPage() {
       price: "",
       stockQuantity: "",
       warrantyMonths: "12",
+      isHomepageFeatured: false,
+      displayOrder: "9999",
       imageUrl: "",
       specBrand: "",
       specModel: "",
@@ -1329,6 +1401,8 @@ export default function AdminPage() {
       price: String(Number(product.price ?? 0)),
       stockQuantity: String(Number(product.stockQuantity ?? 0)),
       warrantyMonths: String(Number(product.warrantyMonths ?? 12)),
+      isHomepageFeatured: Boolean(product.isHomepageFeatured),
+      displayOrder: String(Number(product.displayOrder ?? 9999)),
       imageUrl: String(product.imageUrl ?? ""),
       specBrand: String(specs.brand ?? ""),
       specModel: String(specs.model ?? ""),
@@ -1366,6 +1440,11 @@ export default function AdminPage() {
     const stockQuantity = Number(productForm.stockQuantity);
     if (productForm.stockQuantity === "" || stockQuantity < 0) {
       errors.push("Tồn kho không được âm");
+    }
+
+    const displayOrder = Number(productForm.displayOrder);
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      errors.push("Thứ tự hiển thị phải >= 0");
     }
 
     // Validate field bắt buộc theo category
@@ -1475,6 +1554,8 @@ export default function AdminPage() {
         price: Number(productForm.price),
         stockQuantity: Number(productForm.stockQuantity),
         warrantyMonths: Number(productForm.warrantyMonths || 0),
+        isHomepageFeatured: Boolean(productForm.isHomepageFeatured),
+        displayOrder: Number(productForm.displayOrder || 9999),
         imageUrl: uploadedImageUrl,
         specifications,
         detail: {
@@ -1680,6 +1761,126 @@ export default function AdminPage() {
     }
   }
 
+  async function createWarehouse() {
+    if (!token) {
+      return;
+    }
+
+    if (!warehouseForm.name.trim()) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Tên kho không được để trống",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingWarehouse(true);
+    try {
+      const response = await fetch("/api/admin/warehouses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: warehouseForm.name.trim(),
+          address: warehouseForm.address.trim() || null,
+          managerName: warehouseForm.managerName.trim() || null,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể tạo kho mới");
+      }
+
+      setWarehouseForm({
+        name: "",
+        address: "",
+        managerName: "",
+      });
+
+      await Promise.all([loadWarehouseOverview(), refreshDashboardSummary()]);
+      toast({ title: "Đã tạo kho mới" });
+    } catch (error) {
+      toast({
+        title: "Không thể tạo kho",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingWarehouse(false);
+    }
+  }
+
+  async function importBatchIntoWarehouse() {
+    if (!token) {
+      return;
+    }
+
+    if (
+      !batchForm.warehouseId ||
+      !batchForm.productId ||
+      !batchForm.supplierId ||
+      !batchForm.importPrice ||
+      !batchForm.quantity
+    ) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng chọn kho, sản phẩm, nhà cung cấp, giá nhập và số lượng",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsImportingBatch(true);
+    try {
+      const response = await fetch("/api/admin/warehouse/import-batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          warehouseId: Number(batchForm.warehouseId),
+          productId: Number(batchForm.productId),
+          supplierId: Number(batchForm.supplierId),
+          importPrice: Number(batchForm.importPrice),
+          quantity: Number(batchForm.quantity),
+          batchCode: batchForm.batchCode.trim() || undefined,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể nhập lô hàng");
+      }
+
+      setBatchForm((prev) => ({
+        ...prev,
+        importPrice: "",
+        quantity: "",
+        batchCode: "",
+      }));
+
+      await Promise.all([
+        loadWarehouseOverview(),
+        refreshDashboardSummary(),
+        refreshManagedProducts(),
+      ]);
+      toast({ title: "Đã nhập lô hàng và cập nhật tồn kho" });
+    } catch (error) {
+      toast({
+        title: "Không thể nhập lô",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImportingBatch(false);
+    }
+  }
+
   const orderStatusRows = useMemo(() => {
     if (!dashboard?.orderStatuses) {
       return [];
@@ -1853,7 +2054,7 @@ export default function AdminPage() {
   }, [dashboard, reviewSearchKeyword, reviewSortBy]);
 
   const filteredWarehouses = useMemo(() => {
-    let filtered = dashboard?.warehouses ?? [];
+    let filtered = warehouseOverview?.warehouses ?? dashboard?.warehouses ?? [];
 
     if (warehouseSearchKeyword.trim()) {
       const keyword = warehouseSearchKeyword.toLowerCase().trim();
@@ -1865,7 +2066,23 @@ export default function AdminPage() {
     }
 
     return filtered;
-  }, [dashboard, warehouseSearchKeyword]);
+  }, [dashboard, warehouseOverview, warehouseSearchKeyword]);
+
+  const warehouseRecentBatches = useMemo(
+    () => warehouseOverview?.batches ?? [],
+    [warehouseOverview],
+  );
+
+  const warehouseSummary = useMemo(
+    () =>
+      warehouseOverview?.summary ?? {
+        totalWarehouses: filteredWarehouses.length,
+        totalBatches: 0,
+        totalProducts: 0,
+        totalStockQuantity: 0,
+      },
+    [warehouseOverview, filteredWarehouses.length],
+  );
 
   async function openUserOrders(user) {
     if (!token || !user?.id) {
@@ -2782,6 +2999,44 @@ export default function AdminPage() {
                       />
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thứ tự hiển thị</label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={productForm.displayOrder}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              displayOrder: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Số càng nhỏ hiển thị càng trước ở trang linh kiện.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Ưu tiên trang chủ</label>
+                        <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(productForm.isHomepageFeatured)}
+                            onChange={(event) =>
+                              setProductForm((prev) => ({
+                                ...prev,
+                                isHomepageFeatured: event.target.checked,
+                              }))
+                            }
+                          />
+                          Hiện trong nhóm sản phẩm nổi bật trang chủ
+                        </label>
+                      </div>
+                    </div>
+
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">
                         Ảnh sản phẩm
@@ -3128,6 +3383,8 @@ export default function AdminPage() {
                       "Tên",
                       "Mã",
                       "Danh mục",
+                      "Ưu tiên",
+                      "Thứ tự",
                       "Giá",
                       "Tồn kho",
                       "Trạng thái",
@@ -3138,6 +3395,8 @@ export default function AdminPage() {
                       item.name,
                       item.productCode,
                       item.category?.name ?? "-",
+                      item.isHomepageFeatured ? "Trang chủ" : "-",
+                      String(Number(item.displayOrder ?? 9999)),
                       formatMoney(item.price),
                       String(item.stockQuantity ?? 0),
                       statusBadge(
@@ -3676,46 +3935,281 @@ export default function AdminPage() {
               sectionId="warehouse"
               icon={Warehouse}
               title="Quản lý kho"
-              description="Danh sách kho và số lô"
+              description="Tạo kho, nhập lô và theo dõi tồn kho"
             />
-            <Panel
-              title="Tình trạng kho"
-              description="Dữ liệu trực tiếp từ bảng Warehouses"
-            >
-              <div className="mb-4 flex gap-3">
-                <div className="flex-1 grid gap-2">
-                  <label className="text-xs font-medium">Tìm kiếm</label>
-                  <input
-                    type="text"
-                    placeholder="Tên kho, địa chỉ, quản lý..."
-                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                    value={warehouseSearchKeyword}
-                    onChange={(e) => setWarehouseSearchKeyword(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <span className="text-xs text-muted-foreground">
-                    Tìm thấy: <strong>{filteredWarehouses.length}</strong> kho
-                  </span>
-                </div>
+            <div className="grid gap-6 xl:grid-cols-5">
+              <div className="xl:col-span-2 space-y-6">
+                <Panel
+                  title="Tạo kho mới"
+                  description="Thêm kho để quản lý lô hàng"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Tên kho</label>
+                      <input
+                        type="text"
+                        placeholder="VD: Kho Hà Nội"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.name}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            name: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Địa chỉ</label>
+                      <input
+                        type="text"
+                        placeholder="Địa chỉ kho"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.address}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Quản lý kho</label>
+                      <input
+                        type="text"
+                        placeholder="Tên người quản lý"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.managerName}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            managerName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Button
+                      onClick={createWarehouse}
+                      disabled={isSavingWarehouse}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isSavingWarehouse ? "Đang tạo..." : "Tạo kho"}
+                    </Button>
+                  </div>
+                </Panel>
+
+                <Panel
+                  title="Nhập lô hàng"
+                  description="Tạo batch mới và cộng tồn kho sản phẩm"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Kho</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.warehouseId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            warehouseId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn kho</option>
+                        {(warehouseOverview?.warehouses ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Sản phẩm</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.productId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            productId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn sản phẩm</option>
+                        {(warehouseOverview?.products ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} (tồn: {Number(item.stockQuantity ?? 0)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Nhà cung cấp</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.supplierId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            supplierId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn nhà cung cấp</option>
+                        {(warehouseOverview?.suppliers ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Giá nhập</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={batchForm.importPrice}
+                          onChange={(e) =>
+                            setBatchForm((prev) => ({
+                              ...prev,
+                              importPrice: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Số lượng</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={batchForm.quantity}
+                          onChange={(e) =>
+                            setBatchForm((prev) => ({
+                              ...prev,
+                              quantity: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Mã lô (tuỳ chọn)</label>
+                      <input
+                        type="text"
+                        placeholder="Để trống để hệ thống tự sinh"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.batchCode}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            batchCode: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <Button
+                      onClick={importBatchIntoWarehouse}
+                      disabled={isImportingBatch}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isImportingBatch ? "Đang nhập..." : "Nhập lô hàng"}
+                    </Button>
+                  </div>
+                </Panel>
               </div>
 
-              {(filteredWarehouses ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Chưa có dữ liệu kho
-                </p>
-              ) : (
-                <DataTable
-                  columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
-                  rows={(filteredWarehouses ?? []).map((item) => [
-                    item.name,
-                    item.address ?? "-",
-                    item.managerName ?? "-",
-                    String(item.batches?.length ?? 0),
-                  ])}
-                />
-              )}
-            </Panel>
+              <div className="xl:col-span-3 space-y-6">
+                <Panel
+                  title="Tình trạng kho"
+                  description="Dữ liệu tổng hợp kho, lô và tồn sản phẩm"
+                >
+                  <div className="mb-4 grid gap-3 md:grid-cols-4">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng kho</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalWarehouses}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Lô gần nhất</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalBatches}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Sản phẩm</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalProducts}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng tồn</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalStockQuantity}</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 flex gap-3">
+                    <div className="flex-1 grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Tên kho, địa chỉ, quản lý..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseSearchKeyword}
+                        onChange={(e) => setWarehouseSearchKeyword(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <span className="text-xs text-muted-foreground">
+                        Tìm thấy: <strong>{filteredWarehouses.length}</strong> kho
+                      </span>
+                    </div>
+                  </div>
+
+                  {isLoadingWarehouse ? (
+                    <p className="text-sm text-muted-foreground">Đang tải dữ liệu kho...</p>
+                  ) : (filteredWarehouses ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu kho</p>
+                  ) : (
+                    <DataTable
+                      columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
+                      rows={(filteredWarehouses ?? []).map((item) => [
+                        item.name,
+                        item.address ?? "-",
+                        item.managerName ?? "-",
+                        String(item.batches?.length ?? 0),
+                      ])}
+                    />
+                  )}
+                </Panel>
+
+                <Panel
+                  title="Lô hàng mới nhất"
+                  description="Theo dõi nhập kho gần đây"
+                >
+                  {(warehouseRecentBatches ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có lô hàng nào</p>
+                  ) : (
+                    <DataTable
+                      columns={["Mã lô", "Kho", "Sản phẩm", "NCC", "Giá nhập", "Số lượng"]}
+                      rows={(warehouseRecentBatches ?? []).map((item) => [
+                        item.batchCode ?? "-",
+                        item.warehouse?.name ?? "-",
+                        item.product?.name ?? "-",
+                        item.supplier?.name ?? "-",
+                        formatMoney(item.importPrice),
+                        String(item.quantity ?? 0),
+                      ])}
+                    />
+                  )}
+                </Panel>
+              </div>
+            </div>
           </section>
 
           <section id="reviews" className={sectionClassName("reviews")}>
