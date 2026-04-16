@@ -547,7 +547,9 @@ function isAdminRole(role) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d");
 
-  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  return (
+    normalizedRole.includes("admin") || normalizedRole.includes("quan tri")
+  );
 }
 
 function resolveMode(pathname) {

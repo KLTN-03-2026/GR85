@@ -25,7 +25,14 @@ export function AppRouter() {
         <Route path="/verify-email" element={<AuthPage />} />
         <Route path="/reset-password" element={<AuthPage />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          }
+        />
         <Route path="/components" element={<ComponentsPage />} />
         <Route path="/components/:slug" element={<ProductDetailPage />} />
         <Route path="/builder" element={<BuilderPage />} />
@@ -76,5 +83,7 @@ function isAdminRole(role) {
     .trim()
     .toLowerCase();
 
-  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  return (
+    normalizedRole.includes("admin") || normalizedRole.includes("quan tri")
+  );
 }
