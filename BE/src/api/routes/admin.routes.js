@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   createCouponByAdmin,
   getAdminDashboard,
+  getUserDetailByAdmin,
   listCouponsForAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
@@ -18,10 +19,35 @@ const updateUserSchema = z.object({
   fullName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
     message: "Full name cannot contain numbers",
   }).optional(),
+  email: z.string().email().optional(),
   phone: z.string().regex(/^\d{10}$/).optional(),
+  address: z.string().max(2000).nullable().optional(),
+  avatarUrl: z.string().url().nullable().optional(),
   roleId: z.number().int().positive().nullable().optional(),
   status: z.enum(["ACTIVE", "BANNED", "UNVERIFIED"]).optional(),
 });
+
+router.get(
+  "/users/:userId/detail",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await getUserDetailByAdmin(req.params.userId);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
 
 const createCouponSchema = z.object({
   code: z.string().min(2).max(50),
@@ -40,13 +66,24 @@ const reviewReturnSchema = z.object({
   refundAmount: z.number().positive().optional(),
 });
 
+function isAdminRole(role) {
+  const normalizedRole = String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+}
+
 router.get(
   "/dashboard",
   requireAuth,
   async (req, res) => {
     try {
       // Check if user is Admin
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -67,7 +104,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -94,7 +131,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -115,7 +152,7 @@ router.post(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -142,7 +179,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -163,7 +200,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 

@@ -26,7 +26,7 @@ export function requirePermission(permission) {
     }
 
     if (
-      req.auth.role === "Admin" ||
+      isAdminRole(req.auth.role) ||
       req.auth.permissions.includes(permission)
     ) {
       return next();
@@ -34,4 +34,15 @@ export function requirePermission(permission) {
 
     return res.status(403).json({ message: "Forbidden" });
   };
+}
+
+function isAdminRole(role) {
+  const normalizedRole = String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
 }

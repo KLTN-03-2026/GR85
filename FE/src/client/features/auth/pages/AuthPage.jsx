@@ -540,10 +540,14 @@ function resolvePostLoginPath(role) {
 }
 
 function isAdminRole(role) {
-  return String(role ?? "")
+  const normalizedRole = String(role ?? "")
     .trim()
     .toLowerCase()
-    .includes("admin");
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
 }
 
 function resolveMode(pathname) {

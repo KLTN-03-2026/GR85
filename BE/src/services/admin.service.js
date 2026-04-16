@@ -143,8 +143,45 @@ export async function updateUserByAdmin(userId, input) {
     data.fullName = normalizeAndValidateFullName(input.fullName, "Full name");
   }
 
+  if (input.email !== undefined) {
+    const email = String(input.email ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Invalid email");
+    }
+
+    const duplicate = await prisma.user.findFirst({
+      where: {
+        email,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new Error("Email already in use");
+    }
+
+    data.email = email;
+  }
+
   if (input.phone !== undefined) {
     data.phone = normalizeAndValidatePhoneNumber(input.phone);
+  }
+
+  if (input.address !== undefined) {
+    const address = String(input.address ?? "").trim();
+    data.address = address || null;
+  }
+
+  if (input.avatarUrl !== undefined) {
+    const avatarUrl = String(input.avatarUrl ?? "").trim();
+    if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
+      throw new Error("Avatar URL must start with http:// or https://");
+    }
+    data.avatarUrl = avatarUrl || null;
   }
 
   if (input.roleId !== undefined) {
@@ -174,6 +211,92 @@ export async function updateUserByAdmin(userId, input) {
   });
 
   return serializeData(updated);
+}
+
+export async function getUserDetailByAdmin(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      role: true,
+      addresses: {
+        orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+      },
+      orders: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: {
+          orderItems: true,
+          coupon: true,
+        },
+      },
+      walletTransactions: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: { order: true },
+      },
+      returnRequests: {
+        orderBy: { requestedAt: "desc" },
+        take: 20,
+        include: { order: true },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: { product: true },
+      },
+      chatRooms: {
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const response = {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    phone: user.phone,
+    address: user.address,
+    avatarUrl: user.avatarUrl,
+    walletBalance: user.walletBalance,
+    status: user.status,
+    roleId: user.roleId,
+    role: user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    addresses: user.addresses,
+    orders: user.orders.map((order) => ({
+      ...order,
+      itemCount: order.orderItems.length,
+    })),
+    walletTransactions: user.walletTransactions,
+    returnRequests: user.returnRequests,
+    reviews: user.reviews,
+    chatRooms: user.chatRooms.map((room) => ({
+      id: room.id,
+      status: room.status,
+      updatedAt: room.updatedAt,
+      lastMessage: room.messages[0]?.content ?? null,
+      lastMessageAt: room.messages[0]?.createdAt ?? null,
+    })),
+  };
+
+  return serializeData(response);
 }
 
 export async function listCouponsForAdmin() {
