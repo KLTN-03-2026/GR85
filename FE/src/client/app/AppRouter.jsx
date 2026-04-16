@@ -17,7 +17,7 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<IndexPage />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route path="/auth" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage />} />
@@ -39,6 +39,20 @@ export function AppRouter() {
   );
 }
 
+function HomeRoute() {
+  const { isHydrated, isAuthenticated, user } = useAuth();
+
+  if (!isHydrated) {
+    return null;
+  }
+
+  if (isAuthenticated && isAdminRole(user?.role)) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <IndexPage />;
+}
+
 function AdminRoute({ children }) {
   const { isHydrated, isAuthenticated, user } = useAuth();
 
@@ -58,8 +72,9 @@ function AdminRoute({ children }) {
 }
 
 function isAdminRole(role) {
-  return String(role ?? "")
+  const normalizedRole = String(role ?? "")
     .trim()
-    .toLowerCase()
-    .includes("admin");
+    .toLowerCase();
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
 }

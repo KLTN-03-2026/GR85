@@ -53,6 +53,12 @@ const productSchema = z.object({
   warrantyMonths: z.number().int().min(0).optional(),
   imageUrl: z.string().optional(),
   specifications: z.record(z.any()).optional(),
+  detail: z.object({
+    fullDescription: z.string().optional(),
+    inTheBox: z.string().optional(),
+    manualUrl: z.string().optional().nullable(),
+    warrantyPolicy: z.string().optional(),
+  }).optional(),
 });
 
 const updateProductSchema = productSchema.partial();

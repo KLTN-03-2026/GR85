@@ -129,6 +129,44 @@ export function ComponentDetailModal({
 
             <Separator />
 
+            {/* Product Details from ProductDetail table */}
+            {(component.fullDescription || component.inTheBox || component.warrantyPolicy || component.manualUrl) && (
+              <>
+                <div>
+                  <h4 className="font-semibold mb-3">Thông tin sản phẩm</h4>
+                  <div className="space-y-3 text-sm">
+                    {component.inTheBox && (
+                      <div>
+                        <p className="text-muted-foreground font-medium mb-1">Trong hộp:</p>
+                        <p className="text-foreground">{component.inTheBox}</p>
+                      </div>
+                    )}
+                    {component.warrantyPolicy && (
+                      <div>
+                        <p className="text-muted-foreground font-medium mb-1">Bảo hành:</p>
+                        <p className="text-foreground">{component.warrantyPolicy}</p>
+                      </div>
+                    )}
+                    {component.manualUrl && (
+                      <div>
+                        <p className="text-muted-foreground font-medium mb-1">Tài liệu:</p>
+                        <a 
+                          href={component.manualUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          Xem hướng dẫn sử dụng →
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+              </>
+            )}
+
             {/* Price */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">

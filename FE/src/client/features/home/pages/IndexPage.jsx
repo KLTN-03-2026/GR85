@@ -387,6 +387,11 @@ function mapProductToCardData(product) {
     specs: sanitizeSpecs(product.specifications),
     compatibility: {},
     description: product.name,
+    // ProductDetail fields
+    fullDescription: product.detail?.fullDescription ?? null,
+    inTheBox: product.detail?.inTheBox ?? null,
+    warrantyPolicy: product.detail?.warrantyPolicy ?? null,
+    manualUrl: product.detail?.manualUrl ?? null,
   };
 }
 

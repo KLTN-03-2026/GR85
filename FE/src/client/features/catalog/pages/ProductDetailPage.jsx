@@ -196,6 +196,36 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
+              {product.detail && (
+                <div className="space-y-3 border-t pt-4">
+                  {product.detail.inTheBox && (
+                    <div>
+                      <h3 className="font-semibold mb-2 text-sm">Trong hộp</h3>
+                      <p className="text-sm text-muted-foreground">{product.detail.inTheBox}</p>
+                    </div>
+                  )}
+                  {product.detail.warrantyPolicy && (
+                    <div>
+                      <h3 className="font-semibold mb-2 text-sm">Chính sách bảo hành</h3>
+                      <p className="text-sm text-muted-foreground">{product.detail.warrantyPolicy}</p>
+                    </div>
+                  )}
+                  {product.detail.manualUrl && (
+                    <div>
+                      <h3 className="font-semibold mb-2 text-sm">Tài liệu kỹ thuật</h3>
+                      <a
+                        href={product.detail.manualUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline"
+                      >
+                        Xem hướng dẫn sử dụng →
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Button
                 disabled={Number(product.stockQuantity) <= 0}
                 onClick={async () => {
@@ -285,6 +315,17 @@ export default function ProductDetailPage() {
             </div>
           </div>
         ) : null}
+
+        {/* Full Description Section */}
+        {product?.detail?.fullDescription && (
+          <div className="mt-12 rounded-2xl border border-border/50 bg-secondary/30 p-8">
+            <h2 className="text-2xl font-bold mb-6">Mô tả chi tiết</h2>
+            <div 
+              className="prose prose-sm dark:prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ __html: product.detail.fullDescription }}
+            />
+          </div>
+        )}
       </main>
     </div>
   );

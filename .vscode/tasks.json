@@ -2,6 +2,15 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Ensure FE typo-js",
+      "type": "shell",
+      "command": "if (Test-Path \"${workspaceFolder}/FE/node_modules/typo-js\") { Write-Host \"typo-js already installed\" } else { npm install typo-js }",
+      "options": {
+        "cwd": "${workspaceFolder}/FE"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Run BE",
       "type": "shell",
       "command": "npm run dev",
@@ -22,12 +31,21 @@
       "problemMatcher": []
     },
     {
-      "label": "Run Fullstack",
+      "label": "Run Services",
       "dependsOn": [
         "Run BE",
         "Run FE"
       ],
       "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Fullstack",
+      "dependsOn": [
+        "Ensure FE typo-js",
+        "Run Services"
+      ],
+      "dependsOrder": "sequence",
       "problemMatcher": []
     }
   ]
