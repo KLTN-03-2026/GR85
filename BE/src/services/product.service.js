@@ -53,8 +53,10 @@ export async function listProducts(query = {}) {
     }),
   ]);
 
+  const productsWithRating = await attachProductRatings(items);
+
   return serializeData({
-    items: items.map(mapProductListItem),
+    items: productsWithRating.map(mapProductListItem),
     pagination: {
       page,
       pageSize,
@@ -86,7 +88,150 @@ export async function getProductDetailBySlug(slug) {
     throw new Error("Product not found");
   }
 
-  return serializeData(mapProductDetail(product));
+  const [productWithRating] = await attachProductRatings([product]);
+  return serializeData(mapProductDetail(productWithRating));
+}
+
+export async function listProductReviewsBySlug(slug) {
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Không tim thấy sản phẩm");
+  }
+
+  const reviews = await prisma.review.findMany({
+    where: { productId: product.id },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const averageRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) / reviews.length
+      : 0;
+
+  return serializeData({
+    items: reviews.map((review) => ({
+      id: review.id,
+      rating: Number(review.rating ?? 0),
+      comment: review.comment ? String(review.comment) : "",
+      createdAt: review.createdAt,
+      user: {
+        id: review.user.id,
+        fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+      },
+    })),
+    summary: {
+      totalReviews: reviews.length,
+      averageRating,
+    },
+  });
+}
+
+export async function createProductReviewBySlug(userId, slug, input = {}) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const rating = Number(input.rating);
+  const comment = String(input.comment ?? "").trim();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Cần có mã định danh sản phẩm");
+  }
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error("Đánh giá phải là số nguyên từ 1 đến 5");
+  }
+
+  if (comment.length > 1000) {
+    throw new Error("Bình luận quá dài");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Không tim thấy sản phẩm");
+  }
+
+  const existingReview = await prisma.review.findFirst({
+    where: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let review;
+
+  if (existingReview) {
+    review = await prisma.review.update({
+      where: { id: existingReview.id },
+      data: {
+        rating,
+        comment: comment || null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  } else {
+    review = await prisma.review.create({
+      data: {
+        userId: normalizedUserId,
+        productId: product.id,
+        rating,
+        comment: comment || null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  return serializeData({
+    id: review.id,
+    rating: Number(review.rating ?? 0),
+    comment: review.comment ? String(review.comment) : "",
+    createdAt: review.createdAt,
+    user: {
+      id: review.user.id,
+      fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+    },
+  });
 }
 
 export async function getCatalogOverview() {
@@ -114,6 +259,8 @@ export async function getCatalogOverview() {
       },
     }),
   ]);
+
+  const productsWithRating = await attachProductRatings(products);
 
   return serializeData({
     categories: categories.map((category) => ({
@@ -174,12 +321,12 @@ export async function createProduct(input) {
         : {},
       images: input.imageUrl
         ? {
-            create: {
-              imageUrl: input.imageUrl,
-              isPrimary: true,
-              sortOrder: 0,
-            },
-          }
+          create: {
+            imageUrl: input.imageUrl,
+            isPrimary: true,
+            sortOrder: 0,
+          },
+        }
         : undefined,
     },
     include: {
@@ -454,6 +601,14 @@ function resolveProductOrderBy(sort) {
 }
 
 function mapProductListItem(product) {
+  const averageRatingRaw = Number(product.averageRating ?? 5);
+  const normalizedRating = Number.isFinite(averageRatingRaw)
+    ? Math.max(0, Math.min(5, averageRatingRaw))
+    : 5;
+
+  const reviewCountRaw = Number(product.reviewCount ?? 0);
+  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+
   return {
     id: product.id,
     name: product.name,
@@ -466,6 +621,8 @@ function mapProductListItem(product) {
     specifications: product.specifications,
     category: product.category,
     supplier: product.supplier,
+    rating: Number(normalizedRating.toFixed(1)),
+    reviewCount,
     imageUrl: product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
   };
 }
@@ -487,4 +644,56 @@ function normalizeProductCode(value) {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+async function attachProductRatings(products) {
+  const productList = Array.isArray(products) ? products : [];
+  if (productList.length === 0) {
+    return [];
+  }
+
+  const productIds = productList
+    .map((product) => Number(product?.id))
+    .filter((id) => Number.isFinite(id));
+
+  if (productIds.length === 0) {
+    return productList.map((product) => ({ ...product, averageRating: 5, reviewCount: 0 }));
+  }
+
+  const aggregates = await prisma.review.groupBy({
+    by: ["productId"],
+    where: {
+      productId: {
+        in: productIds,
+      },
+    },
+    _avg: {
+      rating: true,
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  const aggregateByProductId = new Map(
+    aggregates.map((aggregate) => [
+      Number(aggregate.productId),
+      {
+        averageRating:
+          aggregate._avg?.rating === null || aggregate._avg?.rating === undefined
+            ? 5
+            : Number(aggregate._avg.rating),
+        reviewCount: Number(aggregate._count?._all ?? 0),
+      },
+    ]),
+  );
+
+  return productList.map((product) => {
+    const aggregate = aggregateByProductId.get(Number(product.id));
+    return {
+      ...product,
+      averageRating: aggregate?.averageRating ?? 5,
+      reviewCount: aggregate?.reviewCount ?? 0,
+    };
+  });
 }

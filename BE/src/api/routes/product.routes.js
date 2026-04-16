@@ -6,9 +6,11 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { getCatalogOverview } from "../../services/product.service.js";
 import {
+  createProductReviewBySlug,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
+  listProductReviewsBySlug,
   listProducts,
   updateProductById,
 } from "../../services/product.service.js";
@@ -33,7 +35,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpg", "image/jpeg", "image/png"];
     if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only jpg, jpeg, png images are allowed"));
+      cb(new Error("Chỉ chấp nhận file ảnh JPG, JPEG hoặc PNG"));
       return;
     }
 
@@ -61,6 +63,11 @@ const productSchema = z.object({
 
 const updateProductSchema = productSchema.partial();
 
+const reviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
+
 router.get("/overview", async (_req, res) => {
   try {
     const data = await getCatalogOverview();
@@ -70,7 +77,7 @@ router.get("/overview", async (_req, res) => {
       return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({ message: "Unexpected server error" });
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
 
@@ -92,9 +99,28 @@ router.get("/:slug", async (req, res) => {
   }
 });
 
+router.get("/:slug/reviews", async (req, res) => {
+  try {
+    const data = await listProductReviewsBySlug(req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:slug/reviews", requireAuth, async (req, res) => {
+  try {
+    const parsed = reviewSchema.parse(req.body ?? {});
+    const data = await createProductReviewBySlug(Number(req.auth?.sub), req.params.slug, parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
 router.post("/upload-image", requireAuth, requireAdmin, upload.single("image"), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ message: "Image file is required" });
+    return res.status(400).json({ message: "File ảnh là bắt buộc" });
   }
 
   const imagePath = `/uploads/products/${req.file.filename}`;
@@ -132,7 +158,7 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 
 function requireAdmin(req, res, next) {
   if (req.auth?.role !== "Admin") {
-    return res.status(403).json({ message: "Admin only" });
+    return res.status(403).json({ message: "Chỉ admin mới được phép thực hiện thao tác này" });
   }
 
   return next();
@@ -140,7 +166,7 @@ function requireAdmin(req, res, next) {
 
 function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
-    return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+    return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
   }
 
   if (error instanceof Error) {
@@ -153,7 +179,7 @@ function handleRouteError(error, res) {
     return res.status(status).json({ message: error.message });
   }
 
-  return res.status(500).json({ message: "Unexpected server error" });
+  return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
 }
 
 export { router as productRouter };
