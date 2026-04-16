@@ -179,6 +179,7 @@ export default function AdminPage() {
   const [userDraftById, setUserDraftById] = useState({});
   const [adminOrders, setAdminOrders] = useState([]);
   const [selectedOrderUserFilter, setSelectedOrderUserFilter] = useState(null);
+  const [selectedOrderUserOrders, setSelectedOrderUserOrders] = useState([]);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [statusDraftByOrder, setStatusDraftByOrder] = useState({});
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -206,6 +207,7 @@ export default function AdminPage() {
   const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
   const [isSavingUserDetail, setIsSavingUserDetail] = useState(false);
   const [selectedUserDraft, setSelectedUserDraft] = useState(null);
+  const [userDetailError, setUserDetailError] = useState("");
   const [voucherForm, setVoucherForm] = useState({
     code: "",
     discountType: "PERCENT",
@@ -742,6 +744,7 @@ export default function AdminPage() {
       return;
     }
 
+    setUserDetailError("");
     setIsLoadingUserDetail(true);
     try {
       const response = await fetch(`/api/admin/users/${userId}/detail`, {
@@ -766,9 +769,12 @@ export default function AdminPage() {
         status: payload.status ?? "ACTIVE",
       });
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Đã xảy ra lỗi";
+      setUserDetailError(message);
       toast({
         title: "Không tải được hồ sơ người dùng",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -1200,10 +1206,60 @@ export default function AdminPage() {
       return adminOrders;
     }
 
+    if (selectedOrderUserOrders.length > 0) {
+      return selectedOrderUserOrders;
+    }
+
     return adminOrders.filter(
       (item) => Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
     );
-  }, [adminOrders, selectedOrderUserFilter]);
+  }, [adminOrders, selectedOrderUserFilter, selectedOrderUserOrders]);
+
+  async function openUserOrders(user) {
+    if (!token || !user?.id) {
+      return;
+    }
+
+    try {
+      setSelectedOrderUserFilter({
+        id: user.id,
+        fullName: user.fullName ?? user.email,
+      });
+      setActiveTab("orders");
+
+      const response = await fetch(`/api/admin/users/${user.id}/detail`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được đơn hàng của người dùng");
+      }
+
+      const mappedOrders = (Array.isArray(payload?.orders) ? payload.orders : []).map(
+        (order) => ({
+          ...order,
+          customer: {
+            id: user.id,
+            fullName: user.fullName ?? user.email,
+            email: user.email ?? "-",
+          },
+          itemCount: Number(order.itemCount ?? order.orderItems?.length ?? 0),
+        }),
+      );
+
+      setSelectedOrderUserOrders(mappedOrders);
+    } catch (error) {
+      setSelectedOrderUserOrders([]);
+      toast({
+        title: "Không tải được đơn của người dùng",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
 
   const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
   const summaryCards = [
@@ -1317,7 +1373,6 @@ export default function AdminPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  title={item.hash}
                   className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
                     activeTab === item.id
                       ? "bg-primary text-primary-foreground"
@@ -1328,7 +1383,24 @@ export default function AdminPage() {
                     <item.icon className="h-4 w-4" />
                     {item.label}
                   </span>
-                  <ChevronRight className="h-4 w-4 opacity-50" />
+                  <span className="flex items-center gap-2">
+                    <a
+                      href={item.hash}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setActiveTab(item.id);
+                      }}
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                        activeTab === item.id
+                          ? "bg-white/20 text-primary-foreground"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                      title={`Đi đến ${item.hash}`}
+                    >
+                      {item.hash}
+                    </a>
+                    <ChevronRight className="h-4 w-4 opacity-50" />
+                  </span>
                 </button>
               ))}
             </div>
@@ -1552,13 +1624,7 @@ export default function AdminPage() {
                         size="sm"
                         variant="ghost"
                         className="gap-1"
-                        onClick={() => {
-                          setSelectedOrderUserFilter({
-                            id: item.id,
-                            fullName: item.fullName ?? item.email,
-                          });
-                          setActiveTab("orders");
-                        }}
+                        onClick={() => openUserOrders(item)}
                       >
                         Xem đơn
                       </Button>
@@ -1587,6 +1653,10 @@ export default function AdminPage() {
               >
                 {isLoadingUserDetail && !selectedUserDetail ? (
                   <p className="text-sm text-muted-foreground">Đang tải chi tiết người dùng...</p>
+                ) : userDetailError ? (
+                  <p className="text-sm text-rose-600">
+                    Không thể tải dữ liệu chi tiết: {userDetailError}
+                  </p>
                 ) : selectedUserDetail && selectedUserDraft ? (
                   <div className="space-y-6">
                     <div className="grid gap-3 md:grid-cols-2">
@@ -2358,12 +2428,15 @@ export default function AdminPage() {
               {selectedOrderUserFilter?.id && (
                 <div className="mb-3 flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2 text-sm text-sky-700">
                   <span>
-                    Đang lọc theo người dùng: <strong>{selectedOrderUserFilter.fullName}</strong>
+                    Đang xem trực tiếp đơn hàng của: <strong>{selectedOrderUserFilter.fullName}</strong>
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setSelectedOrderUserFilter(null)}
+                    onClick={() => {
+                      setSelectedOrderUserFilter(null);
+                      setSelectedOrderUserOrders([]);
+                    }}
                   >
                     Bỏ lọc
                   </Button>
