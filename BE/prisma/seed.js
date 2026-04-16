@@ -957,27 +957,9 @@ async function main() {
     });
   }
 
-  // Remove previously seeded warehouse demo data.
-  await prisma.batch.deleteMany({
-    where: {
-      batchCode: {
-        startsWith: "SEED-WH-",
-      },
-    },
-  });
-
-  await prisma.warehouse.deleteMany({
-    where: {
-      name: {
-        in: ["Kho trung tam TP.HCM", "Kho phia Bac"],
-      },
-    },
-  });
-
   console.log("Seeded admin account and sample catalog successfully.");
   console.log("Admin login: admin@gmail.com / 123456");
   console.log(`Total seeded products: ${productSeeds.length}`);
-  console.log("Warehouse demo data removed.");
   console.log(`User role id: ${userRole.id}`);
 }
 
