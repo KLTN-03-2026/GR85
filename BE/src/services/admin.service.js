@@ -12,6 +12,7 @@ export async function getAdminDashboard() {
     totalProducts,
     totalRevenue,
     orderStatuses,
+    userStatuses,
     users,
     products,
     orders,
@@ -31,6 +32,10 @@ export async function getAdminDashboard() {
     prisma.order.groupBy({
       by: ["orderStatus"],
       _count: { orderStatus: true },
+    }),
+    prisma.user.groupBy({
+      by: ["status"],
+      _count: { status: true },
     }),
     prisma.user.findMany({
       take: 10,
@@ -89,6 +94,7 @@ export async function getAdminDashboard() {
       totalRevenue: totalRevenue._sum.totalAmount ?? 0,
     },
     orderStatuses,
+    userStatuses,
     users,
     products,
     orders,

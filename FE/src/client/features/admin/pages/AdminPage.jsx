@@ -11,6 +11,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Search,
   ShieldCheck,
   Sparkles,
   Star,
@@ -31,6 +32,21 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
 
 const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
@@ -440,6 +456,9 @@ export default function AdminPage() {
   const [savingUserId, setSavingUserId] = useState(null);
   const [userDraftById, setUserDraftById] = useState({});
   const [adminOrders, setAdminOrders] = useState([]);
+  const [orderSearchKeyword, setOrderSearchKeyword] = useState("");
+  const [orderSortBy, setOrderSortBy] = useState("newest");
+  const [orderFilterStatus, setOrderFilterStatus] = useState("all");
   const [selectedOrderUserFilter, setSelectedOrderUserFilter] = useState(null);
   const [selectedOrderUserOrders, setSelectedOrderUserOrders] = useState([]);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
@@ -503,6 +522,15 @@ export default function AdminPage() {
     warrantyPolicy: "",
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
+  const [userSearchKeyword, setUserSearchKeyword] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
+  const [catalogSearchKeyword, setCatalogSearchKeyword] = useState("");
+  const [voucherSearchKeyword, setVoucherSearchKeyword] = useState("");
+  const [voucherStatusFilter, setVoucherStatusFilter] = useState("all");
+  const [warehouseSearchKeyword, setWarehouseSearchKeyword] = useState("");
+  const [reviewSearchKeyword, setReviewSearchKeyword] = useState("");
+  const [reviewSortBy, setReviewSortBy] = useState("newest");
 
   useEffect(() => {
     const tabIdFromUrl = resolveTabIdFromLocation();
@@ -1496,6 +1524,61 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteWalletTransaction(userId, transactionId) {
+    if (!token) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      "Bạn có chắc muốn xóa giao dịch ví này? Hành động này không thể hoàn tác.",
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/users/${userId}/wallet-transactions/${transactionId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.message ?? "Xóa giao dịch ví thất bại",
+        );
+      }
+
+      // Remove transaction from selectedUserDetail
+      setSelectedUserDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          walletTransactions: (prev.walletTransactions ?? []).filter(
+            (tx) => tx.id !== transactionId,
+          ),
+        };
+      });
+
+      toast({
+        title: "Đã xóa giao dịch ví",
+        description: "Giao dịch ví đã được xóa thành công",
+      });
+    } catch (error) {
+      toast({
+        title: "Không thể xóa giao dịch",
+        description:
+          error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
+
   async function deleteProduct(productId) {
     if (!token) {
       return;
@@ -1608,20 +1691,181 @@ export default function AdminPage() {
     ]);
   }, [dashboard]);
 
+  const orderStatusChartData = useMemo(() => {
+    if (!dashboard?.orderStatuses) {
+      return [];
+    }
+
+    return dashboard.orderStatuses.map((item) => ({
+      name: formatEnum(item.orderStatus),
+      value: item._count?.orderStatus ?? 0,
+    }));
+  }, [dashboard]);
+
+  const userStatusChartData = useMemo(() => {
+    if (!dashboard?.userStatuses) {
+      return [];
+    }
+
+    return dashboard.userStatuses.map((item) => ({
+      name: formatEnum(item.status),
+      value: item._count?.status ?? 0,
+    }));
+  }, [dashboard]);
+
   const displayedOrders = useMemo(() => {
-    if (!selectedOrderUserFilter?.id) {
-      return adminOrders;
+    let filtered = [];
+
+    if (selectedOrderUserFilter?.id) {
+      if (selectedOrderUserOrders.length > 0) {
+        filtered = selectedOrderUserOrders;
+      } else {
+        filtered = adminOrders.filter(
+          (item) =>
+            Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
+        );
+      }
+    } else {
+      filtered = adminOrders;
     }
 
-    if (selectedOrderUserOrders.length > 0) {
-      return selectedOrderUserOrders;
+    // Apply search filter
+    if (orderSearchKeyword.trim()) {
+      const keyword = orderSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const orderId = String(item.id).toLowerCase();
+        const customerName = (item.customer?.fullName ?? "").toLowerCase();
+        const customerEmail = (item.customer?.email ?? "").toLowerCase();
+        return (
+          orderId.includes(keyword) ||
+          customerName.includes(keyword) ||
+          customerEmail.includes(keyword)
+        );
+      });
     }
 
-    return adminOrders.filter(
-      (item) =>
-        Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
-    );
-  }, [adminOrders, selectedOrderUserFilter, selectedOrderUserOrders]);
+    // Apply status filter
+    if (orderFilterStatus !== "all") {
+      filtered = filtered.filter(
+        (item) => item.orderStatus === orderFilterStatus
+      );
+    }
+
+    // Apply sort
+    if (orderSortBy === "newest") {
+      filtered.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+    } else if (orderSortBy === "oldest") {
+      filtered.sort(
+        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+      );
+    } else if (orderSortBy === "highest-amount") {
+      filtered.sort((a, b) => (b.totalAmount ?? 0) - (a.totalAmount ?? 0));
+    } else if (orderSortBy === "lowest-amount") {
+      filtered.sort((a, b) => (a.totalAmount ?? 0) - (b.totalAmount ?? 0));
+    }
+
+    return filtered;
+  }, [
+    adminOrders,
+    selectedOrderUserFilter,
+    selectedOrderUserOrders,
+    orderSearchKeyword,
+    orderSortBy,
+    orderFilterStatus,
+  ]);
+
+  const filteredUsers = useMemo(() => {
+    let filtered = dashboard?.users ?? [];
+
+    if (userSearchKeyword.trim()) {
+      const keyword = userSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.fullName ?? "").toLowerCase().includes(keyword) ||
+        (item.email ?? "").toLowerCase().includes(keyword) ||
+        (item.phone ?? "").includes(keyword),
+      );
+    }
+
+    if (userStatusFilter !== "all") {
+      filtered = filtered.filter((item) => item.status === userStatusFilter);
+    }
+
+    return filtered;
+  }, [dashboard, userSearchKeyword, userStatusFilter]);
+
+  const filteredSuppliers = useMemo(() => {
+    let filtered = dashboard?.suppliers ?? [];
+
+    if (catalogSearchKeyword.trim()) {
+      const keyword = catalogSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.name ?? "").toLowerCase().includes(keyword) ||
+        (item.email ?? "").toLowerCase().includes(keyword) ||
+        (item.phone ?? "").includes(keyword),
+      );
+    }
+
+    return filtered;
+  }, [dashboard, catalogSearchKeyword]);
+
+  const filteredCoupons = useMemo(() => {
+    let filtered = dashboard?.coupons ?? [];
+
+    if (voucherSearchKeyword.trim()) {
+      const keyword = voucherSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.code ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    if (voucherStatusFilter !== "all") {
+      filtered = filtered.filter((item) => item.status === voucherStatusFilter);
+    }
+
+    return filtered;
+  }, [dashboard, voucherSearchKeyword, voucherStatusFilter]);
+
+  const filteredReviews = useMemo(() => {
+    let filtered = dashboard?.reviews ?? [];
+
+    if (reviewSearchKeyword.trim()) {
+      const keyword = reviewSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.user?.fullName ?? "").toLowerCase().includes(keyword) ||
+        (item.user?.email ?? "").toLowerCase().includes(keyword) ||
+        (item.product?.name ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    if (reviewSortBy === "newest") {
+      filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else if (reviewSortBy === "oldest") {
+      filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    } else if (reviewSortBy === "highest-rating") {
+      filtered.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    } else if (reviewSortBy === "lowest-rating") {
+      filtered.sort((a, b) => (a.rating ?? 0) - (b.rating ?? 0));
+    }
+
+    return filtered;
+  }, [dashboard, reviewSearchKeyword, reviewSortBy]);
+
+  const filteredWarehouses = useMemo(() => {
+    let filtered = dashboard?.warehouses ?? [];
+
+    if (warehouseSearchKeyword.trim()) {
+      const keyword = warehouseSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.name ?? "").toLowerCase().includes(keyword) ||
+        (item.address ?? "").toLowerCase().includes(keyword) ||
+        (item.managerName ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    return filtered;
+  }, [dashboard, warehouseSearchKeyword]);
 
   async function openUserOrders(user) {
     if (!token || !user?.id) {
@@ -1872,10 +2116,31 @@ export default function AdminPage() {
               title="Trạng thái đơn hàng"
               description="Số lượng theo trạng thái"
             >
-              <DataTable
-                columns={["Trạng thái", "Số lượng"]}
-                rows={orderStatusRows}
-              />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Biểu đồ cột</h4>
+                  {orderStatusChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={orderStatusChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
+                  )}
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Bảng dữ liệu</h4>
+                  <DataTable
+                    columns={["Trạng thái", "Số lượng"]}
+                    rows={orderStatusRows}
+                  />
+                </div>
+              </div>
             </Panel>
           </section>
 
@@ -1890,6 +2155,37 @@ export default function AdminPage() {
               title="Danh sách user"
               description="Dữ liệu trực tiếp từ bảng Users"
             >
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Tên, email, điện thoại..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={userSearchKeyword}
+                    onChange={(e) => setUserSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Trạng thái</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả</option>
+                    <option value="ACTIVE">Đang hoạt động</option>
+                    <option value="UNVERIFIED">Chưa xác minh</option>
+                    <option value="BANNED">Đã khóa</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredUsers.length}</strong> user
+                  </span>
+                </div>
+              </div>
+
               <DataTable
                 columns={[
                   "Tên",
@@ -1899,7 +2195,7 @@ export default function AdminPage() {
                   "Trạng thái",
                   "Thao tác",
                 ]}
-                rows={(dashboard?.users ?? []).map((item) => [
+                rows={(filteredUsers ?? []).map((item) => [
                   editingUserId === item.id ? (
                     <input
                       key={`fullname-${item.id}`}
@@ -2229,13 +2525,23 @@ export default function AdminPage() {
                     <div className="grid gap-4 xl:grid-cols-2">
                       <Panel title="Giao dịch ví" description="Lịch sử topup, thanh toán, hoàn tiền">
                         <DataTable
-                          columns={["Loại", "Số tiền", "Đơn", "Ghi chú", "Thời gian"]}
+                          columns={["Loại", "Số tiền", "Đơn", "Ghi chú", "Thời gian", "Thao tác"]}
                           rows={(selectedUserDetail.walletTransactions ?? []).map((tx) => [
                             formatEnum(tx.type),
                             formatMoney(tx.amount),
                             tx.orderId ? `#${tx.orderId}` : "-",
                             tx.note ?? "-",
                             formatDate(tx.createdAt),
+                            <Button
+                              key={`delete-tx-${tx.id}`}
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-rose-600"
+                              onClick={() => deleteWalletTransaction(selectedUserDetail.id, tx.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Xóa
+                            </Button>,
                           ])}
                         />
                       </Panel>
@@ -2258,6 +2564,64 @@ export default function AdminPage() {
                 ) : null}
               </Panel>
             )}
+
+            <Panel
+              title="Thống kê trạng thái người dùng"
+              description="Phân bố người dùng theo trạng thái"
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Biểu đồ tròn</h4>
+                  {userStatusChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={userStatusChartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value }) => `${name}: ${value}`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {userStatusChartData.map((_, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={
+                                [
+                                  "#10b981",
+                                  "#f59e0b",
+                                  "#ef4444",
+                                  "#6366f1",
+                                ][index % 4]
+                              }
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
+                  )}
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Chi tiết</h4>
+                  <div className="space-y-2">
+                    {userStatusChartData.map((item) => (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>{item.name}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
           </section>
 
           <section id="products" className={sectionClassName("products")}>
@@ -2877,9 +3241,27 @@ export default function AdminPage() {
               title="Nhà cung cấp"
               description="Dữ liệu trực tiếp từ bảng Suppliers"
             >
+              <div className="mb-4 flex gap-3">
+                <div className="flex-1 grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Tên, email, điện thoại..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={catalogSearchKeyword}
+                    onChange={(e) => setCatalogSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredSuppliers.length}</strong> NCC
+                  </span>
+                </div>
+              </div>
+
               <DataTable
                 columns={["Tên", "Email", "Điện thoại", "Người liên hệ"]}
-                rows={(dashboard?.suppliers ?? []).map((item) => [
+                rows={(filteredSuppliers ?? []).map((item) => [
                   item.name,
                   item.email ?? "-",
                   item.phone ?? "-",
@@ -3062,6 +3444,37 @@ export default function AdminPage() {
                   title="Danh sách mã giảm giá"
                   description="Mã giảm giá được tạo từ trang quản trị"
                 >
+                  <div className="mb-4 grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Mã giảm giá..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={voucherSearchKeyword}
+                        onChange={(e) => setVoucherSearchKeyword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Trạng thái</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={voucherStatusFilter}
+                        onChange={(e) => setVoucherStatusFilter(e.target.value)}
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="ACTIVE">Đang hoạt động</option>
+                        <option value="EXPIRED">Hết hạn</option>
+                        <option value="DISABLED">Vô hiệu hóa</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <span className="text-xs text-muted-foreground">
+                        Tìm thấy: <strong>{filteredCoupons.length}</strong> mã
+                      </span>
+                    </div>
+                  </div>
+
                   <DataTable
                     columns={[
                       "Mã",
@@ -3072,7 +3485,7 @@ export default function AdminPage() {
                       "Thời gian",
                       "Trạng thái",
                     ]}
-                    rows={(dashboard?.coupons ?? []).map((item) => [
+                    rows={(filteredCoupons ?? []).map((item) => [
                       item.code,
                       formatEnum(item.discountType),
                       item.discountType === "PERCENT"
@@ -3117,6 +3530,51 @@ export default function AdminPage() {
                   </Button>
                 </div>
               )}
+
+              <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Mã đơn, tên khách, email..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderSearchKeyword}
+                    onChange={(e) => setOrderSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Sắp xếp</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderSortBy}
+                    onChange={(e) => setOrderSortBy(e.target.value)}
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="highest-amount">Số tiền cao</option>
+                    <option value="lowest-amount">Số tiền thấp</option>
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Trạng thái</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderFilterStatus}
+                    onChange={(e) => setOrderFilterStatus(e.target.value)}
+                  >
+                    <option value="all">Tất cả</option>
+                    <option value="PENDING">Chờ xác nhận</option>
+                    <option value="SHIPPING">Đang giao</option>
+                    <option value="DELIVERED">Hoàn thành</option>
+                    <option value="CANCELLED">Đã hủy</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{displayedOrders.length}</strong> đơn
+                  </span>
+                </div>
+              </div>
 
               <DataTable
                 columns={[
@@ -3224,14 +3682,32 @@ export default function AdminPage() {
               title="Tình trạng kho"
               description="Dữ liệu trực tiếp từ bảng Warehouses"
             >
-              {(dashboard?.warehouses ?? []).length === 0 ? (
+              <div className="mb-4 flex gap-3">
+                <div className="flex-1 grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Tên kho, địa chỉ, quản lý..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={warehouseSearchKeyword}
+                    onChange={(e) => setWarehouseSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredWarehouses.length}</strong> kho
+                  </span>
+                </div>
+              </div>
+
+              {(filteredWarehouses ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Chưa có dữ liệu kho
                 </p>
               ) : (
                 <DataTable
                   columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
-                  rows={(dashboard?.warehouses ?? []).map((item) => [
+                  rows={(filteredWarehouses ?? []).map((item) => [
                     item.name,
                     item.address ?? "-",
                     item.managerName ?? "-",
@@ -3253,9 +3729,40 @@ export default function AdminPage() {
               title="Review moderation"
               description="Dữ liệu trực tiếp từ bảng Reviews"
             >
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Khách, sản phẩm..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={reviewSearchKeyword}
+                    onChange={(e) => setReviewSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Sắp xếp</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={reviewSortBy}
+                    onChange={(e) => setReviewSortBy(e.target.value)}
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="highest-rating">Đánh giá cao</option>
+                    <option value="lowest-rating">Đánh giá thấp</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredReviews.length}</strong> review
+                  </span>
+                </div>
+              </div>
+
               <DataTable
                 columns={["Sản phẩm", "Rating", "Khách hàng", "Nội dung"]}
-                rows={(dashboard?.reviews ?? []).map((item) => [
+                rows={(filteredReviews ?? []).map((item) => [
                   item.product?.name ?? "-",
                   `${item.rating} sao`,
                   item.user?.fullName ?? item.user?.email ?? "-",
@@ -3395,53 +3902,7 @@ function SectionHeader({ icon: Icon, title, description, sectionId }) {
         <h3 className="text-2xl font-bold">{title}</h3>
         <p className="mt-1 text-muted-foreground">{description}</p>
       </div>
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="outline" className="w-fit gap-2">
-            <Activity className="h-4 w-4" />
-            Bảng dữ liệu thực
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-h-[85vh] w-[95vw] max-w-6xl overflow-hidden p-0">
-          <DialogHeader className="border-b bg-slate-50/80 px-6 py-4">
-            <DialogTitle>Sơ đồ dữ liệu: {title}</DialogTitle>
-            <DialogDescription>
-              {schema.headline}
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="max-h-[calc(85vh-88px)] overflow-y-auto p-6">
-            <div className="rounded-2xl border border-border/70 bg-white p-4">
-              <h4 className="text-base font-semibold">Bang lien quan</h4>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {schema.tables.map((tableName) => (
-                  <span
-                    key={tableName}
-                    className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-                  >
-                    {tableName}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-border/70 bg-white p-4">
-              <h4 className="text-base font-semibold">Quan he du lieu chinh</h4>
-              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                {schema.relations.map((relation) => (
-                  <p key={relation} className="rounded-xl bg-slate-50 px-3 py-2">
-                    {relation}
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            <p className="mt-4 text-xs text-muted-foreground">
-              Nguồn dữ liệu: BE/prisma/schema.prisma
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
