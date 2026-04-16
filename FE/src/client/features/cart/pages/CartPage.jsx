@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import PaymentQRModal from "@/components/PaymentQRModal";
 import { useCart } from "@/contexts/CartContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AOS from "aos";
@@ -16,7 +15,7 @@ import {
   ArrowRight,
   Package,
 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { profileApi } from "@/client/features/profile/data/profile.api";
 
 export default function CartPage() {
@@ -43,18 +42,11 @@ export default function CartPage() {
   const [voucherError, setVoucherError] = useState("");
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
-  const [paymentQRData, setPaymentQRData] = useState(null);
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [useWalletBalance, setUseWalletBalance] = useState(true);
-  const [topUpAmount, setTopUpAmount] = useState("");
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [walletMessage, setWalletMessage] = useState("");
-  const [walletError, setWalletError] = useState("");
   const [removingBundleId, setRemovingBundleId] = useState("");
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
   const hasInitializedSelectionRef = useRef(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const checkoutProductIds = useMemo(() => {
     const stateProductIds = location.state?.checkoutProductIds;
     if (!Array.isArray(stateProductIds)) {
@@ -173,22 +165,9 @@ export default function CartPage() {
     }
   }, []);
 
-  const loadWallet = useCallback(async () => {
-    try {
-      setWalletLoading(true);
-      const data = await profileApi.getWallet();
-      setWalletBalance(Number(data?.balance ?? 0));
-    } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Không tải được số dư ví");
-    } finally {
-      setWalletLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     loadAddresses();
-    loadWallet();
-  }, [loadAddresses, loadWallet]);
+  }, [loadAddresses]);
 
   useEffect(() => {
     AOS.init({
@@ -393,29 +372,6 @@ export default function CartPage() {
     } catch (error) {
       setPricingPreview(null);
       setVoucherError(error instanceof Error ? error.message : "Áp voucher thất bại");
-    }
-  }
-
-  async function topUpWallet() {
-    setWalletError("");
-    setWalletMessage("");
-
-    try {
-      const amount = Number(topUpAmount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Số tiền nạp phải lớn hơn 0");
-      }
-
-      const result = await profileApi.topUpWallet({
-        amount,
-        note: "Nạp tiền nhanh từ trang giỏ hàng",
-      });
-
-      setWalletBalance(Number(result?.balance ?? walletBalance));
-      setTopUpAmount("");
-      setWalletMessage("Nạp tiền thành công");
-    } catch (error) {
-      setWalletError(error instanceof Error ? error.message : "Nạp tiền thất bại");
     }
   }
 
@@ -867,36 +823,6 @@ export default function CartPage() {
                     />
                   </div>
 
-                  <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50/70 p-3 space-y-3">
-                    <p className="text-sm font-semibold text-sky-900">Ví tài khoản</p>
-                    <p className="text-sm text-sky-800">
-                      Số dư hiện tại: <span className="font-semibold">{formatPrice(walletBalance)}</span>
-                    </p>
-                    <label className="flex items-center gap-2 text-sm text-sky-900">
-                      <input
-                        type="checkbox"
-                        checked={useWalletBalance}
-                        onChange={(event) => setUseWalletBalance(event.target.checked)}
-                      />
-                      Dùng số dư ví để trừ vào đơn hàng
-                    </label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        min="1000"
-                        step="1000"
-                        placeholder="Nạp thêm tiền vào ví"
-                        value={topUpAmount}
-                        onChange={(event) => setTopUpAmount(event.target.value)}
-                      />
-                      <Button type="button" variant="outline" onClick={topUpWallet} disabled={walletLoading}>
-                        Nạp tiền
-                      </Button>
-                    </div>
-                    {walletMessage && <p className="text-xs text-emerald-600">{walletMessage}</p>}
-                    {walletError && <p className="text-xs text-destructive">{walletError}</p>}
-                  </div>
-
                   <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
                     <p className="mb-1 text-sm font-semibold text-emerald-900">Phương thức thanh toán</p>
                     <p className="text-sm text-emerald-800">
@@ -918,6 +844,14 @@ export default function CartPage() {
                           throw new Error(checkoutPhoneError);
                         }
 
+                        const normalizedShippingAddress = String(shippingAddress ?? "").trim();
+                        if (!normalizedShippingAddress) {
+                          throw new Error("Địa chỉ giao hàng không được để trống");
+                        }
+                        if (normalizedShippingAddress.length < 5) {
+                          throw new Error("Địa chỉ giao hàng phải có ít nhất 5 ký tự");
+                        }
+
                         if (selectedCartItemIds.length === 0) {
                           throw new Error("Vui lòng chọn sản phẩm hoặc combo để thanh toán");
                         }
@@ -928,21 +862,22 @@ export default function CartPage() {
                           paymentMethod,
                           addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
                           couponCode: pricingPreview?.appliedCoupon?.code ?? undefined,
-                          useWalletBalance,
+                          useWalletBalance: false,
                           selectedCartItemIds,
                         });
 
                         if (result?.isWalletPaymentOnly) {
-                          setCheckoutMessage(`Thanh toán bằng ví thành công. Mã đơn #${result.orderId}`);
-                          await loadWallet();
+                          setCheckoutMessage(`Thanh toán thành công. Mã đơn #${result.orderId}`);
                           await removeCartItemsByIds(selectedCartItemIds);
                           return;
                         }
 
                         if (paymentMethod === "VNPAY" && result?.isMockPayment) {
-                          setPaymentQRData(result);
-                          setShowQRModal(true);
-                          await loadWallet();
+                          navigate("/payment-qr", {
+                            state: {
+                              paymentData: result,
+                            },
+                          });
                           return;
                         }
 
@@ -977,15 +912,6 @@ export default function CartPage() {
           </div>
         </main>
       </div>
-      <PaymentQRModal
-        isOpen={showQRModal}
-        onClose={() => {
-          setShowQRModal(false);
-          removeCartItemsByIds(selectedCartItemIds);
-          loadWallet();
-        }}
-        paymentData={paymentQRData}
-      />
     </>
   );
 }

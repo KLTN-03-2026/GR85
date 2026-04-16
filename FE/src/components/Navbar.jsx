@@ -6,13 +6,14 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  Search,
   ShoppingCart,
   User,
   X,
   Sparkles,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function Navbar() {
@@ -21,7 +22,55 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
+
+  const adminNavItems = [
+    { id: "dashboard", label: "Tổng quan" },
+    { id: "users", label: "Người dùng" },
+    { id: "products", label: "Sản phẩm" },
+    { id: "orders", label: "Đơn hàng" },
+    { id: "catalog", label: "Danh mục & NCC" },
+    { id: "vouchers", label: "Mã giảm giá" },
+    { id: "warehouse", label: "Kho" },
+    { id: "reviews", label: "Đánh giá" },
+    { id: "chat", label: "Chat" },
+    { id: "ai-build", label: "Cấu hình AI" },
+    { id: "verification", label: "Email OTP" },
+    { id: "roles", label: "Phân quyền" },
+    // PC Components
+    { id: "cpu", label: "CPU" },
+    { id: "gpu", label: "Card đồ họa" },
+    { id: "ram", label: "RAM" },
+    { id: "motherboard", label: "Mainboard" },
+    { id: "storage", label: "SSD" },
+    { id: "hdd", label: "HDD" },
+    { id: "psu", label: "Nguồn" },
+    { id: "case", label: "Vỏ máy" },
+    { id: "cooling", label: "Tản nhiệt" },
+    // Peripherals
+    { id: "monitor", label: "Màn hình" },
+    { id: "mouse", label: "Chuột" },
+    { id: "keyboard", label: "Bàn phím" },
+    { id: "headset", label: "Tai nghe" },
+    { id: "speaker", label: "Loa" },
+    { id: "webcam", label: "Webcam" },
+    { id: "microphone", label: "Microphone" },
+    { id: "cable", label: "Cáp" },
+    { id: "hub", label: "Hub" },
+    { id: "stand", label: "Giá đỡ" },
+    { id: "pad", label: "Lót chuột" },
+  ];
+
+  const filteredAdminItems = useMemo(() => {
+    if (!featureSearchKeyword.trim()) {
+      return [];
+    }
+    const keyword = featureSearchKeyword.toLowerCase().trim();
+    return adminNavItems.filter((item) =>
+      item.label.toLowerCase().includes(keyword),
+    );
+  }, [featureSearchKeyword]);
 
   const navLinks = [
     { href: "/", label: "Trang chủ" },
@@ -33,18 +82,57 @@ export function Navbar() {
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border/70 bg-white shadow-sm">
       <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          <Link to="/" className="group flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-primary shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
-              <Cpu className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="font-display text-xl font-bold text-gradient-primary">
-              TechBuiltAI
-            </span>
-          </Link>
+        <div className="flex h-16 items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <Link to="/" className="group flex items-center gap-2 shrink-0">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-primary shadow-[0_0_20px_hsl(var(--primary)/0.4)]">
+                <Cpu className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <span className="font-display text-xl font-bold text-gradient-primary">
+                TechBuiltAI
+              </span>
+            </Link>
+
+            {isHydrated && isAuthenticated && isAdmin && (
+              <div className="hidden items-center gap-2 lg:flex flex-1 max-w-sm">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Tìm kiếm chức năng..."
+                    className="w-full rounded-lg border border-border/50 bg-white pl-9 pr-3 py-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    value={featureSearchKeyword}
+                    onChange={(e) => setFeatureSearchKeyword(e.target.value)}
+                  />
+                </div>
+                {featureSearchKeyword.trim() && filteredAdminItems.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white border border-border/50 rounded-lg shadow-lg z-40 max-h-64 overflow-y-auto">
+                    <div className="p-2 space-y-1">
+                      {filteredAdminItems.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setFeatureSearchKeyword("");
+                            const element = document.getElementById(item.id);
+                            if (element) {
+                              element.scrollIntoView({ behavior: "smooth" });
+                            }
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-primary/10 transition"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="hidden items-center gap-1 overflow-x-auto md:flex md:max-w-[44vw] lg:max-w-none">
-            {navLinks.map((link) => (
+            {!isAdmin && navLinks.map((link) => (
               <Link key={link.href} to={link.href}>
                 <Button
                   variant={
@@ -70,32 +158,52 @@ export function Navbar() {
                       : "outline"
                   }
                   size="sm"
-                  className="hidden gap-2 sm:flex"
+                  className="hidden gap-2 md:flex"
                 >
                   <ShieldCheck className="h-4 w-4" />
-                  Admin
+                  Trang quản trị
                 </Button>
               </Link>
             ) : null}
 
-            <Link to="/chat">
-              <Button variant="ghost" size="icon" className="relative">
-                <MessageCircle className="h-5 w-5" />
-              </Button>
-            </Link>
+            {!isAdmin && (
+              <Link to="/chat">
+                <Button variant="ghost" size="icon" className="relative">
+                  <MessageCircle className="h-5 w-5" />
+                </Button>
+              </Link>
+            )}
 
-            <Link to="/cart">
-              <Button variant="ghost" size="icon" className="relative">
-                <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-                    {totalItems}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            {!isAdmin && (
+              <Link to="/cart">
+                <Button variant="ghost" size="icon" className="relative">
+                  <ShoppingCart className="h-5 w-5" />
+                  {totalItems > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                      {totalItems}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            )}
 
-            {isHydrated && isAuthenticated ? (
+            {isHydrated && isAuthenticated && isAdmin ? (
+              <div className="hidden items-center gap-3 sm:flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                    navigate("/");
+                  }}
+                  className="gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Đăng xuất
+                </Button>
+              </div>
+            ) : isHydrated && isAuthenticated ? (
               <div className="hidden items-center gap-3 rounded-full border border-border/70 bg-white/80 px-3 py-1.5 sm:flex">
                 <button
                   onClick={() => navigate("/profile")}
@@ -157,7 +265,7 @@ export function Navbar() {
         {mobileMenuOpen && (
           <div className="border-t border-border/50 py-4 md:hidden">
             <div className="flex flex-col gap-2">
-              {navLinks.map((link) => (
+              {!isAdmin && navLinks.map((link) => (
                 <Link
                   key={link.href}
                   to={link.href}

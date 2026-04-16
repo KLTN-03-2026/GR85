@@ -25,6 +25,29 @@ import {
   Fan,
   ArrowRight,
 } from "lucide-react";
+import { Link } from "react-router-dom";
+
+function getScoreLabel(score) {
+  const value = Number(score ?? 0);
+  if (value >= 80) {
+    return "Tốt";
+  }
+  if (value >= 60) {
+    return "Ổn";
+  }
+  return "Cần cải thiện";
+}
+
+function getScoreClass(score) {
+  const value = Number(score ?? 0);
+  if (value >= 80) {
+    return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  }
+  if (value >= 60) {
+    return "text-amber-700 bg-amber-50 border-amber-200";
+  }
+  return "text-rose-700 bg-rose-50 border-rose-200";
+}
 
 export default function AIRecommendPage() {
   const [budget, setBudget] = useState(30000000);
@@ -32,8 +55,7 @@ export default function AIRecommendPage() {
   const [preferredBrands, setPreferredBrands] = useState([]);
   const [allowUsed, setAllowUsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [recommendation, setRecommendation] = useState(null);
-  const [aiSummary, setAiSummary] = useState("");
+  const [recommendationData, setRecommendationData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   const formatPrice = (price) => {
@@ -62,11 +84,9 @@ export default function AIRecommendPage() {
         allowUsed,
       });
 
-      setRecommendation(response.items);
-      setAiSummary(response.summary || "");
+      setRecommendationData(response);
     } catch (error) {
-      setRecommendation(null);
-      setAiSummary("");
+      setRecommendationData(null);
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -77,11 +97,13 @@ export default function AIRecommendPage() {
     }
   };
 
+  const recommendation = recommendationData?.items ?? [];
+
   const totalPrice =
-    recommendation?.reduce((sum, c) => {
+    recommendation.reduce((sum, c) => {
       const price = allowUsed && c.usedPrice ? c.usedPrice : c.price;
       return sum + price;
-    }, 0) || 0;
+    }, 0) || Number(recommendationData?.totalPrice ?? 0);
 
   const categoryIcons = {
     cpu: Cpu,
@@ -224,7 +246,7 @@ export default function AIRecommendPage() {
 
             {/* Right - Results */}
             <div className="lg:col-span-2">
-              {!recommendation ? (
+              {!recommendationData ? (
                 <div className="text-center py-20">
                   <div className="w-24 h-24 rounded-full bg-primary/10 mx-auto mb-6 flex items-center justify-center">
                     <Sparkles className="w-12 h-12 text-primary" />
@@ -255,9 +277,9 @@ export default function AIRecommendPage() {
                           {recommendation.length} linh kiện • Tối ưu cho{" "}
                           {usageTypes.find((u) => u.id === usage)?.name}
                         </p>
-                        {aiSummary && (
+                        {recommendationData?.summary && (
                           <p className="text-sm text-muted-foreground mt-2">
-                            {aiSummary}
+                            {recommendationData.summary}
                           </p>
                         )}
                       </div>
@@ -268,9 +290,76 @@ export default function AIRecommendPage() {
                         <p className="text-2xl font-bold text-gradient-primary">
                           {formatPrice(totalPrice)}
                         </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Điểm tổng: {Number(recommendationData?.buildScore?.overall ?? 0)}/100
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {[
+                        ["Bám ngân sách", recommendationData?.buildScore?.budget],
+                        ["Tương thích", recommendationData?.buildScore?.compatibility],
+                        ["Tổng thể", recommendationData?.buildScore?.overall],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-border/60 bg-background/60 px-3 py-3">
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="text-sm font-semibold">{Number(value ?? 0)}/100 - {getScoreLabel(value)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card className="glass border-border/50 p-4">
+                    <h4 className="mb-3 font-semibold">Đánh giá nhanh</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-sm font-medium text-emerald-700">Điểm mạnh</p>
+                        <div className="space-y-1.5 text-sm">
+                          {(recommendationData?.strengths ?? []).slice(0, 3).map((line, index) => (
+                            <p key={`${line}-${index}`}>- {line}</p>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-sm font-medium text-rose-700">Điểm cần cải thiện</p>
+                        <div className="space-y-1.5 text-sm">
+                          {(recommendationData?.weaknesses ?? []).slice(0, 3).map((line, index) => (
+                            <p key={`${line}-${index}`}>- {line}</p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-md border border-border/60 bg-background/60 p-3">
+                      <p className="mb-1 text-sm font-medium">Gợi ý hành động</p>
+                      <div className="space-y-1.5 text-sm">
+                        {(recommendationData?.recommendations ?? []).slice(0, 2).map((line, index) => (
+                          <p key={`${line}-${index}`}>- {line}</p>
+                        ))}
                       </div>
                     </div>
                   </Card>
+
+                  {Array.isArray(recommendationData?.categoryAnalysis) && recommendationData.categoryAnalysis.length > 0 && (
+                    <Card className="glass border-border/50 p-4">
+                      <h4 className="mb-3 font-semibold">Đo cấu hình (dễ hiểu)</h4>
+                      <div className="space-y-2">
+                        {recommendationData.categoryAnalysis.slice(0, 6).map((row) => (
+                          <div key={row.categorySlug} className="flex items-center justify-between gap-2 rounded-md border border-border/50 px-3 py-2 text-sm">
+                            <div>
+                              <p className="font-medium uppercase">{row.category}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Mục tiêu {formatPrice(row.targetBudget)} - Chọn {formatPrice(row.selectedPrice)}
+                              </p>
+                            </div>
+                            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${getScoreClass(row.selectedScore)}`}>
+                              {getScoreLabel(row.selectedScore)} ({row.selectedScore})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
 
                   {/* Components List */}
                   {recommendation.length > 0 ? (
@@ -306,6 +395,9 @@ export default function AIRecommendPage() {
                                 <p className="text-sm text-muted-foreground">
                                   {component.brand}
                                 </p>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <Badge variant="outline">Điểm SP: {component.score?.total ?? 0}</Badge>
+                                </div>
                                 <p className="text-lg font-bold text-primary mt-1">
                                   {formatPrice(
                                     allowUsed && component.usedPrice
@@ -313,6 +405,11 @@ export default function AIRecommendPage() {
                                       : component.price,
                                   )}
                                 </p>
+                                {component.slug && (
+                                  <Link to={`/components/${component.slug}`} className="text-xs text-primary hover:underline">
+                                    Xem chi tiết sản phẩm
+                                  </Link>
+                                )}
                               </div>
                             </div>
                           </Card>

@@ -485,6 +485,57 @@ export async function handleVnpayReturn(query) {
   };
 }
 
+export async function confirmMockVnpayPayment(userId, input) {
+  const orderId = Number(input.orderId);
+  const paymentCode = String(input.paymentCode ?? "").trim();
+
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    throw new Error("Invalid order id");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      userId: true,
+      paymentMethod: true,
+      paymentStatus: true,
+    },
+  });
+
+  if (!order || Number(order.userId) !== Number(userId)) {
+    throw new Error("Order not found");
+  }
+
+  if (order.paymentMethod !== PaymentMethod.VNPAY) {
+    throw new Error("Order is not VNPAY payment");
+  }
+
+  if (order.paymentStatus === PaymentStatus.PAID) {
+    return serializeData({
+      message: "Payment already confirmed",
+      orderId,
+      paymentStatus: PaymentStatus.PAID,
+      status: "success",
+    });
+  }
+
+  const finalized = await finalizeVnpayPayment({
+    orderId,
+    responseCode: "00",
+    transactionNo: paymentCode || `MOCK-QR-${orderId}`,
+    payDate: new Date().toISOString(),
+    source: "QR_SCAN",
+  });
+
+  return serializeData({
+    message: finalized.message,
+    orderId,
+    paymentStatus: finalized.isSuccess ? PaymentStatus.PAID : PaymentStatus.FAILED,
+    status: finalized.isSuccess ? "success" : "failed",
+  });
+}
+
 async function finalizeVnpayPayment({
   orderId,
   responseCode,

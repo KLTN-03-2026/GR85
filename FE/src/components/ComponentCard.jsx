@@ -5,14 +5,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { Star, Plus, Eye, ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useBuild } from "@/contexts/BuildContext";
-import { useState } from "react";
-import { ComponentDetailModal } from "./ComponentDetailModal";
 
 export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
   const navigate = useNavigate();
-  const [showDetail, setShowDetail] = useState(false);
   const fallbackImage = "/images/component-placeholder.svg";
 
   const formatPrice = (price) => {
@@ -32,8 +29,20 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
       psu: "bg-psu/20 text-psu border-psu/30",
       case: "bg-case/20 text-case border-case/30",
       cooling: "bg-cooling/20 text-cooling border-cooling/30",
+      monitor: "bg-blue-500/20 text-blue-700 border-blue-500/30",
+      mouse: "bg-purple-500/20 text-purple-700 border-purple-500/30",
+      keyboard: "bg-indigo-500/20 text-indigo-700 border-indigo-500/30",
+      headset: "bg-orange-500/20 text-orange-700 border-orange-500/30",
+      speaker: "bg-rose-500/20 text-rose-700 border-rose-500/30",
+      webcam: "bg-teal-500/20 text-teal-700 border-teal-500/30",
+      microphone: "bg-amber-500/20 text-amber-700 border-amber-500/30",
+      cable: "bg-slate-500/20 text-slate-700 border-slate-500/30",
+      hub: "bg-cyan-500/20 text-cyan-700 border-cyan-500/30",
+      stand: "bg-lime-500/20 text-lime-700 border-lime-500/30",
+      pad: "bg-fuchsia-500/20 text-fuchsia-700 border-fuchsia-500/30",
+      hdd: "bg-gray-500/20 text-gray-700 border-gray-500/30",
     };
-    return colors[category];
+    return colors[category] || "bg-gray-100/20 text-gray-700 border-gray-100/30";
   };
 
   const getCategoryName = (category) => {
@@ -41,17 +50,28 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
       cpu: "CPU",
       gpu: "GPU",
       ram: "RAM",
-      storage: "Ổ cứng",
+      storage: "SSD",
       motherboard: "Mainboard",
-      psu: "Nguồn",
+      psu: "PSU",
       case: "Case",
       cooling: "Tản nhiệt",
+      monitor: "Màn hình",
+      mouse: "Chuột",
+      keyboard: "Bàn phím",
+      headset: "Tai nghe",
+      speaker: "Loa",
+      webcam: "Webcam",
+      microphone: "Mic",
+      cable: "Cáp",
+      hub: "Hub",
+      stand: "Giá đỡ",
+      pad: "Lót chuột",
+      hdd: "HDD",
     };
-    return names[category];
+    return names[category] || "Sản phẩm";
   };
 
   return (
-    <>
       <Card
         className={`group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)] ${compact ? "shadow-sm" : ""}`}
         data-aos="flip-right"
@@ -87,11 +107,13 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           {/* Quick Actions */}
           <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
+              asChild
               variant="glass"
               size="icon"
-              onClick={() => setShowDetail(true)}
             >
-              <Eye className="w-4 h-4" />
+              <Link to={`/components/${component.slug || component.id}`}>
+                <Eye className="w-4 h-4" />
+              </Link>
             </Button>
           </div>
 
@@ -121,7 +143,10 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
 
           {/* Name */}
           <h3 className={`font-semibold text-foreground line-clamp-2 ${compact ? "min-h-[2.25rem] text-[0.98rem]" : "min-h-[2.5rem]"}`}>
-            <Link to={`/components/${component.slug || component.id}`} className="hover:underline">
+            <Link
+              to={`/components/${component.slug || component.id}`}
+              className="text-left hover:underline"
+            >
               {component.name}
             </Link>
           </h3>
@@ -206,12 +231,5 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           </div>
         </div>
       </Card>
-
-      <ComponentDetailModal
-        component={component}
-        open={showDetail}
-        onClose={() => setShowDetail(false)}
-      />
-    </>
   );
 }

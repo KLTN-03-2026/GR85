@@ -226,4 +226,35 @@ router.patch(
   },
 );
 
+router.delete(
+  "/users/:userId/wallet-transactions/:transactionId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const userId = Number(req.params.userId);
+      const transactionId = Number(req.params.transactionId);
+
+      if (!Number.isFinite(userId) || !Number.isFinite(transactionId)) {
+        return res.status(400).json({ message: "Invalid user ID or transaction ID" });
+      }
+
+      const { deleteWalletTransaction } = await import("../../services/wallet.service.js");
+      await deleteWalletTransaction(transactionId);
+      
+      return res.json({ success: true, message: "Wallet transaction deleted" });
+    } catch (error) {
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
 export { router as adminRouter };

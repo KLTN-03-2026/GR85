@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     async function hydrate() {
       const storedSession = loadStoredSession();
 
-      if (!storedSession.token) {
+      if (!storedSession || !storedSession.token) {
         if (!cancelled) {
           setSession(null);
           setIsHydrated(true);
