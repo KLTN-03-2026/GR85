@@ -13,7 +13,7 @@ export async function listProducts(query = {}) {
   const keyword = String(query.keyword ?? "").trim();
   const category = String(query.category ?? "").trim().toLowerCase();
   const brand = String(query.brand ?? "").trim();
-  const sort = String(query.sort ?? "newest").trim().toLowerCase();
+  const sort = String(query.sort ?? "display_order").trim().toLowerCase();
   const stockStatus = String(query.stockStatus ?? "all").trim().toLowerCase();
   const minPrice =
     query.minPrice === undefined || query.minPrice === ""
@@ -247,7 +247,11 @@ export async function getCatalogOverview() {
       },
     }),
     prisma.product.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { isHomepageFeatured: "desc" },
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ],
       include: {
         category: true,
         supplier: true,
@@ -269,7 +273,7 @@ export async function getCatalogOverview() {
       slug: category.slug,
       productCount: category._count.products,
     })),
-    products: products.map(mapProductDetail),
+    products: productsWithRating.map(mapProductDetail),
   });
 }
 
@@ -316,6 +320,10 @@ export async function createProduct(input) {
       price,
       warrantyMonths: Number(input.warrantyMonths ?? 12),
       stockQuantity,
+      isHomepageFeatured: Boolean(input.isHomepageFeatured),
+      displayOrder: Number.isFinite(Number(input.displayOrder))
+        ? Math.max(0, Number(input.displayOrder))
+        : 9999,
       specifications: input.specifications && typeof input.specifications === "object"
         ? input.specifications
         : {},
@@ -431,6 +439,18 @@ export async function updateProductById(productId, input) {
 
   if (input.warrantyMonths !== undefined) {
     data.warrantyMonths = Number(input.warrantyMonths);
+  }
+
+  if (input.isHomepageFeatured !== undefined) {
+    data.isHomepageFeatured = Boolean(input.isHomepageFeatured);
+  }
+
+  if (input.displayOrder !== undefined) {
+    const displayOrder = Number(input.displayOrder);
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      throw new Error("Display order must be >= 0");
+    }
+    data.displayOrder = Math.trunc(displayOrder);
   }
 
   if (input.specifications !== undefined) {
@@ -586,6 +606,11 @@ function buildProductWhere(filters) {
 
 function resolveProductOrderBy(sort) {
   switch (sort) {
+    case "display_order":
+      return [
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ];
     case "price_asc":
       return [{ price: "asc" }, { createdAt: "desc" }];
     case "price_desc":
@@ -616,6 +641,8 @@ function mapProductListItem(product) {
     productCode: product.slug,
     price: product.price,
     stockQuantity: product.stockQuantity,
+    isHomepageFeatured: Boolean(product.isHomepageFeatured),
+    displayOrder: Number(product.displayOrder ?? 9999),
     isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
     warrantyMonths: product.warrantyMonths,
     specifications: product.specifications,

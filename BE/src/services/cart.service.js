@@ -377,10 +377,12 @@ export async function checkoutCart(userId, input) {
   if (paymentMethod === PaymentMethod.VNPAY) {
     // Generate mock VNPAY payment code and QR
     const paymentCode = generateMockVnpayPaymentCode();
+    const transferContent = `TT DON ${result.id} ${paymentCode}`;
     const mockQrData = await createMockVnpayQrCode({
       paymentCode,
       orderId: result.id,
       amount: remainingPayableAmount,
+      transferContent,
     });
 
     // Get user email from database
@@ -399,6 +401,7 @@ export async function checkoutCart(userId, input) {
           orderId: result.id,
           totalAmount: remainingPayableAmount,
           qrCodeDataUrl: mockQrData.qrCodeDataUrl,
+          bankTransfer: mockQrData.bankTransfer,
         });
       } catch (error) {
         console.error("Failed to send payment email:", error);
@@ -418,6 +421,7 @@ export async function checkoutCart(userId, input) {
       paymentCode: mockQrData.paymentCode,
       qrCodeDataUrl: mockQrData.qrCodeDataUrl,
       expiresAt: mockQrData.expiresAt,
+      bankTransfer: mockQrData.bankTransfer,
       isMockPayment: true,
     });
   }

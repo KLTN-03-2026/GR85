@@ -199,6 +199,8 @@ model Product {
     price          Decimal       @db.Decimal(15, 2)
     warrantyMonths Int           @default(12) @map("warranty_months")
     stockQuantity  Int           @default(0) @map("stock_quantity") // <-- Sẽ trừ thẳng vào đây khi có đơn hàng
+    isHomepageFeatured Boolean   @default(false) @map("is_homepage_featured")
+    displayOrder   Int           @default(9999) @map("display_order")
     specifications Json
     status         ProductStatus @default(ACTIVE)
     createdAt      DateTime      @default(now()) @map("created_at")

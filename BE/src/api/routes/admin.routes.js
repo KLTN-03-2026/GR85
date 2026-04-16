@@ -1,10 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  createBatchImportByAdmin,
   createCouponByAdmin,
+  createWarehouseByAdmin,
   getAdminDashboard,
+  getWarehouseOverviewByAdmin,
   getUserDetailByAdmin,
   listCouponsForAdmin,
+  updateWarehouseByAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
 import {
@@ -64,6 +68,21 @@ const reviewReturnSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   rejectReason: z.string().max(2000).optional(),
   refundAmount: z.number().positive().optional(),
+});
+
+const warehouseSchema = z.object({
+  name: z.string().min(1).max(255),
+  address: z.string().max(500).nullable().optional(),
+  managerName: z.string().max(255).nullable().optional(),
+});
+
+const importBatchSchema = z.object({
+  warehouseId: z.number().int().positive(),
+  productId: z.number().int().positive(),
+  supplierId: z.number().int().positive(),
+  importPrice: z.number().positive(),
+  quantity: z.number().int().positive(),
+  batchCode: z.string().max(64).optional(),
 });
 
 function isAdminRole(role) {
@@ -166,6 +185,107 @@ router.post(
 
       if (error instanceof Error) {
         const status = error.message.includes("already exists") ? 409 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.get(
+  "/warehouse/overview",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await getWarehouseOverviewByAdmin();
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.post(
+  "/warehouses",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = warehouseSchema.parse(req.body);
+      const data = await createWarehouseByAdmin(parsed);
+      return res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.patch(
+  "/warehouses/:warehouseId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = warehouseSchema.partial().parse(req.body);
+      const data = await updateWarehouseByAdmin(req.params.warehouseId, parsed);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.post(
+  "/warehouse/import-batch",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = importBatchSchema.parse(req.body);
+      const data = await createBatchImportByAdmin(parsed);
+      return res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
         return res.status(status).json({ message: error.message });
       }
 
