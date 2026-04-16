@@ -52,7 +52,7 @@ const navItems = [
 
 const schemaBySection = {
   dashboard: {
-    headline: "Toan canh du lieu he thong",
+    headline: "Toàn cảnh dữ liệu hệ thống ",
     tables: [
       "Users",
       "Products",
@@ -72,7 +72,7 @@ const schemaBySection = {
     ],
   },
   users: {
-    headline: "Du lieu nguoi dung va phan quyen",
+    headline: "Dữ liệu người dùng và phân quyền",
     tables: ["Users", "Roles", "Permissions", "Role_Permissions", "User_Addresses"],
     relations: [
       "Roles 1 - n Users",
@@ -81,7 +81,7 @@ const schemaBySection = {
     ],
   },
   products: {
-    headline: "Du lieu quan ly san pham",
+    headline: "Dữ liệu quản lý sản phẩm",
     tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
     relations: [
       "Categories 1 - n Products",
@@ -91,7 +91,7 @@ const schemaBySection = {
     ],
   },
   orders: {
-    headline: "Du lieu don hang va thanh toan",
+    headline: "Dữ liệu đơn hàng và thanh toán",
     tables: ["Orders", "Order_Items", "Order_Status_History", "Users", "Coupons", "Wallet_Transactions"],
     relations: [
       "Users 1 - n Orders",
@@ -102,7 +102,7 @@ const schemaBySection = {
     ],
   },
   catalog: {
-    headline: "Du lieu danh muc va nha cung cap",
+    headline: "Dữ liệu danh mục và nhà cung cấp",
     tables: ["Categories", "Suppliers", "Products", "Batches"],
     relations: [
       "Categories 1 - n Products",
@@ -111,7 +111,7 @@ const schemaBySection = {
     ],
   },
   vouchers: {
-    headline: "Du lieu ma giam gia",
+    headline: "Dữ liệu mã giảm giá",
     tables: ["Coupons", "Orders"],
     relations: [
       "Coupons 1 - n Orders",
@@ -119,7 +119,7 @@ const schemaBySection = {
     ],
   },
   warehouse: {
-    headline: "Du lieu kho va serial",
+    headline: "Dữ liệu kho và serial",
     tables: ["Warehouses", "Batches", "Serial_Numbers", "Products", "Suppliers"],
     relations: [
       "Warehouses 1 - n Batches",
@@ -129,7 +129,7 @@ const schemaBySection = {
     ],
   },
   reviews: {
-    headline: "Du lieu danh gia",
+    headline: "Dữ liệu đánh giá",
     tables: ["Reviews", "Users", "Products"],
     relations: [
       "Users 1 - n Reviews",
@@ -137,7 +137,7 @@ const schemaBySection = {
     ],
   },
   chat: {
-    headline: "Du lieu chat ho tro",
+    headline: "Dữ liệu chat hỗ trợ",
     tables: ["Chat_Rooms", "Messages", "Users"],
     relations: [
       "Users 1 - n Chat_Rooms",
@@ -146,7 +146,7 @@ const schemaBySection = {
     ],
   },
   "ai-build": {
-    headline: "Du lieu cau hinh AI",
+    headline: "Dữ liệu cấu hình AI",
     tables: ["AI_Saved_Builds", "AI_Build_Items", "Users", "Products"],
     relations: [
       "Users 1 - n AI_Saved_Builds",
@@ -155,12 +155,12 @@ const schemaBySection = {
     ],
   },
   verification: {
-    headline: "Du lieu OTP xac minh email",
+    headline: "Dữ liệu OTP xác minh email",
     tables: ["Email_Verifications"],
     relations: ["Bang luu OTP theo email, muc dich, thoi gian het han"],
   },
   roles: {
-    headline: "Du lieu vai tro va quyen he thong",
+    headline: "Dữ liệu vai trò và quyền hệ thống",
     tables: ["Roles", "Permissions", "Role_Permissions", "Users"],
     relations: [
       "Roles n - n Permissions qua Role_Permissions",
