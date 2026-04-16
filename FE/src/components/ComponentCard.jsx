@@ -5,14 +5,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { Star, Plus, Eye, ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useBuild } from "@/contexts/BuildContext";
-import { useState } from "react";
-import { ComponentDetailModal } from "./ComponentDetailModal";
 
 export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
   const navigate = useNavigate();
-  const [showDetail, setShowDetail] = useState(false);
   const fallbackImage = "/images/component-placeholder.svg";
 
   const formatPrice = (price) => {
@@ -75,7 +72,6 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
   };
 
   return (
-    <>
       <Card
         className={`group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)] ${compact ? "shadow-sm" : ""}`}
         data-aos="flip-right"
@@ -111,11 +107,13 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           {/* Quick Actions */}
           <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
+              asChild
               variant="glass"
               size="icon"
-              onClick={() => setShowDetail(true)}
             >
-              <Eye className="w-4 h-4" />
+              <Link to={`/components/${component.slug || component.id}`}>
+                <Eye className="w-4 h-4" />
+              </Link>
             </Button>
           </div>
 
@@ -233,12 +231,5 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           </div>
         </div>
       </Card>
-
-      <ComponentDetailModal
-        component={component}
-        open={showDetail}
-        onClose={() => setShowDetail(false)}
-      />
-    </>
   );
 }
