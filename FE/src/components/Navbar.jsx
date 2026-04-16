@@ -38,6 +38,28 @@ export function Navbar() {
     { id: "ai-build", label: "Cấu hình AI" },
     { id: "verification", label: "Email OTP" },
     { id: "roles", label: "Phân quyền" },
+    // PC Components
+    { id: "cpu", label: "CPU" },
+    { id: "gpu", label: "Card đồ họa" },
+    { id: "ram", label: "RAM" },
+    { id: "motherboard", label: "Mainboard" },
+    { id: "storage", label: "SSD" },
+    { id: "hdd", label: "HDD" },
+    { id: "psu", label: "Nguồn" },
+    { id: "case", label: "Vỏ máy" },
+    { id: "cooling", label: "Tản nhiệt" },
+    // Peripherals
+    { id: "monitor", label: "Màn hình" },
+    { id: "mouse", label: "Chuột" },
+    { id: "keyboard", label: "Bàn phím" },
+    { id: "headset", label: "Tai nghe" },
+    { id: "speaker", label: "Loa" },
+    { id: "webcam", label: "Webcam" },
+    { id: "microphone", label: "Microphone" },
+    { id: "cable", label: "Cáp" },
+    { id: "hub", label: "Hub" },
+    { id: "stand", label: "Giá đỡ" },
+    { id: "pad", label: "Lót chuột" },
   ];
 
   const filteredAdminItems = useMemo(() => {

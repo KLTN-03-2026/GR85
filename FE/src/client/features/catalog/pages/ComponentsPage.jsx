@@ -698,14 +698,32 @@ export default function ComponentsPage() {
 function mapProductToCardData(product) {
   const categoryMap = {
     cpu: "cpu",
+    gpu: "gpu",
     ram: "ram",
+    storage: "storage",
+    motherboard: "motherboard",
+    psu: "psu",
+    case: "case",
+    cooling: "cooling",
+    hdd: "hdd",
+    monitor: "monitor",
+    mouse: "mouse",
+    keyboard: "keyboard",
+    headset: "headset",
+    speaker: "speaker",
+    webcam: "webcam",
+    microphone: "microphone",
+    cable: "cable",
+    hub: "hub",
+    stand: "stand",
+    pad: "pad",
     vga: "gpu",
     ssd: "storage",
     mainboard: "motherboard",
   };
 
   const categorySlug = String(product?.category?.slug ?? "cpu").toLowerCase();
-  const category = categoryMap[categorySlug] ?? "cpu";
+  const category = categoryMap[categorySlug] ?? categorySlug;
 
   const reviewCountRaw = Number(product?.reviewCount ?? product?.reviews ?? 0);
   const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
