@@ -230,4 +230,51 @@ export const profileApi = {
 
     return response.json();
   },
+
+  getNotifications: async (limit = 20) => {
+    const response = await fetch(`${API_BASE}/auth/notifications?limit=${limit}`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải thông báo");
+    }
+
+    return response.json();
+  },
+
+  markNotificationAsRead: async (notificationId) => {
+    const response = await fetch(`${API_BASE}/auth/notifications/${notificationId}/read`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể đánh dấu thông báo");
+    }
+
+    return response.json();
+  },
+
+  markAllNotificationsAsRead: async () => {
+    const response = await fetch(`${API_BASE}/auth/notifications/mark-all-read`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể đánh dấu tất cả thông báo");
+    }
+
+    return response.json();
+  },
 };

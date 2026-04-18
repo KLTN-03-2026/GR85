@@ -1,6 +1,7 @@
 import { OrderStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import { createOrderStatusChangeNotification } from "./notification.service.js";
 
 const ALLOWED_STATUS_TRANSITIONS = new Set([
   OrderStatus.PENDING,
@@ -169,6 +170,9 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
       },
     });
   });
+
+  // Create notification for order status change
+  await createOrderStatusChangeNotification(id, current.userId, nextStatus);
 
   return getOrderDetailForAdmin(id);
 }

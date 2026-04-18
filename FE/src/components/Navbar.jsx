@@ -15,6 +15,7 @@ import {
 import { useCart } from "@/contexts/CartContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const ADMIN_NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan" },
@@ -181,6 +182,10 @@ export function Navbar() {
                   )}
                 </Button>
               </Link>
+            )}
+
+            {isHydrated && isAuthenticated && !isAdmin && (
+              <NotificationBell />
             )}
 
             {isHydrated && isAuthenticated && isAdmin ? (

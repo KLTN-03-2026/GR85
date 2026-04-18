@@ -159,6 +159,46 @@ export async function createWishlistCouponNotifications(coupon, productIds = [])
   });
 }
 
+export async function createOrderStatusChangeNotification(orderId, userId, newStatus) {
+  const normalizedOrderId = Number(orderId);
+  const normalizedUserId = Number(userId);
+
+  if (!Number.isFinite(normalizedOrderId) || normalizedOrderId <= 0) {
+    return;
+  }
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+
+  const statusMessages = {
+    PENDING: { title: "Đơn hàng chờ xác nhận", message: "Đơn hàng của bạn đang chờ xác nhận từ cửa hàng." },
+    PROCESSING: { title: "Đơn hàng đang chuẩn bị", message: "Đơn hàng của bạn đang được chuẩn bị để gửi đi." },
+    SHIPPING: { title: "Đơn hàng đang vận chuyển", message: "Đơn hàng của bạn đang được vận chuyển đến địa chỉ của bạn." },
+    DELIVERED: { title: "Đơn hàng đã giao", message: "Đơn hàng của bạn đã được giao thành công." },
+    CANCELLED: { title: "Đơn hàng đã hủy", message: "Đơn hàng của bạn đã được hủy." },
+  };
+
+  const statusMessage = statusMessages[newStatus] || { title: "Cập nhật đơn hàng", message: "Đơn hàng của bạn có cập nhật mới." };
+
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: normalizedUserId,
+        type: "ORDER_STATUS_CHANGED",
+        title: statusMessage.title,
+        message: statusMessage.message,
+        payload: {
+          orderId: normalizedOrderId,
+          newStatus,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Failed to create order status notification:", error);
+  }
+}
+
 function mapNotification(item) {
   return {
     id: item.id,
