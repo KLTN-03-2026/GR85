@@ -16,6 +16,43 @@ import { useCart } from "@/contexts/CartContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
+const ADMIN_NAV_ITEMS = [
+  { id: "dashboard", label: "Tổng quan" },
+  { id: "users", label: "Người dùng" },
+  { id: "products", label: "Sản phẩm" },
+  { id: "orders", label: "Đơn hàng" },
+  { id: "catalog", label: "Danh mục & NCC" },
+  { id: "vouchers", label: "Mã giảm giá" },
+  { id: "warehouse", label: "Kho" },
+  { id: "reviews", label: "Đánh giá" },
+  { id: "chat", label: "Chat" },
+  { id: "ai-build", label: "Cấu hình AI" },
+  { id: "verification", label: "Email OTP" },
+  { id: "roles", label: "Phân quyền" },
+  // PC Components
+  { id: "cpu", label: "CPU" },
+  { id: "gpu", label: "Card đồ họa" },
+  { id: "ram", label: "RAM" },
+  { id: "motherboard", label: "Mainboard" },
+  { id: "storage", label: "SSD" },
+  { id: "hdd", label: "HDD" },
+  { id: "psu", label: "Nguồn" },
+  { id: "case", label: "Vỏ máy" },
+  { id: "cooling", label: "Tản nhiệt" },
+  // Peripherals
+  { id: "monitor", label: "Màn hình" },
+  { id: "mouse", label: "Chuột" },
+  { id: "keyboard", label: "Bàn phím" },
+  { id: "headset", label: "Tai nghe" },
+  { id: "speaker", label: "Loa" },
+  { id: "webcam", label: "Webcam" },
+  { id: "microphone", label: "Microphone" },
+  { id: "cable", label: "Cáp" },
+  { id: "hub", label: "Hub" },
+  { id: "stand", label: "Giá đỡ" },
+  { id: "pad", label: "Lót chuột" },
+];
+
 export function Navbar() {
   const { totalItems } = useCart();
   const { isAuthenticated, user, logout, isHydrated } = useAuth();
@@ -25,49 +62,12 @@ export function Navbar() {
   const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
 
-  const adminNavItems = [
-    { id: "dashboard", label: "Tổng quan" },
-    { id: "users", label: "Người dùng" },
-    { id: "products", label: "Sản phẩm" },
-    { id: "orders", label: "Đơn hàng" },
-    { id: "catalog", label: "Danh mục & NCC" },
-    { id: "vouchers", label: "Mã giảm giá" },
-    { id: "warehouse", label: "Kho" },
-    { id: "reviews", label: "Đánh giá" },
-    { id: "chat", label: "Chat" },
-    { id: "ai-build", label: "Cấu hình AI" },
-    { id: "verification", label: "Email OTP" },
-    { id: "roles", label: "Phân quyền" },
-    // PC Components
-    { id: "cpu", label: "CPU" },
-    { id: "gpu", label: "Card đồ họa" },
-    { id: "ram", label: "RAM" },
-    { id: "motherboard", label: "Mainboard" },
-    { id: "storage", label: "SSD" },
-    { id: "hdd", label: "HDD" },
-    { id: "psu", label: "Nguồn" },
-    { id: "case", label: "Vỏ máy" },
-    { id: "cooling", label: "Tản nhiệt" },
-    // Peripherals
-    { id: "monitor", label: "Màn hình" },
-    { id: "mouse", label: "Chuột" },
-    { id: "keyboard", label: "Bàn phím" },
-    { id: "headset", label: "Tai nghe" },
-    { id: "speaker", label: "Loa" },
-    { id: "webcam", label: "Webcam" },
-    { id: "microphone", label: "Microphone" },
-    { id: "cable", label: "Cáp" },
-    { id: "hub", label: "Hub" },
-    { id: "stand", label: "Giá đỡ" },
-    { id: "pad", label: "Lót chuột" },
-  ];
-
   const filteredAdminItems = useMemo(() => {
     if (!featureSearchKeyword.trim()) {
       return [];
     }
     const keyword = featureSearchKeyword.toLowerCase().trim();
-    return adminNavItems.filter((item) =>
+    return ADMIN_NAV_ITEMS.filter((item) =>
       item.label.toLowerCase().includes(keyword),
     );
   }, [featureSearchKeyword]);

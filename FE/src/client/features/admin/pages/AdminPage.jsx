@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -775,7 +775,7 @@ export default function AdminPage() {
     toast,
   ]);
 
-  async function loadDisplayOrderDraft() {
+  const loadDisplayOrderDraft = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -811,7 +811,7 @@ export default function AdminPage() {
     } finally {
       setIsLoadingDisplayOrder(false);
     }
-  }
+  }, [token, toast]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token || activeTab !== "products") {
@@ -819,7 +819,7 @@ export default function AdminPage() {
     }
 
     loadDisplayOrderDraft();
-  }, [activeTab, isAuthenticated, isHydrated, token]);
+  }, [activeTab, isAuthenticated, isHydrated, token, loadDisplayOrderDraft]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -869,7 +869,7 @@ export default function AdminPage() {
     };
   }, [isAuthenticated, isHydrated, token, toast]);
 
-  async function loadWarehouseOverview() {
+  const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -906,7 +906,7 @@ export default function AdminPage() {
     } finally {
       setIsLoadingWarehouse(false);
     }
-  }
+  }, [token, toast]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -918,7 +918,7 @@ export default function AdminPage() {
     }
 
     loadWarehouseOverview();
-  }, [activeTab, isAuthenticated, isHydrated, token]);
+  }, [activeTab, isAuthenticated, isHydrated, token, loadWarehouseOverview]);
 
   async function updateOrderStatus(orderId) {
     if (!token) {
