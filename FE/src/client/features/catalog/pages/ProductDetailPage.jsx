@@ -20,6 +20,12 @@ export default function ProductDetailPage() {
   const [reviewError, setReviewError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [canReview, setCanReview] = useState(false);
+  const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
+  const [wishlistMessage, setWishlistMessage] = useState("");
 
   const loadReviews = async (productSlug, isCancelled = () => false) => {
     try {
@@ -64,6 +70,8 @@ export default function ProductDetailPage() {
         const payload = await response.json();
         if (!cancelled) {
           setProduct(payload);
+          const recentItems = updateRecentlyViewed(payload);
+          setRecentlyViewed(recentItems);
         }
 
         await loadReviews(payload?.slug || slug, () => cancelled);
@@ -89,6 +97,123 @@ export default function ProductDetailPage() {
       cancelled = true;
     };
   }, [slug]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReviewEligibility() {
+      if (!product?.slug || !token || !isAuthenticated) {
+        setCanReview(false);
+        setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/products/${product.slug}/review-eligibility`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const payload = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        setCanReview(Boolean(payload?.canReview));
+        setReviewEligibilityMessage(String(payload?.reason ?? ""));
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setCanReview(false);
+        setReviewEligibilityMessage("Không thể kiểm tra quyền đánh giá lúc này");
+      }
+    }
+
+    if (isHydrated) {
+      loadReviewEligibility();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product?.slug, token, isAuthenticated, isHydrated]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWishlistStatus() {
+      if (!product?.slug || !token || !isAuthenticated) {
+        setIsWishlisted(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/products/${product.slug}/wishlist-status`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const payload = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        setIsWishlisted(Boolean(payload?.isWishlisted));
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setIsWishlisted(false);
+      }
+    }
+
+    if (isHydrated) {
+      loadWishlistStatus();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product?.slug, token, isAuthenticated, isHydrated]);
+
+  async function toggleWishlist() {
+    setWishlistMessage("");
+
+    if (!isHydrated || !isAuthenticated || !token) {
+      setWishlistMessage("Vui lòng đăng nhập để dùng wishlist");
+      return;
+    }
+
+    if (!product?.slug) {
+      return;
+    }
+
+    try {
+      setIsUpdatingWishlist(true);
+      const response = await fetch(`/api/products/${product.slug}/wishlist`, {
+        method: isWishlisted ? "DELETE" : "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || "Không thể cập nhật wishlist");
+      }
+
+      setIsWishlisted((prev) => !prev);
+      setWishlistMessage(isWishlisted ? "Đã bỏ khỏi wishlist" : "Đã thêm vào wishlist");
+    } catch (error) {
+      setWishlistMessage(error instanceof Error ? error.message : "Không thể cập nhật wishlist");
+    } finally {
+      setIsUpdatingWishlist(false);
+    }
+  }
 
   async function submitReview(event) {
     event.preventDefault();
@@ -251,12 +376,25 @@ export default function ProductDetailPage() {
                 {Number(product.stockQuantity) > 0 ? "Thêm vào giỏ" : "Hết hàng"}
               </Button>
 
+              <Button
+                variant={isWishlisted ? "default" : "outline"}
+                onClick={toggleWishlist}
+                disabled={isUpdatingWishlist}
+              >
+                {isUpdatingWishlist
+                  ? "Đang cập nhật..."
+                  : isWishlisted
+                    ? "Đang theo dõi"
+                    : "Theo dõi sản phẩm"}
+              </Button>
+              {wishlistMessage && <p className="text-xs text-muted-foreground">{wishlistMessage}</p>}
+
               <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
                 <h2 className="text-lg font-semibold">Đánh giá sản phẩm</h2>
 
                 {!isHydrated ? (
                   <p className="text-sm text-muted-foreground">Đang kiểm tra trạng thái đăng nhập...</p>
-                ) : isAuthenticated ? (
+                ) : isAuthenticated && canReview ? (
                   <form className="space-y-3" onSubmit={submitReview}>
                     <div className="space-y-1">
                       <label className="block text-sm font-medium" htmlFor="review-rating">
@@ -297,6 +435,10 @@ export default function ProductDetailPage() {
                     {reviewMessage && <p className="text-sm text-emerald-600">{reviewMessage}</p>}
                     {reviewError && <p className="text-sm text-destructive">{reviewError}</p>}
                   </form>
+                ) : isAuthenticated ? (
+                  <p className="text-sm text-muted-foreground">
+                    {reviewEligibilityMessage || "Bạn chỉ có thể đánh giá sau khi đơn hàng đã giao thành công."}
+                  </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     Vui lòng <Link to="/login" className="text-primary underline">đăng nhập</Link> để gửi đánh giá.
@@ -334,9 +476,87 @@ export default function ProductDetailPage() {
             />
           </div>
         )}
+
+        {Array.isArray(product?.relatedProducts) && product.relatedProducts.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold mb-4">Sản phẩm liên quan</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {product.relatedProducts.slice(0, 8).map((item) => (
+                <Link
+                  key={item.id}
+                  to={`/products/${item.slug}`}
+                  className="rounded-xl border border-border/60 bg-background p-3 hover:shadow-md transition"
+                >
+                  <img
+                    src={item.imageUrl || "/images/component-placeholder.svg"}
+                    alt={item.name}
+                    className="h-32 w-full rounded-lg object-contain"
+                  />
+                  <p className="mt-2 line-clamp-2 text-sm font-medium">{item.name}</p>
+                  <p className="mt-1 text-sm text-primary font-semibold">{formatMoney(item.price)}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {recentlyViewed.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold mb-4">Đã xem gần đây</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {recentlyViewed.map((item) => (
+                <Link
+                  key={item.id}
+                  to={`/products/${item.slug}`}
+                  className="rounded-xl border border-border/60 bg-background p-3 hover:shadow-md transition"
+                >
+                  <img
+                    src={item.imageUrl || "/images/component-placeholder.svg"}
+                    alt={item.name}
+                    className="h-32 w-full rounded-lg object-contain"
+                  />
+                  <p className="mt-2 line-clamp-2 text-sm font-medium">{item.name}</p>
+                  <p className="mt-1 text-sm text-primary font-semibold">{formatMoney(item.price)}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
+}
+
+function updateRecentlyViewed(product) {
+  const entry = {
+    id: Number(product?.id ?? 0),
+    slug: String(product?.slug ?? ""),
+    name: String(product?.name ?? ""),
+    imageUrl: String(product?.imageUrl ?? "/images/component-placeholder.svg"),
+    price: Number(product?.price ?? 0),
+  };
+
+  if (!entry.id || !entry.slug) {
+    return readRecentlyViewed();
+  }
+
+  const existing = readRecentlyViewed();
+  const withoutCurrent = existing.filter((item) => Number(item.id) !== entry.id);
+  const next = [entry, ...withoutCurrent].slice(0, 12);
+  window.localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next));
+  return next;
+}
+
+function readRecentlyViewed() {
+  try {
+    const raw = window.localStorage.getItem(RECENTLY_VIEWED_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && item.id && item.slug).slice(0, 12)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatMoney(value) {
@@ -355,3 +575,5 @@ function formatDate(value) {
 
   return date.toLocaleString("vi-VN");
 }
+
+const RECENTLY_VIEWED_KEY = "techbuiltai-recently-viewed";

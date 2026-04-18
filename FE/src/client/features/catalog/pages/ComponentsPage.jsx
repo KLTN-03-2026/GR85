@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 12;
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_HISTORY_KEY = "techbuiltai-search-history";
 
 export default function ComponentsPage() {
   const [searchParams] = useSearchParams();
@@ -34,6 +36,7 @@ export default function ComponentsPage() {
   const [jumpPageInput, setJumpPageInput] = useState("1");
   const [searchPool, setSearchPool] = useState([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -51,6 +54,24 @@ export default function ComponentsPage() {
     sortBy !== "display_order" ||
     priceRange[0] > 0 ||
     priceRange[1] < 50000000;
+
+  useEffect(() => {
+    setSearchHistory(readSearchHistory());
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextKeyword = keywordInput.trim();
+      if (nextKeyword === keyword) {
+        return;
+      }
+
+      setKeyword(nextKeyword);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [keywordInput, keyword]);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,8 +241,10 @@ export default function ComponentsPage() {
   }, [page]);
 
   const applyKeywordSearch = () => {
+    const normalizedKeyword = keywordInput.trim();
     setPage(1);
-    setKeyword(keywordInput.trim());
+    setKeyword(normalizedKeyword);
+    pushSearchHistory(normalizedKeyword, setSearchHistory);
     setIsSearchFocused(false);
   };
 
@@ -267,6 +290,7 @@ export default function ComponentsPage() {
     setKeywordInput(value);
     setKeyword(value);
     setPage(1);
+    pushSearchHistory(value, setSearchHistory);
     setIsSearchFocused(false);
   };
 
@@ -355,6 +379,38 @@ export default function ComponentsPage() {
                       >
                         <span>{item.label}</span>
                         <span className="text-xs text-muted-foreground">{item.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isSearchFocused && suggestions.length === 0 && searchHistory.length > 0 && !keywordInput.trim() && (
+                <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
+                  <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Lịch sử tìm kiếm
+                    </p>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onMouseDown={() => {
+                        clearSearchHistory();
+                        setSearchHistory([]);
+                      }}
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                  <div className="py-1">
+                    {searchHistory.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
+                        onMouseDown={() => applySuggestedKeyword(item)}
+                      >
+                        <span>{item}</span>
                       </button>
                     ))}
                   </div>
@@ -546,59 +602,6 @@ export default function ComponentsPage() {
                 AI Gợi ý
               </Button>
             </Link>
-          </div>
-
-          <div className="hidden">
-            <Button
-              variant={stockStatus === "in-stock" ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
-                setPage(1);
-              }}
-              className="gap-1"
-            >
-              {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
-              Còn hàng
-            </Button>
-            <Button
-              variant={priceRange[1] <= 5000000 ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setPriceRange((prev) => {
-                  if (prev[0] === 0 && prev[1] <= 5000000) {
-                    return [0, 50000000];
-                  }
-                  return [0, 5000000];
-                });
-                setPage(1);
-              }}
-            >
-              Dưới 5 triệu
-            </Button>
-            <Button
-              variant={selectedCategory === "all" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => {
-                setSelectedCategory("all");
-                setPage(1);
-              }}
-            >
-              Tất cả
-            </Button>
-            {categoryButtons.map((category) => (
-              <Button
-                key={category.id}
-                variant={selectedCategory === category.id ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setSelectedCategory(category.id);
-                  setPage(1);
-                }}
-              >
-                {category.name}
-              </Button>
-            ))}
           </div>
 
           {hasActiveFilters && (
@@ -945,4 +948,35 @@ function clampPrice(value) {
     return 0;
   }
   return Math.max(0, Math.min(50000000, Math.round(num / 500000) * 500000));
+}
+
+function readSearchHistory() {
+  try {
+    const raw = window.localStorage.getItem(SEARCH_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => typeof item === "string" && item.trim()).slice(0, 8)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushSearchHistory(keyword, setHistory) {
+  const normalizedKeyword = String(keyword ?? "").trim();
+  if (!normalizedKeyword) {
+    return;
+  }
+
+  const next = [
+    normalizedKeyword,
+    ...readSearchHistory().filter((item) => item.toLowerCase() !== normalizedKeyword.toLowerCase()),
+  ].slice(0, 8);
+
+  window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+  setHistory(next);
+}
+
+function clearSearchHistory() {
+  window.localStorage.removeItem(SEARCH_HISTORY_KEY);
 }

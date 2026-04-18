@@ -40,6 +40,9 @@ export default function CartPage() {
   const [addressMessage, setAddressMessage] = useState("");
   const [voucherCode, setVoucherCode] = useState("");
   const [pricingPreview, setPricingPreview] = useState(null);
+  const [shippingEstimate, setShippingEstimate] = useState(null);
+  const [shippingEstimateError, setShippingEstimateError] = useState("");
+  const [shippingProvider, setShippingProvider] = useState("GHN");
   const [voucherFeedback, setVoucherFeedback] = useState("");
   const [voucherError, setVoucherError] = useState("");
   const [checkoutMessage, setCheckoutMessage] = useState("");
@@ -72,6 +75,7 @@ export default function CartPage() {
     removeBundle,
     checkout,
     previewPricing,
+    estimateShipping,
     bundles,
   } = useCart();
 
@@ -196,9 +200,64 @@ export default function CartPage() {
 
   useEffect(() => {
     setPricingPreview(null);
+    setShippingEstimate(null);
+    setShippingEstimateError("");
     setVoucherFeedback("");
     setVoucherError("");
   }, [items.length, totalPrice, selectedCartItemSignature]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadShippingEstimate() {
+      if (!isAuthenticated || selectedCartItemIds.length === 0) {
+        setShippingEstimate(null);
+        setShippingEstimateError("");
+        return;
+      }
+
+      try {
+        setShippingEstimateError("");
+        const data = await estimateShipping({
+          addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+          shippingAddress,
+          selectedCartItemIds,
+          provider: shippingProvider,
+          paymentMethod,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setShippingEstimate(data);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setShippingEstimate(null);
+        setShippingEstimateError(
+          error instanceof Error ? error.message : "Không thể ước tính phí ship",
+        );
+      }
+    }
+
+    loadShippingEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    estimateShipping,
+    isAuthenticated,
+    selectedAddressId,
+    selectedCartItemSignature,
+    selectedCartItemIds,
+    shippingAddress,
+    shippingProvider,
+    paymentMethod,
+  ]);
 
   useEffect(() => {
     const validIds = new Set(selectableItemIds);
@@ -681,8 +740,20 @@ export default function CartPage() {
                       <span className="text-muted-foreground">
                         Phí vận chuyển
                       </span>
-                      <span className="text-storage">Miễn phí</span>
+                      <span className="text-storage">
+                        {shippingEstimate
+                          ? formatPrice(Number(shippingEstimate.estimatedFee ?? 0))
+                          : "Đang ước tính"}
+                      </span>
                     </div>
+                    {shippingEstimate?.estimatedDeliveryText && (
+                      <div className="text-xs text-muted-foreground text-right">
+                        Dự kiến giao: {shippingEstimate.estimatedDeliveryText}
+                      </div>
+                    )}
+                    {shippingEstimateError && (
+                      <p className="text-xs text-destructive text-right">{shippingEstimateError}</p>
+                    )}
                   </div>
 
                   <Separator className="mb-4" />
@@ -690,8 +761,23 @@ export default function CartPage() {
                   <div className="flex justify-between mb-6">
                     <span className="font-semibold">Tổng cộng</span>
                     <span className="text-2xl font-bold text-gradient-primary">
-                      {formatPrice(Number(pricingPreview?.totalAmount ?? selectedSubtotal))}
+                      {formatPrice(
+                        Number(pricingPreview?.totalAmount ?? selectedSubtotal) +
+                          Number(shippingEstimate?.estimatedFee ?? 0),
+                      )}
                     </span>
+                  </div>
+
+                  <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-2">
+                    <p className="text-sm font-medium">Đơn vị vận chuyển</p>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={shippingProvider}
+                      onChange={(event) => setShippingProvider(event.target.value)}
+                    >
+                      <option value="GHN">Giao Hàng Nhanh (GHN)</option>
+                      <option value="VIETTEL_POST">Viettel Post</option>
+                    </select>
                   </div>
 
                   <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-2">

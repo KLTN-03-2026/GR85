@@ -1,5 +1,7 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import { OrderStatus } from "@prisma/client";
+import { createWishlistPriceDropNotifications } from "./notification.service.js";
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
@@ -92,7 +94,33 @@ export async function getProductDetailBySlug(slug) {
   }
 
   const [productWithRating] = await attachProductRatings([product]);
-  return serializeData(mapProductDetail(productWithRating));
+
+  const relatedRaw = await prisma.product.findMany({
+    where: {
+      id: { not: product.id },
+      stockQuantity: { gt: 0 },
+      OR: [
+        { categoryId: product.categoryId },
+        ...(product.supplierId ? [{ supplierId: product.supplierId }] : []),
+      ],
+    },
+    take: 8,
+    orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
+    include: {
+      category: true,
+      supplier: true,
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        take: 1,
+      },
+    },
+  });
+  const relatedWithRatings = await attachProductRatings(relatedRaw);
+
+  return serializeData({
+    ...mapProductDetail(productWithRating),
+    relatedProducts: relatedWithRatings.map(mapProductListItem),
+  });
 }
 
 export async function listProductReviewsBySlug(slug) {
@@ -121,7 +149,7 @@ export async function listProductReviewsBySlug(slug) {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ rating: "desc" }, { createdAt: "desc" }],
   });
 
   const averageRating =
@@ -144,6 +172,186 @@ export async function listProductReviewsBySlug(slug) {
       totalReviews: reviews.length,
       averageRating,
     },
+  });
+}
+
+export async function getProductReviewEligibilityBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  const deliveredOrderItem = await prisma.orderItem.findFirst({
+    where: {
+      productId: product.id,
+      order: {
+        userId: normalizedUserId,
+        orderStatus: OrderStatus.DELIVERED,
+      },
+    },
+    select: { id: true },
+  });
+
+  return serializeData({
+    canReview: Boolean(deliveredOrderItem),
+    reason: deliveredOrderItem
+      ? null
+      : "Bạn chỉ có thể đánh giá sau khi mua và đơn hàng đã giao thành công",
+  });
+}
+
+export async function listMyWishlistProducts(userId) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  const wishlistItems = await prisma.wishlistItem.findMany({
+    where: { userId: normalizedUserId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      product: {
+        include: {
+          category: true,
+          supplier: true,
+          images: {
+            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const productsWithRatings = await attachProductRatings(
+    wishlistItems.map((item) => item.product),
+  );
+
+  return serializeData(
+    productsWithRatings.map((product, index) => ({
+      ...mapProductListItem(product),
+      wishlistCreatedAt: wishlistItems[index]?.createdAt ?? null,
+    })),
+  );
+}
+
+export async function addProductToWishlistBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.wishlistItem.upsert({
+    where: {
+      userId_productId: {
+        userId: normalizedUserId,
+        productId: product.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function removeProductFromWishlistBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.wishlistItem.deleteMany({
+    where: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function getWishlistStatusBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  const existing = await prisma.wishlistItem.findUnique({
+    where: {
+      userId_productId: {
+        userId: normalizedUserId,
+        productId: product.id,
+      },
+    },
+    select: { id: true },
+  });
+
+  return serializeData({
+    isWishlisted: Boolean(existing),
   });
 }
 
@@ -176,6 +384,21 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
 
   if (!product) {
     throw new Error("Không tim thấy sản phẩm");
+  }
+
+  const deliveredOrderItem = await prisma.orderItem.findFirst({
+    where: {
+      productId: product.id,
+      order: {
+        userId: normalizedUserId,
+        orderStatus: OrderStatus.DELIVERED,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!deliveredOrderItem) {
+    throw new Error("Chỉ có thể đánh giá khi đã mua và nhận hàng thành công");
   }
 
   const existingReview = await prisma.review.findFirst({
@@ -290,7 +513,20 @@ export async function createProduct(input) {
   }
 
   const price = Number(input.price);
+  const salePrice =
+    input.salePrice === undefined || input.salePrice === null
+      ? null
+      : Number(input.salePrice);
   const stockQuantity = Number(input.stockQuantity);
+  const lowStockThreshold = Number(input.lowStockThreshold ?? 5);
+  const saleStartAt =
+    input.saleStartAt === undefined || input.saleStartAt === null
+      ? null
+      : new Date(input.saleStartAt);
+  const saleEndAt =
+    input.saleEndAt === undefined || input.saleEndAt === null
+      ? null
+      : new Date(input.saleEndAt);
 
   if (!Number.isFinite(price) || price <= 0) {
     throw new Error("Product price must be greater than 0");
@@ -298,6 +534,26 @@ export async function createProduct(input) {
 
   if (!Number.isFinite(stockQuantity) || stockQuantity < 0) {
     throw new Error("Stock quantity must be >= 0");
+  }
+
+  if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
+    throw new Error("Low stock threshold must be >= 0");
+  }
+
+  if (salePrice !== null && (!Number.isFinite(salePrice) || salePrice <= 0)) {
+    throw new Error("Sale price must be > 0");
+  }
+
+  if (salePrice !== null && salePrice >= price) {
+    throw new Error("Sale price must be lower than base price");
+  }
+
+  if ((saleStartAt && Number.isNaN(saleStartAt.getTime())) || (saleEndAt && Number.isNaN(saleEndAt.getTime()))) {
+    throw new Error("Invalid sale time range");
+  }
+
+  if (saleStartAt && saleEndAt && saleStartAt > saleEndAt) {
+    throw new Error("Sale start time must be before end time");
   }
 
   const category = await prisma.category.findUnique({
@@ -321,8 +577,12 @@ export async function createProduct(input) {
       categoryId: category.id,
       supplierId: input.supplierId ? Number(input.supplierId) : null,
       price,
+      salePrice,
+      saleStartAt,
+      saleEndAt,
       warrantyMonths: Number(input.warrantyMonths ?? 12),
       stockQuantity,
+      lowStockThreshold: Math.trunc(lowStockThreshold),
       isHomepageFeatured: Boolean(input.isHomepageFeatured),
       displayOrder: Number.isFinite(Number(input.displayOrder))
         ? Math.max(0, Number(input.displayOrder))
@@ -392,6 +652,7 @@ export async function updateProductById(productId, input) {
   }
 
   const data = {};
+  const previousEffectivePrice = resolveEffectivePrice(current);
 
   if (input.name !== undefined) {
     const name = String(input.name).trim();
@@ -432,12 +693,56 @@ export async function updateProductById(productId, input) {
     data.price = price;
   }
 
+  if (input.salePrice !== undefined) {
+    if (input.salePrice === null || input.salePrice === "") {
+      data.salePrice = null;
+    } else {
+      const salePrice = Number(input.salePrice);
+      if (!Number.isFinite(salePrice) || salePrice <= 0) {
+        throw new Error("Sale price must be > 0");
+      }
+      data.salePrice = salePrice;
+    }
+  }
+
+  if (input.saleStartAt !== undefined) {
+    if (!input.saleStartAt) {
+      data.saleStartAt = null;
+    } else {
+      const saleStartAt = new Date(input.saleStartAt);
+      if (Number.isNaN(saleStartAt.getTime())) {
+        throw new Error("Invalid sale start time");
+      }
+      data.saleStartAt = saleStartAt;
+    }
+  }
+
+  if (input.saleEndAt !== undefined) {
+    if (!input.saleEndAt) {
+      data.saleEndAt = null;
+    } else {
+      const saleEndAt = new Date(input.saleEndAt);
+      if (Number.isNaN(saleEndAt.getTime())) {
+        throw new Error("Invalid sale end time");
+      }
+      data.saleEndAt = saleEndAt;
+    }
+  }
+
   if (input.stockQuantity !== undefined) {
     const stockQuantity = Number(input.stockQuantity);
     if (!Number.isFinite(stockQuantity) || stockQuantity < 0) {
       throw new Error("Stock quantity must be >= 0");
     }
     data.stockQuantity = stockQuantity;
+  }
+
+  if (input.lowStockThreshold !== undefined) {
+    const threshold = Number(input.lowStockThreshold);
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      throw new Error("Low stock threshold must be >= 0");
+    }
+    data.lowStockThreshold = Math.trunc(threshold);
   }
 
   if (input.warrantyMonths !== undefined) {
@@ -464,6 +769,25 @@ export async function updateProductById(productId, input) {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const nextPrice = data.price ?? current.price;
+    const nextSalePrice = Object.prototype.hasOwnProperty.call(data, "salePrice")
+      ? data.salePrice
+      : current.salePrice;
+    const nextSaleStartAt = Object.prototype.hasOwnProperty.call(data, "saleStartAt")
+      ? data.saleStartAt
+      : current.saleStartAt;
+    const nextSaleEndAt = Object.prototype.hasOwnProperty.call(data, "saleEndAt")
+      ? data.saleEndAt
+      : current.saleEndAt;
+
+    if (nextSaleStartAt && nextSaleEndAt && nextSaleStartAt > nextSaleEndAt) {
+      throw new Error("Sale start time must be before end time");
+    }
+
+    if (nextSalePrice !== null && Number(nextSalePrice) >= Number(nextPrice)) {
+      throw new Error("Sale price must be lower than base price");
+    }
+
     const product = await tx.product.update({
       where: { id },
       data,
@@ -516,6 +840,9 @@ export async function updateProductById(productId, input) {
 
     return product;
   });
+
+  const updatedEffectivePrice = resolveEffectivePrice(updated);
+  await createWishlistPriceDropNotifications(updated, previousEffectivePrice, updatedEffectivePrice);
 
   const updatedWithDetail = await prisma.product.findUnique({
     where: { id },
@@ -702,6 +1029,9 @@ function resolveProductOrderBy(sort) {
 }
 
 function mapProductListItem(product) {
+  const basePrice = Number(product.price ?? 0);
+  const saleState = resolveSaleState(product);
+  const effectivePrice = resolveEffectivePrice(product);
   const averageRatingRaw = Number(product.averageRating ?? 5);
   const normalizedRating = Number.isFinite(averageRatingRaw)
     ? Math.max(0, Math.min(5, averageRatingRaw))
@@ -715,8 +1045,15 @@ function mapProductListItem(product) {
     name: product.name,
     slug: product.slug,
     productCode: product.slug,
-    price: product.price,
+    price: effectivePrice,
+    basePrice,
+    salePrice: product.salePrice,
+    saleStartAt: product.saleStartAt,
+    saleEndAt: product.saleEndAt,
+    isFlashSaleActive: saleState.isActive,
     stockQuantity: product.stockQuantity,
+    lowStockThreshold: Number(product.lowStockThreshold ?? 5),
+    isLowStock: Number(product.stockQuantity ?? 0) <= Number(product.lowStockThreshold ?? 5),
     isHomepageFeatured: Boolean(product.isHomepageFeatured),
     displayOrder: Number(product.displayOrder ?? 9999),
     isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
@@ -799,4 +1136,34 @@ async function attachProductRatings(products) {
       reviewCount: aggregate?.reviewCount ?? 0,
     };
   });
+}
+
+function resolveSaleState(product, now = new Date()) {
+  const basePrice = Number(product?.price ?? 0);
+  const salePrice = product?.salePrice === null || product?.salePrice === undefined
+    ? null
+    : Number(product.salePrice);
+  const saleStartAt = product?.saleStartAt ? new Date(product.saleStartAt) : null;
+  const saleEndAt = product?.saleEndAt ? new Date(product.saleEndAt) : null;
+
+  const hasValidSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
+  const hasValidStart = !saleStartAt || !Number.isNaN(saleStartAt.getTime());
+  const hasValidEnd = !saleEndAt || !Number.isNaN(saleEndAt.getTime());
+
+  const inWindow =
+    (!saleStartAt || now >= saleStartAt) && (!saleEndAt || now <= saleEndAt);
+
+  return {
+    isActive: Boolean(hasValidSalePrice && hasValidStart && hasValidEnd && inWindow),
+    salePrice,
+  };
+}
+
+function resolveEffectivePrice(product, now = new Date()) {
+  const basePrice = Number(product?.price ?? 0);
+  const saleState = resolveSaleState(product, now);
+  if (saleState.isActive && Number.isFinite(saleState.salePrice)) {
+    return saleState.salePrice;
+  }
+  return basePrice;
 }

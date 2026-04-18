@@ -79,6 +79,12 @@ enum ReturnRequestStatus {
     REFUNDED
 }
 
+enum NotificationType {
+    WISHLIST_PRICE_DROP
+    WISHLIST_NEW_COUPON
+    SYSTEM
+}
+
 // ================= 1. NGƯỜI DÙNG & PHÂN QUYỀN =================
 
 model User {
@@ -105,6 +111,8 @@ model User {
     addresses     UserAddress[]
     walletTransactions WalletTransaction[]
     returnRequests ReturnRequest[]
+    wishlistItems  WishlistItem[]
+    notifications  Notification[]
 
     @@map("Users")
 }
@@ -197,8 +205,12 @@ model Product {
     name           String
     slug           String        @unique
     price          Decimal       @db.Decimal(15, 2)
+    salePrice      Decimal?      @map("sale_price") @db.Decimal(15, 2)
+    saleStartAt    DateTime?     @map("sale_start_at")
+    saleEndAt      DateTime?     @map("sale_end_at")
     warrantyMonths Int           @default(12) @map("warranty_months")
     stockQuantity  Int           @default(0) @map("stock_quantity") // <-- Sẽ trừ thẳng vào đây khi có đơn hàng
+    lowStockThreshold Int        @default(5) @map("low_stock_threshold")
     isHomepageFeatured Boolean   @default(false) @map("is_homepage_featured")
     displayOrder   Int           @default(9999) @map("display_order")
     specifications Json
@@ -216,6 +228,7 @@ model Product {
     orderItems    OrderItem[]
     reviews       Review[]
     aiBuildItems  AiBuildItem[]
+    wishlistItems WishlistItem[]
 
     @@map("Products")
 }
@@ -511,4 +524,37 @@ model ReturnRequest {
     @@index([userId])
     @@index([status])
     @@map("Return_Requests")
+}
+
+model WishlistItem {
+    id         Int      @id @default(autoincrement())
+    userId     Int      @map("user_id")
+    productId  Int      @map("product_id")
+    createdAt  DateTime @default(now()) @map("created_at")
+
+    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, productId])
+    @@index([userId])
+    @@index([productId])
+    @@map("User_Wishlist")
+}
+
+model Notification {
+    id         Int              @id @default(autoincrement())
+    userId     Int              @map("user_id")
+    type       NotificationType
+    title      String
+    message    String           @db.Text
+    payload    Json?
+    isRead     Boolean          @default(false) @map("is_read")
+    createdAt  DateTime         @default(now()) @map("created_at")
+    readAt     DateTime?        @map("read_at")
+
+    user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, isRead])
+    @@index([createdAt])
+    @@map("Notifications")
 }
