@@ -4,10 +4,12 @@ import {
   createBatchImportByAdmin,
   createCouponByAdmin,
   createWarehouseByAdmin,
+  deleteCouponByAdmin,
   getAdminDashboard,
   getWarehouseOverviewByAdmin,
   getUserDetailByAdmin,
   listCouponsForAdmin,
+  updateCouponByAdmin,
   updateWarehouseByAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
@@ -62,6 +64,16 @@ const createCouponSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).default("ACTIVE"),
+});
+
+const updateCouponSchema = z.object({
+  discountType: z.enum(["PERCENT", "FIXED_AMOUNT"]).optional(),
+  discountValue: z.number().positive().optional(),
+  minOrderValue: z.number().min(0).optional(),
+  usageLimit: z.number().int().positive().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).optional(),
 });
 
 const reviewReturnSchema = z.object({
@@ -185,6 +197,55 @@ router.post(
 
       if (error instanceof Error) {
         const status = error.message.includes("already exists") ? 409 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.patch(
+  "/coupons/:couponId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = updateCouponSchema.parse(req.body ?? {});
+      const data = await updateCouponByAdmin(req.params.couponId, parsed);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.delete(
+  "/coupons/:couponId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await deleteCouponByAdmin(req.params.couponId);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
         return res.status(status).json({ message: error.message });
       }
 

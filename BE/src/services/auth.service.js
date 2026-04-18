@@ -497,16 +497,25 @@ export async function updateUserProfile(userId, input) {
     input.phone !== undefined
       ? normalizeAndValidatePhoneNumber(input.phone)
       : user.phone;
+  let normalizedAddress = user.address;
+
+  if (input.address !== undefined) {
+    const address = String(input.address ?? "").trim();
+    if (!address) {
+      throw new Error("Địa chỉ không được để trống");
+    }
+    if (address.length < 5) {
+      throw new Error("Địa chỉ phải có ít nhất 5 ký tự");
+    }
+    normalizedAddress = address;
+  }
 
   const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
       fullName: normalizedFullName,
       phone: normalizedPhone,
-      address:
-        input.address !== undefined
-          ? String(input.address ?? "").trim() || null
-          : user.address,
+      address: normalizedAddress,
     },
     include: {
       role: {

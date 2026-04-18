@@ -230,7 +230,15 @@ export default function ProductDetailPage() {
                 disabled={Number(product.stockQuantity) <= 0}
                 onClick={async () => {
                   try {
-                    await addToCart({ id: product.id });
+                    await addToCart({
+                      id: product.id,
+                      slug: product.slug,
+                      name: product.name,
+                      brand: product.specifications?.brand || "PC Perfect",
+                      image: product.primaryImage || "/images/component-placeholder.svg",
+                      price: Number(product.price ?? 0),
+                      stock: Number(product.stockQuantity ?? 0),
+                    });
                   } catch (error) {
                     window.alert(
                       error instanceof Error

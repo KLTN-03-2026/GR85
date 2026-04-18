@@ -193,9 +193,11 @@ export async function checkoutCart(userId, input) {
   let shippingAddress = String(input.shippingAddress ?? "").trim();
   let phoneNumber = String(input.phoneNumber ?? "").trim();
   const useWalletBalance = input.useWalletBalance !== false;
-  const paymentMethod = String(input.paymentMethod ?? PaymentMethod.VNPAY)
+  const paymentMethodInput = String(input.paymentMethod ?? "SEPAY")
     .trim()
     .toUpperCase();
+  const paymentMethod =
+    paymentMethodInput === "SEPAY" ? PaymentMethod.BANK_TRANSFER : paymentMethodInput;
   const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -242,8 +244,10 @@ export async function checkoutCart(userId, input) {
     fieldLabel: "Phone number",
   });
 
-  if (paymentMethod !== PaymentMethod.VNPAY) {
-    throw new Error("Only VNPAY transfer payment is supported");
+  if (
+    ![PaymentMethod.VNPAY, PaymentMethod.COD, PaymentMethod.BANK_TRANSFER].includes(paymentMethod)
+  ) {
+    throw new Error("Unsupported payment method");
   }
 
   const cart = await ensureCart(userId);
@@ -270,6 +274,8 @@ export async function checkoutCart(userId, input) {
   const walletUsedAmount = useWalletBalance ? Math.min(walletBalance, totalAmount) : 0;
   const remainingPayableAmount = Math.max(0, totalAmount - walletUsedAmount);
   const isFullyPaidByWallet = remainingPayableAmount === 0;
+  const shouldReserveStockImmediately =
+    isFullyPaidByWallet || paymentMethod === PaymentMethod.COD;
 
   const result = await prisma.$transaction(async (tx) => {
     for (const item of cartItems) {
@@ -310,7 +316,11 @@ export async function checkoutCart(userId, input) {
         changedBy: userId,
         note: isFullyPaidByWallet
           ? "Order paid fully by wallet balance"
-          : "Order created and waiting for VNPAY payment",
+          : paymentMethod === PaymentMethod.COD
+            ? "Order placed with COD and waiting for delivery"
+            : paymentMethod === PaymentMethod.BANK_TRANSFER
+              ? "Order created and waiting for SePay transfer"
+              : "Order created and waiting for VNPAY payment",
       },
     });
 
@@ -335,7 +345,7 @@ export async function checkoutCart(userId, input) {
       });
     }
 
-    if (isFullyPaidByWallet) {
+    if (shouldReserveStockImmediately) {
       for (const item of cartItems) {
         await tx.product.update({
           where: { id: item.productId },
@@ -363,7 +373,7 @@ export async function checkoutCart(userId, input) {
   if (isFullyPaidByWallet) {
     return serializeData({
       message: "Order paid successfully using wallet balance",
-      paymentMethod: PaymentMethod.VNPAY,
+      paymentMethod,
       orderId: result.id,
       subtotal,
       discountAmount,
@@ -374,8 +384,23 @@ export async function checkoutCart(userId, input) {
     });
   }
 
-  if (paymentMethod === PaymentMethod.VNPAY) {
-    // Generate mock VNPAY payment code and QR
+  if (paymentMethod === PaymentMethod.COD) {
+    return serializeData({
+      message: "Đặt hàng COD thành công",
+      paymentMethod: PaymentMethod.COD,
+      orderId: result.id,
+      subtotal,
+      discountAmount,
+      totalAmount: result.totalAmount,
+      walletUsedAmount,
+      remainingPayableAmount,
+      isCodOrder: true,
+    });
+  }
+
+  if (paymentMethod === PaymentMethod.VNPAY || paymentMethod === PaymentMethod.BANK_TRANSFER) {
+    const paymentProvider = paymentMethod === PaymentMethod.BANK_TRANSFER ? "SEPAY" : "VNPAY";
+    // Generate payment code and QR (VietQR-compatible) for transfer methods.
     const paymentCode = generateMockVnpayPaymentCode();
     const transferContent = `TT DON ${result.id} ${paymentCode}`;
     const mockQrData = await createMockVnpayQrCode({
@@ -410,8 +435,9 @@ export async function checkoutCart(userId, input) {
     }
 
     return serializeData({
-      message: "Mock VNPAY payment initialized",
-      paymentMethod: PaymentMethod.VNPAY,
+      message: paymentProvider === "SEPAY" ? "SePay QR payment initialized" : "Mock VNPAY payment initialized",
+      paymentMethod,
+      paymentProvider,
       orderId: result.id,
       subtotal,
       discountAmount,
@@ -423,6 +449,7 @@ export async function checkoutCart(userId, input) {
       expiresAt: mockQrData.expiresAt,
       bankTransfer: mockQrData.bankTransfer,
       isMockPayment: true,
+      isSepay: paymentProvider === "SEPAY",
     });
   }
 }
@@ -511,8 +538,8 @@ export async function confirmMockVnpayPayment(userId, input) {
     throw new Error("Order not found");
   }
 
-  if (order.paymentMethod !== PaymentMethod.VNPAY) {
-    throw new Error("Order is not VNPAY payment");
+  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
+    throw new Error("Order is not transfer payment");
   }
 
   if (order.paymentStatus === PaymentStatus.PAID) {
@@ -593,6 +620,8 @@ async function finalizeVnpayPayment({
           note: `VNPAY payment failed via ${source}`,
         },
       });
+
+      await refundWalletDebitForOrder(tx, order.id, order.userId, "Payment failed");
     });
 
     return {
@@ -601,84 +630,164 @@ async function finalizeVnpayPayment({
     };
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const item of order.orderItems) {
-      const product = await tx.product.findUnique({ where: { id: item.productId } });
-      if (!product || product.stockQuantity < item.quantity) {
-        throw new Error("Insufficient stock while confirming payment");
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const item of order.orderItems) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product || product.stockQuantity < item.quantity) {
+          throw new Error("INSUFFICIENT_STOCK_WHILE_CONFIRMING_PAYMENT");
+        }
       }
-    }
 
-    for (const item of order.orderItems) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: {
-          stockQuantity: {
-            decrement: item.quantity,
+      for (const item of order.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              decrement: item.quantity,
+            },
           },
+        });
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
         },
       });
-    }
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        paymentStatus: PaymentStatus.PAID,
-      },
-    });
-
-    if (order.couponId) {
-      await tx.coupon.update({
-        where: { id: order.couponId },
-        data: { usedCount: { increment: 1 } },
-      });
-    }
-
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId,
-        fromStatus: order.orderStatus,
-        toStatus: order.orderStatus,
-        changedBy: order.userId,
-        note: `VNPAY confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
-      },
-    });
-
-    const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
-    if (cart) {
-      const currentCartItems = await tx.cartItem.findMany({
-        where: { cartId: cart.id },
-        include: { product: true },
-      });
-      const orderItemByProductId = new Map(
-        order.orderItems.map((item) => [Number(item.productId), Number(item.quantity)]),
-      );
-
-      for (const cartItem of currentCartItems) {
-        const purchasedQuantity = orderItemByProductId.get(Number(cartItem.productId));
-        if (!purchasedQuantity) {
-          continue;
-        }
-
-        if (cartItem.quantity > purchasedQuantity) {
-          await tx.cartItem.update({
-            where: { id: cartItem.id },
-            data: {
-              quantity: cartItem.quantity - purchasedQuantity,
-            },
-          });
-          continue;
-        }
-
-        await tx.cartItem.delete({ where: { id: cartItem.id } });
+      if (order.couponId) {
+        await tx.coupon.update({
+          where: { id: order.couponId },
+          data: { usedCount: { increment: 1 } },
+        });
       }
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          fromStatus: order.orderStatus,
+          toStatus: order.orderStatus,
+          changedBy: order.userId,
+          note: `VNPAY confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
+        },
+      });
+
+      const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
+      if (cart) {
+        const currentCartItems = await tx.cartItem.findMany({
+          where: { cartId: cart.id },
+          include: { product: true },
+        });
+        const orderItemByProductId = new Map(
+          order.orderItems.map((item) => [Number(item.productId), Number(item.quantity)]),
+        );
+
+        for (const cartItem of currentCartItems) {
+          const purchasedQuantity = orderItemByProductId.get(Number(cartItem.productId));
+          if (!purchasedQuantity) {
+            continue;
+          }
+
+          if (cartItem.quantity > purchasedQuantity) {
+            await tx.cartItem.update({
+              where: { id: cartItem.id },
+              data: {
+                quantity: cartItem.quantity - purchasedQuantity,
+              },
+            });
+            continue;
+          }
+
+          await tx.cartItem.delete({ where: { id: cartItem.id } });
+        }
+      }
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("INSUFFICIENT_STOCK_WHILE_CONFIRMING_PAYMENT")
+    ) {
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            paymentStatus: PaymentStatus.FAILED,
+            orderStatus: OrderStatus.CANCELLED,
+          },
+        });
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId,
+            fromStatus: order.orderStatus,
+            toStatus: OrderStatus.CANCELLED,
+            changedBy: order.userId,
+            note: "Cancelled: stock changed during payment confirmation",
+          },
+        });
+
+        await refundWalletDebitForOrder(
+          tx,
+          order.id,
+          order.userId,
+          "Refund wallet amount due to insufficient stock",
+        );
+      });
+
+      return {
+        isSuccess: false,
+        message: "Payment cancelled because product is out of stock",
+      };
     }
-  });
+
+    throw error;
+  }
 
   return {
     isSuccess: true,
     message: "Payment confirmed",
   };
+}
+
+async function refundWalletDebitForOrder(tx, orderId, userId, note) {
+  const debit = await tx.walletTransaction.findFirst({
+    where: {
+      orderId,
+      userId,
+      type: WalletTransactionType.PAYMENT_DEBIT,
+    },
+    orderBy: { id: "desc" },
+  });
+
+  if (!debit) {
+    return;
+  }
+
+  const amount = Number(debit.amount ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return;
+  }
+
+  await tx.user.update({
+    where: { id: userId },
+    data: {
+      walletBalance: {
+        increment: amount,
+      },
+    },
+  });
+
+  await tx.walletTransaction.create({
+    data: {
+      userId,
+      orderId,
+      amount,
+      type: WalletTransactionType.REFUND_CREDIT,
+      note: note || `Refund wallet for cancelled order #${orderId}`,
+    },
+  });
 }
 
 async function ensureCart(userId) {

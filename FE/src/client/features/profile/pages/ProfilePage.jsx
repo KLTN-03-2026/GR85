@@ -30,7 +30,7 @@ const profileValidation = {
     return "";
   },
   address: (value) => {
-    if (!value?.trim()) return "";
+    if (!value?.trim()) return "Địa chỉ không được để trống";
     if (value.trim().length < 5) return "Địa chỉ quá ngắn";
     if (value.trim().length > 500) return "Địa chỉ không được quá 500 ký tự";
     return "";
@@ -153,7 +153,7 @@ export default function ProfilePage() {
       const updatedUser = await profileApi.updateProfile({
         fullName: formData.fullName.trim(),
         phone: formData.phone?.trim() || undefined,
-        address: formData.address?.trim() || undefined,
+        address: formData.address?.trim(),
       });
       setSession({ token, user: updatedUser });
       setProfileData(updatedUser);

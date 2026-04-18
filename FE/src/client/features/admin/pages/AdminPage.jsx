@@ -487,6 +487,8 @@ export default function AdminPage() {
   const [productDisplayMode, setProductDisplayMode] = useState("priority");
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
+  const [editingVoucherId, setEditingVoucherId] = useState(null);
+  const [deletingVoucherId, setDeletingVoucherId] = useState(null);
   const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
   const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
@@ -1998,6 +2000,134 @@ export default function AdminPage() {
       });
     } finally {
       setIsSavingVoucher(false);
+    }
+  }
+
+  async function editVoucher(item) {
+    if (!token || !item?.id) {
+      return;
+    }
+
+    const discountValueInput = window.prompt(
+      "Giá trị giảm mới",
+      String(item.discountValue ?? ""),
+    );
+    if (discountValueInput === null) {
+      return;
+    }
+
+    const minOrderInput = window.prompt(
+      "Đơn tối thiểu mới",
+      String(item.minOrderValue ?? "0"),
+    );
+    if (minOrderInput === null) {
+      return;
+    }
+
+    const usageLimitInput = window.prompt(
+      "Số lượt dùng mới",
+      String(item.usageLimit ?? "100"),
+    );
+    if (usageLimitInput === null) {
+      return;
+    }
+
+    const startDateInput = window.prompt(
+      "Thời gian bắt đầu (ISO: 2026-04-18T10:00:00.000Z)",
+      new Date(item.startDate).toISOString(),
+    );
+    if (startDateInput === null) {
+      return;
+    }
+
+    const endDateInput = window.prompt(
+      "Thời gian kết thúc (ISO: 2026-04-30T23:59:59.000Z)",
+      new Date(item.endDate).toISOString(),
+    );
+    if (endDateInput === null) {
+      return;
+    }
+
+    const statusInput = window.prompt(
+      "Trạng thái (ACTIVE / DISABLED / EXPIRED)",
+      String(item.status ?? "ACTIVE"),
+    );
+    if (statusInput === null) {
+      return;
+    }
+
+    setEditingVoucherId(item.id);
+    try {
+      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          discountValue: Number(discountValueInput),
+          minOrderValue: Number(minOrderInput),
+          usageLimit: Number(usageLimitInput),
+          startDate: startDateInput,
+          endDate: endDateInput,
+          status: String(statusInput).trim().toUpperCase(),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Cập nhật voucher thất bại");
+      }
+
+      await refreshDashboardSummary();
+      toast({ title: "Đã cập nhật voucher" });
+    } catch (error) {
+      toast({
+        title: "Không thể cập nhật voucher",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setEditingVoucherId(null);
+    }
+  }
+
+  async function deleteVoucher(item) {
+    if (!token || !item?.id) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Bạn có chắc muốn xóa voucher ${item.code}? Voucher đã dùng sẽ không xóa được.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingVoucherId(item.id);
+    try {
+      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Xóa voucher thất bại");
+      }
+
+      await refreshDashboardSummary();
+      toast({ title: "Đã xóa voucher" });
+    } catch (error) {
+      toast({
+        title: "Không thể xóa voucher",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingVoucherId(null);
     }
   }
 
@@ -4074,6 +4204,7 @@ export default function AdminPage() {
                       "Đã dùng / Giới hạn",
                       "Thời gian",
                       "Trạng thái",
+                      "Thao tác",
                     ]}
                     rows={(filteredCoupons ?? []).map((item) => [
                       item.code,
@@ -4085,6 +4216,24 @@ export default function AdminPage() {
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
                       statusBadge(formatEnum(item.status)),
+                      <div key={`voucher-action-${item.id}`} className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => editVoucher(item)}
+                          disabled={editingVoucherId === item.id || deletingVoucherId === item.id}
+                        >
+                          {editingVoucherId === item.id ? "Đang lưu..." : "Sửa"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => deleteVoucher(item)}
+                          disabled={editingVoucherId === item.id || deletingVoucherId === item.id}
+                        >
+                          {deletingVoucherId === item.id ? "Đang xóa..." : "Xóa"}
+                        </Button>
+                      </div>,
                     ])}
                   />
                 </Panel>

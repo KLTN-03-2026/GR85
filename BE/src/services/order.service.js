@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
 
@@ -118,7 +118,12 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
     throw new Error("Invalid order status");
   }
 
-  const current = await prisma.order.findUnique({ where: { id } });
+  const current = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      orderItems: true,
+    },
+  });
   if (!current) {
     throw new Error("Order not found");
   }
@@ -132,6 +137,23 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
   }
 
   await prisma.$transaction(async (tx) => {
+    if (
+      nextStatus === OrderStatus.CANCELLED &&
+      current.orderStatus !== OrderStatus.CANCELLED &&
+      current.paymentStatus === PaymentStatus.PAID
+    ) {
+      for (const item of current.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              increment: item.quantity,
+            },
+          },
+        });
+      }
+    }
+
     await tx.order.update({
       where: { id },
       data: { orderStatus: nextStatus },
