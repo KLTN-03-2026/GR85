@@ -9,6 +9,17 @@ import {
 
 const router = Router();
 
+function isAdminRole(role) {
+  const normalizedRole = String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+}
+
 const updateStatusSchema = z.object({
   status: z.enum(["PENDING", "SHIPPING", "DELIVERED", "CANCELLED"]),
   note: z.string().optional(),
@@ -16,7 +27,7 @@ const updateStatusSchema = z.object({
 
 router.use(requireAuth);
 router.use((req, res, next) => {
-  if (req.auth?.role !== "Admin") {
+  if (!isAdminRole(req.auth?.role)) {
     return res.status(403).json({ message: "Admin only" });
   }
 

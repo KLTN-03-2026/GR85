@@ -16,6 +16,11 @@ const envSchema = z.object({
   VNP_HASH_SECRET: z.string().min(1, "VNP_HASH_SECRET is required"),
   VNP_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
   VNP_RETURN_URL: z.string().url(),
+  MOCK_QR_BANK_BIN: z.string().default("970422"),
+  MOCK_QR_BANK_NAME: z.string().default("MB Bank"),
+  MOCK_QR_ACCOUNT_NO: z.string().default("19031111111111"),
+  MOCK_QR_ACCOUNT_NAME: z.string().default("TECHBUILTAI"),
+  MOCK_QR_TEMPLATE: z.string().default("compact2"),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -29,7 +34,7 @@ import { authApi } from "../data/auth.api";
 const modeConfig = {
   login: {
     badge: "Đăng nhập hệ thống",
-    title: "Đăng nhập vào PC Perfect",
+    title: "Đăng nhập vào TechBuiltAI",
     description: "Tiếp tục mua sắm và theo dõi đơn hàng.",
     submit: "Đăng nhập",
     submitIcon: Lock,
@@ -44,7 +49,7 @@ const modeConfig = {
   },
   register: {
     badge: "Tạo tài khoản mới",
-    title: "Đăng ký tài khoản PC Perfect",
+    title: "Đăng ký tài khoản TechBuiltAI",
     description: "Tạo tài khoản mới trong vài giây.",
     submit: "Gửi mã xác minh",
     submitIcon: MailCheck,
@@ -118,6 +123,8 @@ export default function AuthPage() {
 
   const pageCopy = useMemo(() => modeConfig[mode], [mode]);
   const SubmitIcon = pageCopy.submitIcon;
+  const isResetOtpComplete =
+    mode !== "reset" || /^\d{6}$/.test(String(form.otp ?? ""));
 
   const handleChange = (field) => (valueOrEvent) => {
     const value = valueOrEvent?.target
@@ -129,6 +136,15 @@ export default function AuthPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (mode === "reset" && !isResetOtpComplete) {
+      toast({
+        title: "OTP chưa hoàn tất",
+        description: "Vui lòng nhập đủ 6 số OTP trước khi đặt mật khẩu mới.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (mode === "register" && form.password !== form.confirmPassword) {
       toast({
@@ -252,12 +268,18 @@ export default function AuthPage() {
   return (
     <div className="relative h-screen overflow-hidden bg-[linear-gradient(125deg,_rgba(6,78,59,0.10)_0%,_rgba(255,255,255,1)_30%,_rgba(14,165,233,0.12)_100%)]">
       <div className="pointer-events-none absolute left-8 top-16 h-56 w-56 rounded-full bg-emerald-300/25 blur-3xl animate-pulse-glow" />
-      <div className="pointer-events-none absolute right-8 bottom-10 h-72 w-72 rounded-full bg-sky-300/25 blur-3xl animate-pulse-glow" style={{ animationDelay: "1s" }} />
+      <div
+        className="pointer-events-none absolute right-8 bottom-10 h-72 w-72 rounded-full bg-sky-300/25 blur-3xl animate-pulse-glow"
+        style={{ animationDelay: "1s" }}
+      />
       <div className="mx-auto grid h-screen max-w-7xl lg:grid-cols-[1.1fr_0.9fr]">
         <section className="relative hidden overflow-hidden px-8 py-8 lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.22),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.18),_transparent_30%)]" />
           <div className="pointer-events-none absolute left-10 top-32 h-px w-56 bg-gradient-to-r from-emerald-300/0 via-emerald-500/80 to-emerald-300/0 animate-pulse" />
-          <div className="pointer-events-none absolute right-20 top-44 h-px w-40 bg-gradient-to-r from-sky-300/0 via-sky-500/80 to-sky-300/0 animate-pulse" style={{ animationDelay: "0.5s" }} />
+          <div
+            className="pointer-events-none absolute right-20 top-44 h-px w-40 bg-gradient-to-r from-sky-300/0 via-sky-500/80 to-sky-300/0 animate-pulse"
+            style={{ animationDelay: "0.5s" }}
+          />
           <div className="relative z-10">
             <Link
               to="/"
@@ -267,7 +289,7 @@ export default function AuthPage() {
                 <Cpu className="h-6 w-6 text-white" />
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">PC Perfect</div>
+                <div className="text-sm text-muted-foreground">TechBuiltAI</div>
                 <div className="font-semibold">Studio PC</div>
               </div>
             </Link>
@@ -295,11 +317,17 @@ export default function AuthPage() {
               <h2 className="auth-title text-2xl font-bold leading-tight">
                 {pageCopy.title}
               </h2>
-              <p className="text-sm text-muted-foreground">{pageCopy.description}</p>
+              <p className="text-sm text-muted-foreground">
+                {pageCopy.description}
+              </p>
             </div>
 
             <form className="auth-form space-y-4" onSubmit={handleSubmit}>
-              {(mode === "login" || mode === "register" || mode === "forgot" || mode === "verify" || mode === "reset") && (
+              {(mode === "login" ||
+                mode === "register" ||
+                mode === "forgot" ||
+                mode === "verify" ||
+                mode === "reset") && (
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <div className="relative">
@@ -400,6 +428,7 @@ export default function AuthPage() {
                       placeholder="Nhập mật khẩu mới"
                       value={form.password}
                       onChange={handleChange("password")}
+                      disabled={!isResetOtpComplete}
                     />
                   </div>
                 </div>
@@ -417,13 +446,16 @@ export default function AuthPage() {
                       placeholder="Nhập lại mật khẩu mới"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
+                      disabled={!isResetOtpComplete}
                     />
                   </div>
                 </div>
               )}
 
               <div className="auth-helper rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
-                {pageCopy.helper}
+                {mode === "reset" && !isResetOtpComplete
+                  ? "Nhập đủ 6 số OTP trước, sau đó nhập mật khẩu mới và xác nhận mật khẩu."
+                  : pageCopy.helper}
               </div>
 
               <Button
@@ -431,7 +463,9 @@ export default function AuthPage() {
                 variant="hero"
                 size="lg"
                 className="w-full gap-2"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting || (mode === "reset" && !isResetOtpComplete)
+                }
               >
                 {isSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -447,7 +481,11 @@ export default function AuthPage() {
                     Mã OTP đã được gửi tới Gmail của bạn.
                   </p>
                   {mode === "verify" ? (
-                    <Button type="button" variant="outline" onClick={handleResend}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResend}
+                    >
                       Gửi lại mã
                     </Button>
                   ) : (
@@ -464,7 +502,7 @@ export default function AuthPage() {
 
             <div className="auth-footer mt-3 flex flex-col gap-2 border-t border-border/70 pt-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <p>
-                {pageCopy.switchLabel} {" "}
+                {pageCopy.switchLabel}{" "}
                 <Link
                   to={pageCopy.switchHref}
                   className="font-semibold text-primary hover:underline"
@@ -502,10 +540,14 @@ function resolvePostLoginPath(role) {
 }
 
 function isAdminRole(role) {
-  return String(role ?? "")
+  const normalizedRole = String(role ?? "")
     .trim()
     .toLowerCase()
-    .includes("admin");
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
 }
 
 function resolveMode(pathname) {
@@ -663,7 +705,10 @@ function InteractivePcViewer() {
         >
           <div
             className="auth-rgb absolute left-4 right-4 top-5 h-[190px] overflow-hidden rounded-[22px] border border-emerald-200/65 bg-slate-900/95 shadow-[0_28px_55px_rgba(15,23,42,0.5)]"
-            style={{ transform: "translateZ(40px)", transformStyle: "preserve-3d" }}
+            style={{
+              transform: "translateZ(40px)",
+              transformStyle: "preserve-3d",
+            }}
           >
             <img
               src={componentImage}
@@ -679,11 +724,17 @@ function InteractivePcViewer() {
 
           <div
             className="absolute right-4 top-5 h-[190px] w-9 rounded-r-[14px] border border-sky-200/30 bg-slate-800/90"
-            style={{ transform: "rotateY(90deg) translateZ(13px)", transformOrigin: "right center" }}
+            style={{
+              transform: "rotateY(90deg) translateZ(13px)",
+              transformOrigin: "right center",
+            }}
           />
           <div
             className="absolute left-4 top-5 h-[190px] w-9 rounded-l-[14px] border border-emerald-200/30 bg-slate-800/90"
-            style={{ transform: "rotateY(-90deg) translateZ(13px)", transformOrigin: "left center" }}
+            style={{
+              transform: "rotateY(-90deg) translateZ(13px)",
+              transformOrigin: "left center",
+            }}
           />
 
           <div
@@ -706,7 +757,10 @@ function InteractivePcViewer() {
         </div>
 
         <div className="pointer-events-none absolute left-8 top-8 h-16 w-16 rounded-full border border-emerald-200/50 bg-emerald-300/10 auth-orbit" />
-        <div className="pointer-events-none absolute right-10 bottom-10 h-20 w-20 rounded-full border border-sky-200/50 bg-sky-300/10 auth-orbit" style={{ animationDelay: "1.3s" }} />
+        <div
+          className="pointer-events-none absolute right-10 bottom-10 h-20 w-20 rounded-full border border-sky-200/50 bg-sky-300/10 auth-orbit"
+          style={{ animationDelay: "1.3s" }}
+        />
       </div>
     </div>
   );

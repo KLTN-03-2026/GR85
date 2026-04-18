@@ -156,31 +156,112 @@ export function generateMockVnpayPaymentCode() {
   return `${prefix}${timestamp}${random}`;
 }
 
-export async function createMockVnpayQrCode({ paymentCode, orderId, amount }) {
+export async function createMockVnpayQrCode({
+  paymentCode,
+  orderId,
+  amount,
+  bankBin,
+  bankName,
+  accountNumber,
+  accountName,
+  transferContent,
+  template,
+}) {
   try {
-    const qrData = JSON.stringify({
-      type: "VNPAY_MOCK",
-      paymentCode,
-      orderId,
-      amount,
-      timestamp: new Date().toISOString(),
-    });
+    const normalizedAmount = Math.max(0, Math.round(Number(amount) || 0));
+    const normalizedBin = String(bankBin ?? "").trim() || env.MOCK_QR_BANK_BIN;
+    const normalizedBankName =
+      String(bankName ?? "").trim() || env.MOCK_QR_BANK_NAME;
+    const normalizedAccountNumber =
+      String(accountNumber ?? "").trim() || env.MOCK_QR_ACCOUNT_NO;
+    const normalizedAccountName =
+      String(accountName ?? "").trim() || env.MOCK_QR_ACCOUNT_NAME;
+    const normalizedTemplate =
+      String(template ?? "").trim() || env.MOCK_QR_TEMPLATE;
+    const normalizedTransferContent =
+      String(transferContent ?? "").trim() || `TT DON ${orderId} ${paymentCode}`;
 
-    const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: "H",
-      type: "image/png",
-      quality: 0.95,
-      margin: 1,
-      width: 300,
-    });
+    const hasVietQrData = normalizedBin && normalizedAccountNumber;
+
+    let qrCodeDataUrl = "";
+    if (hasVietQrData) {
+      qrCodeDataUrl = buildVietQrImageUrl({
+        bankBin: normalizedBin,
+        accountNumber: normalizedAccountNumber,
+        accountName: normalizedAccountName,
+        amount: normalizedAmount,
+        addInfo: normalizedTransferContent,
+        template: normalizedTemplate,
+      });
+    } else {
+      const qrData = JSON.stringify({
+        type: "VNPAY_MOCK",
+        paymentCode,
+        orderId,
+        amount: normalizedAmount,
+        timestamp: new Date().toISOString(),
+      });
+
+      qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+        errorCorrectionLevel: "H",
+        type: "image/png",
+        quality: 0.95,
+        margin: 1,
+        width: 300,
+      });
+    }
 
     return {
       paymentCode,
       qrCodeDataUrl,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      bankTransfer: {
+        bankBin: normalizedBin,
+        bankName: normalizedBankName,
+        accountNumber: normalizedAccountNumber,
+        accountName: normalizedAccountName,
+        transferContent: normalizedTransferContent,
+        amount: normalizedAmount,
+        template: normalizedTemplate,
+        qrProvider: hasVietQrData ? "VietQR" : "MockQR",
+        supportedApps: [
+          "Vietcombank Digibank",
+          "BIDV SmartBanking",
+          "Agribank Plus",
+          "VietinBank iPay",
+          "MB Bank App",
+          "Techcombank Mobile",
+          "TPBank Mobile",
+          "VPBank NEO",
+          "ACB ONE",
+          "Sacombank Pay",
+          "MoMo",
+          "ZaloPay",
+        ],
+      },
     };
   } catch (error) {
     console.error("Error generating QR code:", error);
     throw new Error(`Failed to generate QR code: ${error.message}`);
   }
+}
+
+function buildVietQrImageUrl({
+  bankBin,
+  accountNumber,
+  accountName,
+  amount,
+  addInfo,
+  template,
+}) {
+  const normalizedAmount = Math.max(0, Math.round(Number(amount) || 0));
+  const query = new URLSearchParams({
+    amount: String(normalizedAmount),
+    addInfo: String(addInfo ?? ""),
+    accountName: String(accountName ?? ""),
+  });
+
+  return `https://img.vietqr.io/image/${encodeURIComponent(String(bankBin))}-${encodeURIComponent(
+    String(accountNumber),
+  )}-${encodeURIComponent(String(template || "compact2"))}.png?${query.toString()}`;
 }

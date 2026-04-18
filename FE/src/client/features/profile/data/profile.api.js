@@ -1,6 +1,38 @@
 const API_BASE = "/api";
 const STORAGE_TOKEN_KEY = "pc-perfect-token";
 
+function extractApiErrorMessage(error, fallbackMessage) {
+  if (!error || typeof error !== "object") {
+    return fallbackMessage;
+  }
+
+  if (typeof error.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+
+  const fieldErrors = error.issues?.fieldErrors;
+  if (fieldErrors && typeof fieldErrors === "object") {
+    const firstMessage = Object.values(fieldErrors)
+      .flat()
+      .find((item) => typeof item === "string" && item.trim());
+    if (firstMessage) {
+      return firstMessage;
+    }
+  }
+
+  const formErrors = error.issues?.formErrors;
+  if (Array.isArray(formErrors)) {
+    const firstFormError = formErrors.find(
+      (item) => typeof item === "string" && item.trim(),
+    );
+    if (firstFormError) {
+      return firstFormError;
+    }
+  }
+
+  return fallbackMessage;
+}
+
 function authHeaders() {
   return {
     Authorization: `Bearer ${localStorage.getItem(STORAGE_TOKEN_KEY)}`,
@@ -12,7 +44,7 @@ export const profileApi = {
     const response = await fetch(`${API_BASE}/auth/me`, {
       headers: authHeaders(),
     });
-    if (!response.ok) throw new Error("Failed to fetch profile");
+    if (!response.ok) throw new Error("Không thể tải hồ sơ");
     return response.json();
   },
 
@@ -27,7 +59,7 @@ export const profileApi = {
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || "Failed to update profile");
+      throw new Error(error.message || "Không thể cập nhật hồ sơ");
     }
     return response.json();
   },
@@ -43,7 +75,7 @@ export const profileApi = {
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || "Failed to change password");
+      throw new Error(error.message || "Không thể đổi mật khẩu");
     }
     return response.json();
   },
@@ -55,7 +87,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to fetch orders");
+      throw new Error(error.message || "Không thể tải đơn hàng");
     }
 
     return response.json();
@@ -68,7 +100,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to fetch order detail");
+      throw new Error(error.message || "Không thể tải chi tiết đơn hàng");
     }
 
     return response.json();
@@ -81,7 +113,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to fetch addresses");
+      throw new Error(error.message || "Không thể tải địa chỉ");
     }
 
     return response.json();
@@ -99,7 +131,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to create address");
+      throw new Error(extractApiErrorMessage(error, "Không thể tạo địa chỉ"));
     }
 
     return response.json();
@@ -117,7 +149,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to update address");
+      throw new Error(extractApiErrorMessage(error, "Không thể cập nhật địa chỉ"));
     }
 
     return response.json();
@@ -131,7 +163,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to delete address");
+      throw new Error(error.message || "Không thể xóa địa chỉ");
     }
 
     return response.json();
@@ -144,7 +176,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to fetch wallet");
+      throw new Error(error.message || "Không thể tải ví");
     }
 
     return response.json();
@@ -162,7 +194,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to top up wallet");
+      throw new Error(error.message || "Không thể nạp tiền vào ví");
     }
 
     return response.json();
@@ -175,7 +207,7 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to fetch return requests");
+      throw new Error(error.message || "Không thể tải yêu cầu hoàn trả");
     }
 
     return response.json();
@@ -193,7 +225,54 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Failed to request return");
+      throw new Error(error.message || "Không thể yêu cầu hoàn trả");
+    }
+
+    return response.json();
+  },
+
+  getNotifications: async (limit = 20) => {
+    const response = await fetch(`${API_BASE}/auth/notifications?limit=${limit}`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải thông báo");
+    }
+
+    return response.json();
+  },
+
+  markNotificationAsRead: async (notificationId) => {
+    const response = await fetch(`${API_BASE}/auth/notifications/${notificationId}/read`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể đánh dấu thông báo");
+    }
+
+    return response.json();
+  },
+
+  markAllNotificationsAsRead: async () => {
+    const response = await fetch(`${API_BASE}/auth/notifications/mark-all-read`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể đánh dấu tất cả thông báo");
     }
 
     return response.json();

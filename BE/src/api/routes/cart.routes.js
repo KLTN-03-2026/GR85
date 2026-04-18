@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import {
   addItemToCart,
+  confirmMockVnpayPayment,
   checkoutCart,
+  estimateCartShipping,
   getMyCart,
   handleVnpayIpn,
   handleVnpayReturn,
@@ -28,13 +30,28 @@ const checkoutSchema = z.object({
   phoneNumber: z.string().optional(),
   addressId: z.number().int().positive().optional(),
   couponCode: z.string().max(50).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
   useWalletBalance: z.boolean().optional().default(true),
-  paymentMethod: z.enum(["VNPAY"]).default("VNPAY"),
+  paymentMethod: z.enum(["VNPAY", "COD", "SEPAY"]).default("SEPAY"),
   bankCode: z.string().optional(),
 });
 
 const previewPricingSchema = z.object({
   couponCode: z.string().max(50).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
+});
+
+const shippingEstimateSchema = z.object({
+  addressId: z.number().int().positive().optional(),
+  shippingAddress: z.string().max(500).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
+  provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
+  paymentMethod: z.enum(["COD", "VNPAY", "SEPAY"]).optional(),
+});
+
+const confirmMockPaymentSchema = z.object({
+  orderId: z.number().int().positive(),
+  paymentCode: z.string().max(64).optional(),
 });
 
 router.get("/vnpay-ipn", async (req, res) => {
@@ -123,6 +140,26 @@ router.post("/preview-pricing", requireAuth, async (req, res) => {
   try {
     const parsed = previewPricingSchema.parse(req.body ?? {});
     const data = await previewCartPricing(Number(req.auth?.sub), parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/shipping-estimate", requireAuth, async (req, res) => {
+  try {
+    const parsed = shippingEstimateSchema.parse(req.body ?? {});
+    const data = await estimateCartShipping(Number(req.auth?.sub), parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/mock-vnpay/confirm", requireAuth, async (req, res) => {
+  try {
+    const parsed = confirmMockPaymentSchema.parse(req.body ?? {});
+    const data = await confirmMockVnpayPayment(Number(req.auth?.sub), parsed);
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);

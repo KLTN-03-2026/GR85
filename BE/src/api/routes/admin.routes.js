@@ -1,9 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  createBatchImportByAdmin,
   createCouponByAdmin,
+  createWarehouseByAdmin,
+  deleteCouponByAdmin,
   getAdminDashboard,
+  getWarehouseOverviewByAdmin,
+  getUserDetailByAdmin,
   listCouponsForAdmin,
+  updateCouponByAdmin,
+  updateWarehouseByAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
 import {
@@ -18,10 +25,35 @@ const updateUserSchema = z.object({
   fullName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
     message: "Full name cannot contain numbers",
   }).optional(),
+  email: z.string().email().optional(),
   phone: z.string().regex(/^\d{10}$/).optional(),
+  address: z.string().max(2000).nullable().optional(),
+  avatarUrl: z.string().url().nullable().optional(),
   roleId: z.number().int().positive().nullable().optional(),
   status: z.enum(["ACTIVE", "BANNED", "UNVERIFIED"]).optional(),
 });
+
+router.get(
+  "/users/:userId/detail",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await getUserDetailByAdmin(req.params.userId);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
 
 const createCouponSchema = z.object({
   code: z.string().min(2).max(50),
@@ -34,11 +66,47 @@ const createCouponSchema = z.object({
   status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).default("ACTIVE"),
 });
 
+const updateCouponSchema = z.object({
+  discountType: z.enum(["PERCENT", "FIXED_AMOUNT"]).optional(),
+  discountValue: z.number().positive().optional(),
+  minOrderValue: z.number().min(0).optional(),
+  usageLimit: z.number().int().positive().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).optional(),
+});
+
 const reviewReturnSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   rejectReason: z.string().max(2000).optional(),
   refundAmount: z.number().positive().optional(),
 });
+
+const warehouseSchema = z.object({
+  name: z.string().min(1).max(255),
+  address: z.string().max(500).nullable().optional(),
+  managerName: z.string().max(255).nullable().optional(),
+});
+
+const importBatchSchema = z.object({
+  warehouseId: z.number().int().positive(),
+  productId: z.number().int().positive(),
+  supplierId: z.number().int().positive(),
+  importPrice: z.number().positive(),
+  quantity: z.number().int().positive(),
+  batchCode: z.string().max(64).optional(),
+});
+
+function isAdminRole(role) {
+  const normalizedRole = String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+}
 
 router.get(
   "/dashboard",
@@ -46,7 +114,7 @@ router.get(
   async (req, res) => {
     try {
       // Check if user is Admin
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -67,7 +135,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -94,7 +162,7 @@ router.get(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -115,7 +183,7 @@ router.post(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -137,12 +205,162 @@ router.post(
   },
 );
 
+router.patch(
+  "/coupons/:couponId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = updateCouponSchema.parse(req.body ?? {});
+      const data = await updateCouponByAdmin(req.params.couponId, parsed);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.delete(
+  "/coupons/:couponId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await deleteCouponByAdmin(req.params.couponId);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.get(
+  "/warehouse/overview",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const data = await getWarehouseOverviewByAdmin();
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.post(
+  "/warehouses",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = warehouseSchema.parse(req.body);
+      const data = await createWarehouseByAdmin(parsed);
+      return res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.patch(
+  "/warehouses/:warehouseId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = warehouseSchema.partial().parse(req.body);
+      const data = await updateWarehouseByAdmin(req.params.warehouseId, parsed);
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.post(
+  "/warehouse/import-batch",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const parsed = importBatchSchema.parse(req.body);
+      const data = await createBatchImportByAdmin(parsed);
+      return res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
 router.get(
   "/returns",
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -163,7 +381,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
-      if (req.auth.role !== "Admin") {
+      if (!isAdminRole(req.auth.role)) {
         return res.status(403).json({ message: "Only admins can access this endpoint" });
       }
 
@@ -179,6 +397,37 @@ router.patch(
         return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
       }
 
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Unexpected server error" });
+    }
+  },
+);
+
+router.delete(
+  "/users/:userId/wallet-transactions/:transactionId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({ message: "Only admins can access this endpoint" });
+      }
+
+      const userId = Number(req.params.userId);
+      const transactionId = Number(req.params.transactionId);
+
+      if (!Number.isFinite(userId) || !Number.isFinite(transactionId)) {
+        return res.status(400).json({ message: "Invalid user ID or transaction ID" });
+      }
+
+      const { deleteWalletTransaction } = await import("../../services/wallet.service.js");
+      await deleteWalletTransaction(transactionId);
+      
+      return res.json({ success: true, message: "Wallet transaction deleted" });
+    } catch (error) {
       if (error instanceof Error) {
         const status = error.message.includes("not found") ? 404 : 400;
         return res.status(status).json({ message: error.message });

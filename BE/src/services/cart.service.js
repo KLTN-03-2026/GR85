@@ -15,17 +15,18 @@ import {
 } from "./vnpay.service.js";
 import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
+import { estimateShippingFromCartItems } from "./shipping.service.js";
 
 export async function previewCartPricing(userId, input = {}) {
   const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
   const cart = await ensureCart(userId);
-  const cartItems = await prisma.cartItem.findMany({
-    where: { cartId: cart.id },
-    include: { product: true },
+  const cartItems = await resolveSelectedCartItems({
+    cartId: cart.id,
+    selectedCartItemIds: input.selectedCartItemIds,
   });
 
   const subtotal = cartItems.reduce(
-    (sum, item) => sum + Number(item.product.price) * item.quantity,
+    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
     0,
   );
 
@@ -193,9 +194,11 @@ export async function checkoutCart(userId, input) {
   let shippingAddress = String(input.shippingAddress ?? "").trim();
   let phoneNumber = String(input.phoneNumber ?? "").trim();
   const useWalletBalance = input.useWalletBalance !== false;
-  const paymentMethod = String(input.paymentMethod ?? PaymentMethod.VNPAY)
+  const paymentMethodInput = String(input.paymentMethod ?? "SEPAY")
     .trim()
     .toUpperCase();
+  const paymentMethod =
+    paymentMethodInput === "SEPAY" ? PaymentMethod.BANK_TRANSFER : paymentMethodInput;
   const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -242,14 +245,16 @@ export async function checkoutCart(userId, input) {
     fieldLabel: "Phone number",
   });
 
-  if (paymentMethod !== PaymentMethod.VNPAY) {
-    throw new Error("Only VNPAY transfer payment is supported");
+  if (
+    ![PaymentMethod.VNPAY, PaymentMethod.COD, PaymentMethod.BANK_TRANSFER].includes(paymentMethod)
+  ) {
+    throw new Error("Unsupported payment method");
   }
 
   const cart = await ensureCart(userId);
-  const cartItems = await prisma.cartItem.findMany({
-    where: { cartId: cart.id },
-    include: { product: true },
+  const cartItems = await resolveSelectedCartItems({
+    cartId: cart.id,
+    selectedCartItemIds: input.selectedCartItemIds,
   });
 
   if (cartItems.length === 0) {
@@ -257,7 +262,7 @@ export async function checkoutCart(userId, input) {
   }
 
   const subtotal = cartItems.reduce(
-    (sum, item) => sum + Number(item.product.price) * item.quantity,
+    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
     0,
   );
 
@@ -270,6 +275,8 @@ export async function checkoutCart(userId, input) {
   const walletUsedAmount = useWalletBalance ? Math.min(walletBalance, totalAmount) : 0;
   const remainingPayableAmount = Math.max(0, totalAmount - walletUsedAmount);
   const isFullyPaidByWallet = remainingPayableAmount === 0;
+  const shouldReserveStockImmediately =
+    isFullyPaidByWallet || paymentMethod === PaymentMethod.COD;
 
   const result = await prisma.$transaction(async (tx) => {
     for (const item of cartItems) {
@@ -293,7 +300,7 @@ export async function checkoutCart(userId, input) {
           create: cartItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
-            priceAtTime: item.product.price,
+            priceAtTime: resolveEffectiveItemPrice(item),
           })),
         },
       },
@@ -310,7 +317,11 @@ export async function checkoutCart(userId, input) {
         changedBy: userId,
         note: isFullyPaidByWallet
           ? "Order paid fully by wallet balance"
-          : "Order created and waiting for VNPAY payment",
+          : paymentMethod === PaymentMethod.COD
+            ? "Order placed with COD and waiting for delivery"
+            : paymentMethod === PaymentMethod.BANK_TRANSFER
+              ? "Order created and waiting for SePay transfer"
+              : "Order created and waiting for VNPAY payment",
       },
     });
 
@@ -335,7 +346,7 @@ export async function checkoutCart(userId, input) {
       });
     }
 
-    if (isFullyPaidByWallet) {
+    if (shouldReserveStockImmediately) {
       for (const item of cartItems) {
         await tx.product.update({
           where: { id: item.productId },
@@ -354,7 +365,7 @@ export async function checkoutCart(userId, input) {
         });
       }
 
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+      await removePurchasedCartItems(tx, cart.id, cartItems);
     }
 
     return createdOrder;
@@ -363,7 +374,7 @@ export async function checkoutCart(userId, input) {
   if (isFullyPaidByWallet) {
     return serializeData({
       message: "Order paid successfully using wallet balance",
-      paymentMethod: PaymentMethod.VNPAY,
+      paymentMethod,
       orderId: result.id,
       subtotal,
       discountAmount,
@@ -374,13 +385,30 @@ export async function checkoutCart(userId, input) {
     });
   }
 
-  if (paymentMethod === PaymentMethod.VNPAY) {
-    // Generate mock VNPAY payment code and QR
+  if (paymentMethod === PaymentMethod.COD) {
+    return serializeData({
+      message: "Đặt hàng COD thành công",
+      paymentMethod: PaymentMethod.COD,
+      orderId: result.id,
+      subtotal,
+      discountAmount,
+      totalAmount: result.totalAmount,
+      walletUsedAmount,
+      remainingPayableAmount,
+      isCodOrder: true,
+    });
+  }
+
+  if (paymentMethod === PaymentMethod.VNPAY || paymentMethod === PaymentMethod.BANK_TRANSFER) {
+    const paymentProvider = paymentMethod === PaymentMethod.BANK_TRANSFER ? "SEPAY" : "VNPAY";
+    // Generate payment code and QR (VietQR-compatible) for transfer methods.
     const paymentCode = generateMockVnpayPaymentCode();
+    const transferContent = `TT DON ${result.id} ${paymentCode}`;
     const mockQrData = await createMockVnpayQrCode({
       paymentCode,
       orderId: result.id,
       amount: remainingPayableAmount,
+      transferContent,
     });
 
     // Get user email from database
@@ -399,6 +427,7 @@ export async function checkoutCart(userId, input) {
           orderId: result.id,
           totalAmount: remainingPayableAmount,
           qrCodeDataUrl: mockQrData.qrCodeDataUrl,
+          bankTransfer: mockQrData.bankTransfer,
         });
       } catch (error) {
         console.error("Failed to send payment email:", error);
@@ -407,8 +436,9 @@ export async function checkoutCart(userId, input) {
     }
 
     return serializeData({
-      message: "Mock VNPAY payment initialized",
-      paymentMethod: PaymentMethod.VNPAY,
+      message: paymentProvider === "SEPAY" ? "SePay QR payment initialized" : "Mock VNPAY payment initialized",
+      paymentMethod,
+      paymentProvider,
       orderId: result.id,
       subtotal,
       discountAmount,
@@ -418,7 +448,9 @@ export async function checkoutCart(userId, input) {
       paymentCode: mockQrData.paymentCode,
       qrCodeDataUrl: mockQrData.qrCodeDataUrl,
       expiresAt: mockQrData.expiresAt,
+      bankTransfer: mockQrData.bankTransfer,
       isMockPayment: true,
+      isSepay: paymentProvider === "SEPAY",
     });
   }
 }
@@ -485,6 +517,112 @@ export async function handleVnpayReturn(query) {
   };
 }
 
+export async function confirmMockVnpayPayment(userId, input) {
+  const orderId = Number(input.orderId);
+  const paymentCode = String(input.paymentCode ?? "").trim();
+
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    throw new Error("Invalid order id");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      userId: true,
+      paymentMethod: true,
+      paymentStatus: true,
+    },
+  });
+
+  if (!order || Number(order.userId) !== Number(userId)) {
+    throw new Error("Order not found");
+  }
+
+  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
+    throw new Error("Order is not transfer payment");
+  }
+
+  if (order.paymentStatus === PaymentStatus.PAID) {
+    return serializeData({
+      message: "Payment already confirmed",
+      orderId,
+      paymentStatus: PaymentStatus.PAID,
+      status: "success",
+    });
+  }
+
+  const finalized = await finalizeVnpayPayment({
+    orderId,
+    responseCode: "00",
+    transactionNo: paymentCode || `MOCK-QR-${orderId}`,
+    payDate: new Date().toISOString(),
+    source: "QR_SCAN",
+  });
+
+  return serializeData({
+    message: finalized.message,
+    orderId,
+    paymentStatus: finalized.isSuccess ? PaymentStatus.PAID : PaymentStatus.FAILED,
+    status: finalized.isSuccess ? "success" : "failed",
+  });
+}
+
+export async function estimateCartShipping(userId, input = {}) {
+  const selectedAddressId = Number(input.addressId);
+  const provider = String(input.provider ?? "GHN").trim().toUpperCase();
+  let shippingAddress = String(input.shippingAddress ?? "").trim();
+
+  if (Number.isFinite(selectedAddressId) && selectedAddressId > 0) {
+    const savedAddress = await prisma.userAddress.findFirst({
+      where: {
+        id: selectedAddressId,
+        userId,
+      },
+    });
+
+    if (!savedAddress) {
+      throw new Error("Address not found");
+    }
+
+    shippingAddress = savedAddress.addressLine;
+  }
+
+  const cart = await ensureCart(userId);
+  const cartItems = await prisma.cartItem.findMany({
+    where: {
+      cartId: cart.id,
+      ...(Array.isArray(input.selectedCartItemIds) && input.selectedCartItemIds.length > 0
+        ? {
+          id: {
+            in: input.selectedCartItemIds
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value) && value > 0),
+          },
+        }
+        : {}),
+    },
+    include: {
+      product: {
+        include: {
+          category: true,
+        },
+      },
+    },
+  });
+
+  if (cartItems.length === 0) {
+    throw new Error("Cannot estimate shipping for empty cart");
+  }
+
+  return estimateShippingFromCartItems({
+    provider,
+    addressText: shippingAddress,
+    cartItems,
+    isCodOrder: String(input.paymentMethod ?? "").trim().toUpperCase() === "COD",
+  });
+}
+
 async function finalizeVnpayPayment({
   orderId,
   responseCode,
@@ -503,10 +641,10 @@ async function finalizeVnpayPayment({
     throw new Error("Order not found");
   }
 
-  if (order.paymentMethod !== PaymentMethod.VNPAY) {
+  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
     return {
       isSuccess: false,
-      message: "Order is not VNPAY payment",
+      message: "Order is not transfer payment",
     };
   }
 
@@ -535,9 +673,11 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: OrderStatus.CANCELLED,
           changedBy: order.userId,
-          note: `VNPAY payment failed via ${source}`,
+          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} payment failed via ${source}`,
         },
       });
+
+      await refundWalletDebitForOrder(tx, order.id, order.userId, "Payment failed");
     });
 
     return {
@@ -546,54 +686,120 @@ async function finalizeVnpayPayment({
     };
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const item of order.orderItems) {
-      const product = await tx.product.findUnique({ where: { id: item.productId } });
-      if (!product || product.stockQuantity < item.quantity) {
-        throw new Error("Insufficient stock while confirming payment");
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const item of order.orderItems) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product || product.stockQuantity < item.quantity) {
+          throw new Error("INSUFFICIENT_STOCK_WHILE_CONFIRMING_PAYMENT");
+        }
       }
-    }
 
-    for (const item of order.orderItems) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: {
-          stockQuantity: {
-            decrement: item.quantity,
+      for (const item of order.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              decrement: item.quantity,
+            },
           },
+        });
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
         },
       });
-    }
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        paymentStatus: PaymentStatus.PAID,
-      },
-    });
+      if (order.couponId) {
+        await tx.coupon.update({
+          where: { id: order.couponId },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
 
-    if (order.couponId) {
-      await tx.coupon.update({
-        where: { id: order.couponId },
-        data: { usedCount: { increment: 1 } },
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          fromStatus: order.orderStatus,
+          toStatus: order.orderStatus,
+          changedBy: order.userId,
+          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
+        },
       });
-    }
 
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId,
-        fromStatus: order.orderStatus,
-        toStatus: order.orderStatus,
-        changedBy: order.userId,
-        note: `VNPAY confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
-      },
+      const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
+      if (cart) {
+        const currentCartItems = await tx.cartItem.findMany({
+          where: { cartId: cart.id },
+          include: { product: true },
+        });
+        const orderItemByProductId = new Map(
+          order.orderItems.map((item) => [Number(item.productId), Number(item.quantity)]),
+        );
+
+        for (const cartItem of currentCartItems) {
+          const purchasedQuantity = orderItemByProductId.get(Number(cartItem.productId));
+          if (!purchasedQuantity) {
+            continue;
+          }
+
+          if (cartItem.quantity > purchasedQuantity) {
+            await tx.cartItem.update({
+              where: { id: cartItem.id },
+              data: {
+                quantity: cartItem.quantity - purchasedQuantity,
+              },
+            });
+            continue;
+          }
+
+          await tx.cartItem.delete({ where: { id: cartItem.id } });
+        }
+      }
     });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("INSUFFICIENT_STOCK_WHILE_CONFIRMING_PAYMENT")
+    ) {
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            paymentStatus: PaymentStatus.FAILED,
+            orderStatus: OrderStatus.CANCELLED,
+          },
+        });
 
-    const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
-    if (cart) {
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId,
+            fromStatus: order.orderStatus,
+            toStatus: OrderStatus.CANCELLED,
+            changedBy: order.userId,
+            note: "Cancelled: stock changed during payment confirmation",
+          },
+        });
+
+        await refundWalletDebitForOrder(
+          tx,
+          order.id,
+          order.userId,
+          "Refund wallet amount due to insufficient stock",
+        );
+      });
+
+      return {
+        isSuccess: false,
+        message: "Payment cancelled because product is out of stock",
+      };
     }
-  });
+
+    throw error;
+  }
 
   return {
     isSuccess: true,
@@ -601,11 +807,95 @@ async function finalizeVnpayPayment({
   };
 }
 
+async function refundWalletDebitForOrder(tx, orderId, userId, note) {
+  const debit = await tx.walletTransaction.findFirst({
+    where: {
+      orderId,
+      userId,
+      type: WalletTransactionType.PAYMENT_DEBIT,
+    },
+    orderBy: { id: "desc" },
+  });
+
+  if (!debit) {
+    return;
+  }
+
+  const amount = Number(debit.amount ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return;
+  }
+
+  await tx.user.update({
+    where: { id: userId },
+    data: {
+      walletBalance: {
+        increment: amount,
+      },
+    },
+  });
+
+  await tx.walletTransaction.create({
+    data: {
+      userId,
+      orderId,
+      amount,
+      type: WalletTransactionType.REFUND_CREDIT,
+      note: note || `Refund wallet for cancelled order #${orderId}`,
+    },
+  });
+}
+
 async function ensureCart(userId) {
   return prisma.cart.upsert({
     where: { userId },
     update: {},
     create: { userId },
+  });
+}
+
+async function resolveSelectedCartItems({ cartId, selectedCartItemIds }) {
+  const isSelectionProvided = Array.isArray(selectedCartItemIds);
+
+  if (isSelectionProvided && selectedCartItemIds.length === 0) {
+    return [];
+  }
+
+  const normalizedIds = isSelectionProvided
+    ? Array.from(
+      new Set(
+        selectedCartItemIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0),
+      ),
+    )
+    : [];
+
+  if (isSelectionProvided && normalizedIds.length === 0) {
+    return [];
+  }
+
+  return prisma.cartItem.findMany({
+    where: {
+      cartId,
+      ...(normalizedIds.length > 0 ? { id: { in: normalizedIds } } : {}),
+    },
+    include: { product: true },
+  });
+}
+
+async function removePurchasedCartItems(tx, cartId, purchasedCartItems) {
+  if (!Array.isArray(purchasedCartItems) || purchasedCartItems.length === 0) {
+    return;
+  }
+
+  await tx.cartItem.deleteMany({
+    where: {
+      cartId,
+      id: {
+        in: purchasedCartItems.map((item) => item.id),
+      },
+    },
   });
 }
 
@@ -619,13 +909,17 @@ function mapCartPayload(cart) {
       name: item.product.name,
       slug: item.product.slug,
       productCode: item.product.slug,
-      price: item.product.price,
+      price: resolveEffectiveItemPrice(item),
+      basePrice: Number(item.product.price ?? 0),
+      salePrice: item.product.salePrice,
+      saleStartAt: item.product.saleStartAt,
+      saleEndAt: item.product.saleEndAt,
       stockQuantity: item.product.stockQuantity,
       imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
       category: item.product.category,
       specifications: item.product.specifications,
     },
-    lineTotal: Number(item.product.price) * item.quantity,
+    lineTotal: resolveEffectiveItemPrice(item) * item.quantity,
   }));
 
   return {
@@ -634,6 +928,25 @@ function mapCartPayload(cart) {
     totalItems: items.reduce((sum, item) => sum + item.quantity, 0),
     totalPrice: items.reduce((sum, item) => sum + item.lineTotal, 0),
   };
+}
+
+function resolveEffectiveItemPrice(item, now = new Date()) {
+  const basePrice = Number(item?.product?.price ?? 0);
+  const salePrice =
+    item?.product?.salePrice === null || item?.product?.salePrice === undefined
+      ? null
+      : Number(item.product.salePrice);
+  const saleStartAt = item?.product?.saleStartAt ? new Date(item.product.saleStartAt) : null;
+  const saleEndAt = item?.product?.saleEndAt ? new Date(item.product.saleEndAt) : null;
+
+  const hasSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
+  const inSaleWindow = (!saleStartAt || now >= saleStartAt) && (!saleEndAt || now <= saleEndAt);
+
+  if (hasSalePrice && inSaleWindow) {
+    return salePrice;
+  }
+
+  return basePrice;
 }
 
 async function resolveCouponOrThrow(code, orderSubtotal) {

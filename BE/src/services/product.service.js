@@ -1,5 +1,7 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import { OrderStatus } from "@prisma/client";
+import { createWishlistPriceDropNotifications } from "./notification.service.js";
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
@@ -13,8 +15,10 @@ export async function listProducts(query = {}) {
   const keyword = String(query.keyword ?? "").trim();
   const category = String(query.category ?? "").trim().toLowerCase();
   const brand = String(query.brand ?? "").trim();
-  const sort = String(query.sort ?? "newest").trim().toLowerCase();
+  const sort = String(query.sort ?? "display_order").trim().toLowerCase();
   const stockStatus = String(query.stockStatus ?? "all").trim().toLowerCase();
+  const featuredOnly =
+    String(query.featuredOnly ?? "").trim().toLowerCase() === "true";
   const minPrice =
     query.minPrice === undefined || query.minPrice === ""
       ? undefined
@@ -29,6 +33,7 @@ export async function listProducts(query = {}) {
     category,
     brand,
     stockStatus,
+    featuredOnly,
     minPrice,
     maxPrice,
   });
@@ -53,8 +58,10 @@ export async function listProducts(query = {}) {
     }),
   ]);
 
+  const productsWithRating = await attachProductRatings(items);
+
   return serializeData({
-    items: items.map(mapProductListItem),
+    items: productsWithRating.map(mapProductListItem),
     pagination: {
       page,
       pageSize,
@@ -86,7 +93,371 @@ export async function getProductDetailBySlug(slug) {
     throw new Error("Product not found");
   }
 
-  return serializeData(mapProductDetail(product));
+  const [productWithRating] = await attachProductRatings([product]);
+
+  const relatedRaw = await prisma.product.findMany({
+    where: {
+      id: { not: product.id },
+      stockQuantity: { gt: 0 },
+      OR: [
+        { categoryId: product.categoryId },
+        ...(product.supplierId ? [{ supplierId: product.supplierId }] : []),
+      ],
+    },
+    take: 8,
+    orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
+    include: {
+      category: true,
+      supplier: true,
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        take: 1,
+      },
+    },
+  });
+  const relatedWithRatings = await attachProductRatings(relatedRaw);
+
+  return serializeData({
+    ...mapProductDetail(productWithRating),
+    relatedProducts: relatedWithRatings.map(mapProductListItem),
+  });
+}
+
+export async function listProductReviewsBySlug(slug) {
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Không tim thấy sản phẩm");
+  }
+
+  const reviews = await prisma.review.findMany({
+    where: { productId: product.id },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: [{ rating: "desc" }, { createdAt: "desc" }],
+  });
+
+  const averageRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) / reviews.length
+      : 0;
+
+  return serializeData({
+    items: reviews.map((review) => ({
+      id: review.id,
+      rating: Number(review.rating ?? 0),
+      comment: review.comment ? String(review.comment) : "",
+      createdAt: review.createdAt,
+      user: {
+        id: review.user.id,
+        fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+      },
+    })),
+    summary: {
+      totalReviews: reviews.length,
+      averageRating,
+    },
+  });
+}
+
+export async function getProductReviewEligibilityBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  const deliveredOrderItem = await prisma.orderItem.findFirst({
+    where: {
+      productId: product.id,
+      order: {
+        userId: normalizedUserId,
+        orderStatus: OrderStatus.DELIVERED,
+      },
+    },
+    select: { id: true },
+  });
+
+  return serializeData({
+    canReview: Boolean(deliveredOrderItem),
+    reason: deliveredOrderItem
+      ? null
+      : "Bạn chỉ có thể đánh giá sau khi mua và đơn hàng đã giao thành công",
+  });
+}
+
+export async function listMyWishlistProducts(userId) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  const wishlistItems = await prisma.wishlistItem.findMany({
+    where: { userId: normalizedUserId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      product: {
+        include: {
+          category: true,
+          supplier: true,
+          images: {
+            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const productsWithRatings = await attachProductRatings(
+    wishlistItems.map((item) => item.product),
+  );
+
+  return serializeData(
+    productsWithRatings.map((product, index) => ({
+      ...mapProductListItem(product),
+      wishlistCreatedAt: wishlistItems[index]?.createdAt ?? null,
+    })),
+  );
+}
+
+export async function addProductToWishlistBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.wishlistItem.upsert({
+    where: {
+      userId_productId: {
+        userId: normalizedUserId,
+        productId: product.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function removeProductFromWishlistBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.wishlistItem.deleteMany({
+    where: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function getWishlistStatusBySlug(userId, slug) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Product slug is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  const existing = await prisma.wishlistItem.findUnique({
+    where: {
+      userId_productId: {
+        userId: normalizedUserId,
+        productId: product.id,
+      },
+    },
+    select: { id: true },
+  });
+
+  return serializeData({
+    isWishlisted: Boolean(existing),
+  });
+}
+
+export async function createProductReviewBySlug(userId, slug, input = {}) {
+  const normalizedUserId = Number(userId);
+  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const rating = Number(input.rating);
+  const comment = String(input.comment ?? "").trim();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!normalizedSlug) {
+    throw new Error("Cần có mã định danh sản phẩm");
+  }
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error("Đánh giá phải là số nguyên từ 1 đến 5");
+  }
+
+  if (comment.length > 1000) {
+    throw new Error("Bình luận quá dài");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug: normalizedSlug },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Không tim thấy sản phẩm");
+  }
+
+  const deliveredOrderItem = await prisma.orderItem.findFirst({
+    where: {
+      productId: product.id,
+      order: {
+        userId: normalizedUserId,
+        orderStatus: OrderStatus.DELIVERED,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!deliveredOrderItem) {
+    throw new Error("Chỉ có thể đánh giá khi đã mua và nhận hàng thành công");
+  }
+
+  const existingReview = await prisma.review.findFirst({
+    where: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let review;
+
+  if (existingReview) {
+    review = await prisma.review.update({
+      where: { id: existingReview.id },
+      data: {
+        rating,
+        comment: comment || null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  } else {
+    review = await prisma.review.create({
+      data: {
+        userId: normalizedUserId,
+        productId: product.id,
+        rating,
+        comment: comment || null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  return serializeData({
+    id: review.id,
+    rating: Number(review.rating ?? 0),
+    comment: review.comment ? String(review.comment) : "",
+    createdAt: review.createdAt,
+    user: {
+      id: review.user.id,
+      fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+    },
+  });
 }
 
 export async function getCatalogOverview() {
@@ -102,10 +473,15 @@ export async function getCatalogOverview() {
       },
     }),
     prisma.product.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { isHomepageFeatured: "desc" },
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ],
       include: {
         category: true,
         supplier: true,
+        detail: true,
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
           take: 1,
@@ -114,6 +490,8 @@ export async function getCatalogOverview() {
     }),
   ]);
 
+  const productsWithRating = await attachProductRatings(products);
+
   return serializeData({
     categories: categories.map((category) => ({
       id: category.slug,
@@ -121,7 +499,7 @@ export async function getCatalogOverview() {
       slug: category.slug,
       productCount: category._count.products,
     })),
-    products: products.map(mapProductListItem),
+    products: productsWithRating.map(mapProductDetail),
   });
 }
 
@@ -135,7 +513,20 @@ export async function createProduct(input) {
   }
 
   const price = Number(input.price);
+  const salePrice =
+    input.salePrice === undefined || input.salePrice === null
+      ? null
+      : Number(input.salePrice);
   const stockQuantity = Number(input.stockQuantity);
+  const lowStockThreshold = Number(input.lowStockThreshold ?? 5);
+  const saleStartAt =
+    input.saleStartAt === undefined || input.saleStartAt === null
+      ? null
+      : new Date(input.saleStartAt);
+  const saleEndAt =
+    input.saleEndAt === undefined || input.saleEndAt === null
+      ? null
+      : new Date(input.saleEndAt);
 
   if (!Number.isFinite(price) || price <= 0) {
     throw new Error("Product price must be greater than 0");
@@ -143,6 +534,26 @@ export async function createProduct(input) {
 
   if (!Number.isFinite(stockQuantity) || stockQuantity < 0) {
     throw new Error("Stock quantity must be >= 0");
+  }
+
+  if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) {
+    throw new Error("Low stock threshold must be >= 0");
+  }
+
+  if (salePrice !== null && (!Number.isFinite(salePrice) || salePrice <= 0)) {
+    throw new Error("Sale price must be > 0");
+  }
+
+  if (salePrice !== null && salePrice >= price) {
+    throw new Error("Sale price must be lower than base price");
+  }
+
+  if ((saleStartAt && Number.isNaN(saleStartAt.getTime())) || (saleEndAt && Number.isNaN(saleEndAt.getTime()))) {
+    throw new Error("Invalid sale time range");
+  }
+
+  if (saleStartAt && saleEndAt && saleStartAt > saleEndAt) {
+    throw new Error("Sale start time must be before end time");
   }
 
   const category = await prisma.category.findUnique({
@@ -166,19 +577,27 @@ export async function createProduct(input) {
       categoryId: category.id,
       supplierId: input.supplierId ? Number(input.supplierId) : null,
       price,
+      salePrice,
+      saleStartAt,
+      saleEndAt,
       warrantyMonths: Number(input.warrantyMonths ?? 12),
       stockQuantity,
+      lowStockThreshold: Math.trunc(lowStockThreshold),
+      isHomepageFeatured: Boolean(input.isHomepageFeatured),
+      displayOrder: Number.isFinite(Number(input.displayOrder))
+        ? Math.max(0, Number(input.displayOrder))
+        : 9999,
       specifications: input.specifications && typeof input.specifications === "object"
         ? input.specifications
         : {},
       images: input.imageUrl
         ? {
-            create: {
-              imageUrl: input.imageUrl,
-              isPrimary: true,
-              sortOrder: 0,
-            },
-          }
+          create: {
+            imageUrl: input.imageUrl,
+            isPrimary: true,
+            sortOrder: 0,
+          },
+        }
         : undefined,
     },
     include: {
@@ -188,7 +607,37 @@ export async function createProduct(input) {
     },
   });
 
-  return serializeData(mapProductDetail(created));
+  // Create ProductDetail if provided
+  if (input.detail && typeof input.detail === "object") {
+    await prisma.productDetail.upsert({
+      where: { productId: created.id },
+      create: {
+        productId: created.id,
+        fullDescription: input.detail.fullDescription?.trim() || null,
+        inTheBox: input.detail.inTheBox?.trim() || null,
+        manualUrl: input.detail.manualUrl?.trim() || null,
+        warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+      },
+      update: {
+        fullDescription: input.detail.fullDescription?.trim() || null,
+        inTheBox: input.detail.inTheBox?.trim() || null,
+        manualUrl: input.detail.manualUrl?.trim() || null,
+        warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+      },
+    });
+  }
+
+  const createdWithDetail = await prisma.product.findUnique({
+    where: { id: created.id },
+    include: {
+      category: true,
+      supplier: true,
+      detail: true,
+      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+    },
+  });
+
+  return serializeData(mapProductDetail(createdWithDetail));
 }
 
 export async function updateProductById(productId, input) {
@@ -203,6 +652,7 @@ export async function updateProductById(productId, input) {
   }
 
   const data = {};
+  const previousEffectivePrice = resolveEffectivePrice(current);
 
   if (input.name !== undefined) {
     const name = String(input.name).trim();
@@ -243,6 +693,42 @@ export async function updateProductById(productId, input) {
     data.price = price;
   }
 
+  if (input.salePrice !== undefined) {
+    if (input.salePrice === null || input.salePrice === "") {
+      data.salePrice = null;
+    } else {
+      const salePrice = Number(input.salePrice);
+      if (!Number.isFinite(salePrice) || salePrice <= 0) {
+        throw new Error("Sale price must be > 0");
+      }
+      data.salePrice = salePrice;
+    }
+  }
+
+  if (input.saleStartAt !== undefined) {
+    if (!input.saleStartAt) {
+      data.saleStartAt = null;
+    } else {
+      const saleStartAt = new Date(input.saleStartAt);
+      if (Number.isNaN(saleStartAt.getTime())) {
+        throw new Error("Invalid sale start time");
+      }
+      data.saleStartAt = saleStartAt;
+    }
+  }
+
+  if (input.saleEndAt !== undefined) {
+    if (!input.saleEndAt) {
+      data.saleEndAt = null;
+    } else {
+      const saleEndAt = new Date(input.saleEndAt);
+      if (Number.isNaN(saleEndAt.getTime())) {
+        throw new Error("Invalid sale end time");
+      }
+      data.saleEndAt = saleEndAt;
+    }
+  }
+
   if (input.stockQuantity !== undefined) {
     const stockQuantity = Number(input.stockQuantity);
     if (!Number.isFinite(stockQuantity) || stockQuantity < 0) {
@@ -251,8 +737,28 @@ export async function updateProductById(productId, input) {
     data.stockQuantity = stockQuantity;
   }
 
+  if (input.lowStockThreshold !== undefined) {
+    const threshold = Number(input.lowStockThreshold);
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      throw new Error("Low stock threshold must be >= 0");
+    }
+    data.lowStockThreshold = Math.trunc(threshold);
+  }
+
   if (input.warrantyMonths !== undefined) {
     data.warrantyMonths = Number(input.warrantyMonths);
+  }
+
+  if (input.isHomepageFeatured !== undefined) {
+    data.isHomepageFeatured = Boolean(input.isHomepageFeatured);
+  }
+
+  if (input.displayOrder !== undefined) {
+    const displayOrder = Number(input.displayOrder);
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      throw new Error("Display order must be >= 0");
+    }
+    data.displayOrder = Math.trunc(displayOrder);
   }
 
   if (input.specifications !== undefined) {
@@ -263,6 +769,25 @@ export async function updateProductById(productId, input) {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const nextPrice = data.price ?? current.price;
+    const nextSalePrice = Object.prototype.hasOwnProperty.call(data, "salePrice")
+      ? data.salePrice
+      : current.salePrice;
+    const nextSaleStartAt = Object.prototype.hasOwnProperty.call(data, "saleStartAt")
+      ? data.saleStartAt
+      : current.saleStartAt;
+    const nextSaleEndAt = Object.prototype.hasOwnProperty.call(data, "saleEndAt")
+      ? data.saleEndAt
+      : current.saleEndAt;
+
+    if (nextSaleStartAt && nextSaleEndAt && nextSaleStartAt > nextSaleEndAt) {
+      throw new Error("Sale start time must be before end time");
+    }
+
+    if (nextSalePrice !== null && Number(nextSalePrice) >= Number(nextPrice)) {
+      throw new Error("Sale price must be lower than base price");
+    }
+
     const product = await tx.product.update({
       where: { id },
       data,
@@ -293,10 +818,106 @@ export async function updateProductById(productId, input) {
       }
     }
 
+    // Handle ProductDetail
+    if (input.detail !== undefined && input.detail && typeof input.detail === "object") {
+      await tx.productDetail.upsert({
+        where: { productId: id },
+        create: {
+          productId: id,
+          fullDescription: input.detail.fullDescription?.trim() || null,
+          inTheBox: input.detail.inTheBox?.trim() || null,
+          manualUrl: input.detail.manualUrl?.trim() || null,
+          warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+        },
+        update: {
+          fullDescription: input.detail.fullDescription?.trim() || null,
+          inTheBox: input.detail.inTheBox?.trim() || null,
+          manualUrl: input.detail.manualUrl?.trim() || null,
+          warrantyPolicy: input.detail.warrantyPolicy?.trim() || null,
+        },
+      });
+    }
+
     return product;
   });
 
-  return serializeData(mapProductDetail(updated));
+  const updatedEffectivePrice = resolveEffectivePrice(updated);
+  await createWishlistPriceDropNotifications(updated, previousEffectivePrice, updatedEffectivePrice);
+
+  const updatedWithDetail = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      category: true,
+      supplier: true,
+      detail: true,
+      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+    },
+  });
+
+  return serializeData(mapProductDetail(updatedWithDetail));
+}
+
+export async function batchUpdateProductDisplayOrder(input = {}) {
+  const items = Array.isArray(input.items) ? input.items : [];
+
+  if (items.length === 0) {
+    throw new Error("Display order items are required");
+  }
+
+  const normalized = items.map((item, index) => {
+    const id = Number(item?.id);
+    const displayOrder = Number(item?.displayOrder ?? index);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error("Invalid product id in display order payload");
+    }
+
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      throw new Error("Display order must be >= 0");
+    }
+
+    return {
+      id,
+      displayOrder: Math.trunc(displayOrder),
+    };
+  });
+
+  await prisma.$transaction(
+    normalized.map((item) =>
+      prisma.product.update({
+        where: { id: item.id },
+        data: { displayOrder: item.displayOrder },
+      }),
+    ),
+  );
+
+  return serializeData({
+    success: true,
+    updatedCount: normalized.length,
+  });
+}
+
+export async function listProductDisplayOrderItems() {
+  const items = await prisma.product.findMany({
+    orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      displayOrder: true,
+      isHomepageFeatured: true,
+      stockQuantity: true,
+    },
+  });
+
+  return serializeData(
+    items.map((item) => ({
+      id: Number(item.id),
+      name: item.name,
+      displayOrder: Number(item.displayOrder ?? 9999),
+      isHomepageFeatured: Boolean(item.isHomepageFeatured),
+      stockQuantity: Number(item.stockQuantity ?? 0),
+    })),
+  );
 }
 
 export async function deleteProductById(productId) {
@@ -369,6 +990,10 @@ function buildProductWhere(filters) {
     and.push({ stockQuantity: { lte: 0 } });
   }
 
+  if (filters.featuredOnly) {
+    and.push({ isHomepageFeatured: true });
+  }
+
   if (and.length === 0) {
     return {};
   }
@@ -378,6 +1003,17 @@ function buildProductWhere(filters) {
 
 function resolveProductOrderBy(sort) {
   switch (sort) {
+    case "best_selling":
+      return [
+        { orderItems: { _count: "desc" } },
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ];
+    case "display_order":
+      return [
+        { displayOrder: "asc" },
+        { createdAt: "desc" },
+      ];
     case "price_asc":
       return [{ price: "asc" }, { createdAt: "desc" }];
     case "price_desc":
@@ -393,18 +1029,40 @@ function resolveProductOrderBy(sort) {
 }
 
 function mapProductListItem(product) {
+  const basePrice = Number(product.price ?? 0);
+  const saleState = resolveSaleState(product);
+  const effectivePrice = resolveEffectivePrice(product);
+  const averageRatingRaw = Number(product.averageRating ?? 5);
+  const normalizedRating = Number.isFinite(averageRatingRaw)
+    ? Math.max(0, Math.min(5, averageRatingRaw))
+    : 5;
+
+  const reviewCountRaw = Number(product.reviewCount ?? 0);
+  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+
   return {
     id: product.id,
     name: product.name,
     slug: product.slug,
     productCode: product.slug,
-    price: product.price,
+    price: effectivePrice,
+    basePrice,
+    salePrice: product.salePrice,
+    saleStartAt: product.saleStartAt,
+    saleEndAt: product.saleEndAt,
+    isFlashSaleActive: saleState.isActive,
     stockQuantity: product.stockQuantity,
+    lowStockThreshold: Number(product.lowStockThreshold ?? 5),
+    isLowStock: Number(product.stockQuantity ?? 0) <= Number(product.lowStockThreshold ?? 5),
+    isHomepageFeatured: Boolean(product.isHomepageFeatured),
+    displayOrder: Number(product.displayOrder ?? 9999),
     isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
     warrantyMonths: product.warrantyMonths,
     specifications: product.specifications,
     category: product.category,
     supplier: product.supplier,
+    rating: Number(normalizedRating.toFixed(1)),
+    reviewCount,
     imageUrl: product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
   };
 }
@@ -426,4 +1084,86 @@ function normalizeProductCode(value) {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+async function attachProductRatings(products) {
+  const productList = Array.isArray(products) ? products : [];
+  if (productList.length === 0) {
+    return [];
+  }
+
+  const productIds = productList
+    .map((product) => Number(product?.id))
+    .filter((id) => Number.isFinite(id));
+
+  if (productIds.length === 0) {
+    return productList.map((product) => ({ ...product, averageRating: 5, reviewCount: 0 }));
+  }
+
+  const aggregates = await prisma.review.groupBy({
+    by: ["productId"],
+    where: {
+      productId: {
+        in: productIds,
+      },
+    },
+    _avg: {
+      rating: true,
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  const aggregateByProductId = new Map(
+    aggregates.map((aggregate) => [
+      Number(aggregate.productId),
+      {
+        averageRating:
+          aggregate._avg?.rating === null || aggregate._avg?.rating === undefined
+            ? 5
+            : Number(aggregate._avg.rating),
+        reviewCount: Number(aggregate._count?._all ?? 0),
+      },
+    ]),
+  );
+
+  return productList.map((product) => {
+    const aggregate = aggregateByProductId.get(Number(product.id));
+    return {
+      ...product,
+      averageRating: aggregate?.averageRating ?? 5,
+      reviewCount: aggregate?.reviewCount ?? 0,
+    };
+  });
+}
+
+function resolveSaleState(product, now = new Date()) {
+  const basePrice = Number(product?.price ?? 0);
+  const salePrice = product?.salePrice === null || product?.salePrice === undefined
+    ? null
+    : Number(product.salePrice);
+  const saleStartAt = product?.saleStartAt ? new Date(product.saleStartAt) : null;
+  const saleEndAt = product?.saleEndAt ? new Date(product.saleEndAt) : null;
+
+  const hasValidSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
+  const hasValidStart = !saleStartAt || !Number.isNaN(saleStartAt.getTime());
+  const hasValidEnd = !saleEndAt || !Number.isNaN(saleEndAt.getTime());
+
+  const inWindow =
+    (!saleStartAt || now >= saleStartAt) && (!saleEndAt || now <= saleEndAt);
+
+  return {
+    isActive: Boolean(hasValidSalePrice && hasValidStart && hasValidEnd && inWindow),
+    salePrice,
+  };
+}
+
+function resolveEffectivePrice(product, now = new Date()) {
+  const basePrice = Number(product?.price ?? 0);
+  const saleState = resolveSaleState(product, now);
+  if (saleState.isActive && Number.isFinite(saleState.salePrice)) {
+    return saleState.salePrice;
+  }
+  return basePrice;
 }

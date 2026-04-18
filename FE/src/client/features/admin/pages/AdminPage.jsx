@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -12,6 +11,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Search,
   ShieldCheck,
   Sparkles,
   Star,
@@ -22,9 +22,30 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
 
 const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
@@ -39,11 +60,392 @@ const navItems = [
   { id: "ai-build", label: "Cấu hình AI", icon: Sparkles },
   { id: "verification", label: "Email OTP", icon: MailCheck },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
-];
+].map((item) => ({
+  ...item,
+  hash: `#${slugifyTabLabel(item.label)}`,
+}));
+
+const schemaBySection = {
+  dashboard: {
+    headline: "Toàn cảnh dữ liệu hệ thống ",
+    tables: [
+      "Users",
+      "Products",
+      "Orders",
+      "Order_Items",
+      "Coupons",
+      "Reviews",
+      "Chat_Rooms",
+      "Wallet_Transactions",
+    ],
+    relations: [
+      "Users 1 - n Orders",
+      "Orders 1 - n Order_Items",
+      "Products 1 - n Order_Items",
+      "Users 1 - n Reviews",
+      "Users 1 - n Chat_Rooms",
+    ],
+  },
+  users: {
+    headline: "Dữ liệu người dùng và phân quyền",
+    tables: ["Users", "Roles", "Permissions", "Role_Permissions", "User_Addresses"],
+    relations: [
+      "Roles 1 - n Users",
+      "Roles n - n Permissions qua Role_Permissions",
+      "Users 1 - n User_Addresses",
+    ],
+  },
+  products: {
+    headline: "Dữ liệu quản lý sản phẩm",
+    tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Products 1 - 1 Product_Details",
+      "Products 1 - n Product_Images",
+    ],
+  },
+  orders: {
+    headline: "Dữ liệu đơn hàng và thanh toán",
+    tables: ["Orders", "Order_Items", "Order_Status_History", "Users", "Coupons", "Wallet_Transactions"],
+    relations: [
+      "Users 1 - n Orders",
+      "Orders 1 - n Order_Items",
+      "Orders 1 - n Order_Status_History",
+      "Coupons 1 - n Orders",
+      "Orders 1 - n Wallet_Transactions",
+    ],
+  },
+  catalog: {
+    headline: "Dữ liệu danh mục và nhà cung cấp",
+    tables: ["Categories", "Suppliers", "Products", "Batches"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Suppliers 1 - n Batches",
+    ],
+  },
+  vouchers: {
+    headline: "Dữ liệu mã giảm giá",
+    tables: ["Coupons", "Orders"],
+    relations: [
+      "Coupons 1 - n Orders",
+      "Orders su dung coupon qua coupon_id",
+    ],
+  },
+  warehouse: {
+    headline: "Dữ liệu kho và serial",
+    tables: ["Warehouses", "Batches", "Serial_Numbers", "Products", "Suppliers"],
+    relations: [
+      "Warehouses 1 - n Batches",
+      "Products 1 - n Batches",
+      "Suppliers 1 - n Batches",
+      "Batches 1 - n Serial_Numbers",
+    ],
+  },
+  reviews: {
+    headline: "Dữ liệu đánh giá",
+    tables: ["Reviews", "Users", "Products"],
+    relations: [
+      "Users 1 - n Reviews",
+      "Products 1 - n Reviews",
+    ],
+  },
+  chat: {
+    headline: "Dữ liệu chat hỗ trợ",
+    tables: ["Chat_Rooms", "Messages", "Users"],
+    relations: [
+      "Users 1 - n Chat_Rooms",
+      "Chat_Rooms 1 - n Messages",
+      "Users 1 - n Messages",
+    ],
+  },
+  "ai-build": {
+    headline: "Dữ liệu cấu hình AI",
+    tables: ["AI_Saved_Builds", "AI_Build_Items", "Users", "Products"],
+    relations: [
+      "Users 1 - n AI_Saved_Builds",
+      "AI_Saved_Builds 1 - n AI_Build_Items",
+      "Products 1 - n AI_Build_Items",
+    ],
+  },
+  verification: {
+    headline: "Dữ liệu OTP xác minh email",
+    tables: ["Email_Verifications"],
+    relations: ["Bang luu OTP theo email, muc dich, thoi gian het han"],
+  },
+  roles: {
+    headline: "Dữ liệu vai trò và quyền hệ thống",
+    tables: ["Roles", "Permissions", "Role_Permissions", "Users"],
+    relations: [
+      "Roles n - n Permissions qua Role_Permissions",
+      "Roles 1 - n Users",
+    ],
+  },
+};
+
+// Predefined options for product specifications
+const SPEC_OPTIONS = {
+  ram: ["4GB", "8GB", "16GB", "32GB", "64GB", "128GB", "256GB"],
+  gpuRam: ["2GB", "4GB", "6GB", "8GB", "10GB", "12GB", "16GB", "20GB", "24GB", "48GB"],
+  storage: ["256GB", "512GB", "1TB", "2TB", "4TB", "8TB", "10TB", "12TB", "16TB"],
+  brand: {
+    gpu: ["NVIDIA", "AMD", "Intel"],
+    cpu: ["Intel", "AMD"],
+    ram: ["Corsair", "G.Skill", "Kingston", "Samsung", "Crucial", "Patriot", "ADATA"],
+    storage: ["Samsung", "SK Hynix", "Micron", "Western Digital", "Seagate", "Intel", "Kioxia", "SanDisk"],
+    motherboard: ["ASUS", "MSI", "Gigabyte", "ASRock"],
+    cooler: ["Noctua", "Corsair", "NZXT", "Scythe", "be quiet!"],
+    case: ["NZXT", "Corsair", "Lian Li", "Fractal Design", "Phanteks"],
+    power: ["Corsair", "MSI", "Seasonic", "EVGA", "Thermaltake"],
+    monitor: ["ASUS", "LG", "Dell", "BenQ", "AOC", "MSI", "Samsung"],
+  },
+};
+
+// Spell checker for PC components - common misspellings
+const SPELL_CHECK_DICTIONARY = {
+  // GPU brands
+  "nvdia": "NVIDIA",
+  "nvidia": "NVIDIA",
+  "amd": "AMD",
+  "intel": "Intel",
+  "intelgraphics": "Intel",
+  
+  // GPU models
+  "rtx": "RTX",
+  "gtx": "GTX",
+  "radeon": "Radeon",
+  "arc": "Arc",
+  
+  // CPU brands
+  "core": "Intel Core",
+  "ryzen": "AMD Ryzen",
+  "xeon": "Intel Xeon",
+  
+  // RAM brands
+  "corsair": "Corsair",
+  "gskill": "G.Skill",
+  "kingston": "Kingston",
+  "samsung": "Samsung",
+  "crucial": "Crucial",
+  "patriot": "Patriot",
+  
+  // SSD brands
+  "seagate": "Seagate",
+  "wd": "Western Digital",
+  "sandisk": "SanDisk",
+  "kioxia": "Kioxia",
+  
+  // Motherboard brands
+  "asus": "ASUS",
+  "msi": "MSI",
+  "gigabyte": "Gigabyte",
+  "asrock": "ASRock",
+  
+  // Others
+  "noctua": "Noctua",
+  "be quiet": "be quiet!",
+};
+
+function suggestSpelling(text) {
+  if (!text || text.length < 2) return null;
+  
+  const normalized = text.toLowerCase().trim();
+  const known = SPELL_CHECK_DICTIONARY[normalized];
+  if (known) return known;
+  
+  // Fuzzy matching cho các từ dài
+  for (const [misspelled, correct] of Object.entries(SPELL_CHECK_DICTIONARY)) {
+    if (similarity(normalized, misspelled) > 0.8) {
+      return correct;
+    }
+  }
+  
+  return null;
+}
+
+// Simple string similarity (Levenshtein-like)
+function similarity(s1, s2) {
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = getEditDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function getEditDistance(s1, s2) {
+  const costs = [];
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i;
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j;
+      } else if (j > 0) {
+        let newValue = costs[j - 1];
+        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+        }
+        costs[j - 1] = lastValue;
+        lastValue = newValue;
+      }
+    }
+    if (i > 0) costs[s2.length] = lastValue;
+  }
+  return costs[s2.length];
+}
+
+// Category-specific spec configuration
+const CATEGORY_SPEC_CONFIG = {
+  default: {
+    label: "Danh mục chung",
+    fields: ["brand", "model", "cpu", "ram", "storage", "gpu"],
+    required: [],
+    hints: {
+      brand: "Hãng sản xuất",
+      model: "Tên mẫu sản phẩm",
+      cpu: "Loại CPU/chip",
+      ram: "Dung lượng hoặc loại RAM",
+      storage: "Dung lượng lưu trữ",
+      gpu: "Loại GPU/chip đồ họa",
+    },
+  },
+  gpu: {
+    label: "Card Đồ họa",
+    fields: ["brand", "model", "ram", "gpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NVIDIA, AMD, Intel, v.v.",
+      model: "RTX 4060, RTX 4070, RX 7900 XT, Arc B580",
+      ram: "8GB, 12GB, 16GB, 24GB",
+      gpu: "AD107, AD104, RDNA3, Arc Alchemist",
+    },
+  },
+  "card-do-hoa": {
+    label: "Card Đồ họa",
+    fields: ["brand", "model", "ram", "gpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NVIDIA, AMD, Intel",
+      model: "RTX 4060, RTX 4070, RX 7900 XT",
+      ram: "8GB, 12GB, 16GB",
+      gpu: "Ada Lovelace, RDNA3",
+    },
+  },
+  cpu: {
+    label: "Bộ xử lý CPU",
+    fields: ["brand", "model", "cpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Intel, AMD",
+      model: "Core i7-14700K, Ryzen 9 7950X3D",
+      cpu: "Raptor Lake, Zen 5",
+    },
+  },
+  "chip-xu-ly": {
+    label: "Bộ xử lý CPU",
+    fields: ["brand", "model", "cpu"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Intel, AMD",
+      model: "Core i7-14700K, Ryzen 9 7950X3D",
+      cpu: "Raptor Lake Refresh, Zen 5",
+    },
+  },
+  ram: {
+    label: "Bộ nhớ RAM",
+    fields: ["brand", "model", "ram", "storage"],
+    required: ["brand", "ram"],
+    hints: {
+      brand: "Corsair, G.Skill, Kingston, Samsung",
+      model: "Vengeance RGB, Trident Z, FURY Beast",
+      ram: "16GB, 32GB, 64GB",
+      storage: "DDR5-6000, DDR4-3600, DDR5-5600",
+    },
+  },
+  "bo-nho": {
+    label: "Bộ nhớ RAM",
+    fields: ["brand", "model", "ram", "storage"],
+    required: ["brand", "ram"],
+    hints: {
+      brand: "Corsair, G.Skill, Kingston",
+      model: "Vengeance, Trident Z",
+      ram: "16GB, 32GB, 64GB",
+      storage: "DDR5, DDR4, Speed",
+    },
+  },
+  motherboard: {
+    label: "Mainboard",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "ASUS, MSI, Gigabyte, ASRock",
+      model: "ROG STRIX Z870-E, MPG B850-E EDGE",
+    },
+  },
+  ssd: {
+    label: "Ổ SSD",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "storage"],
+    hints: {
+      brand: "Samsung, SK Hynix, Micron, Western Digital",
+      model: "990 Pro, P5 Plus, Rocket 4 Plus",
+      storage: "250GB, 500GB, 1TB, 2TB, 4TB",
+    },
+  },
+  hdd: {
+    label: "Ổ HDD",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "storage"],
+    hints: {
+      brand: "Seagate, Western Digital, Toshiba",
+      model: "Barracuda, Blue, IronWolf",
+      storage: "500GB, 1TB, 2TB, 4TB, 8TB, 10TB",
+    },
+  },
+  cooler: {
+    label: "Tản nhiệt",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Noctua, Corsair, NZXT, Scythe",
+      model: "NH-D15, Liquid Freezer, Kraken X73",
+    },
+  },
+  case: {
+    label: "Vỏ máy",
+    fields: ["brand", "model"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "NZXT, Corsair, Lian Li, Fractal Design",
+      model: "H7 Flow, 5000D, O11 Dynamic, North",
+    },
+  },
+  power: {
+    label: "Nguồn điện",
+    fields: ["brand", "model", "storage"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "Corsair, MSI, Seasonic, EVGA",
+      model: "HX1200i, MEG A850P+, Focus GX-850",
+      storage: "650W, 750W, 850W, 1000W",
+    },
+  },
+  monitor: {
+    label: "Màn hình",
+    fields: ["brand", "model", "ram"],
+    required: ["brand", "model"],
+    hints: {
+      brand: "ASUS, LG, Dell, BenQ, AOC",
+      model: "ProArt Display PA278QV, UltraGear",
+      ram: "1080p, 1440p, 4K, 27\", 32\", 34\"",
+    },
+  },
+};
 
 export default function AdminPage() {
-  const { user, token, isAuthenticated, isHydrated, logout } = useAuth();
-  const navigate = useNavigate();
+  const { token, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboard, setDashboard] = useState(null);
@@ -51,7 +453,11 @@ export default function AdminPage() {
   const [savingUserId, setSavingUserId] = useState(null);
   const [userDraftById, setUserDraftById] = useState({});
   const [adminOrders, setAdminOrders] = useState([]);
+  const [orderSearchKeyword, setOrderSearchKeyword] = useState("");
+  const [orderSortBy, setOrderSortBy] = useState("newest");
+  const [orderFilterStatus, setOrderFilterStatus] = useState("all");
   const [selectedOrderUserFilter, setSelectedOrderUserFilter] = useState(null);
+  const [selectedOrderUserOrders, setSelectedOrderUserOrders] = useState([]);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [statusDraftByOrder, setStatusDraftByOrder] = useState({});
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -59,7 +465,8 @@ export default function AdminPage() {
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
   const [managedProductPage, setManagedProductPage] = useState(1);
-  const [managedProductKeywordInput, setManagedProductKeywordInput] = useState("");
+  const [managedProductKeywordInput, setManagedProductKeywordInput] =
+    useState("");
   const [managedProductKeyword, setManagedProductKeyword] = useState("");
   const [managedProductCategory, setManagedProductCategory] = useState("all");
   const [managedProductBrand, setManagedProductBrand] = useState("all");
@@ -72,8 +479,20 @@ export default function AdminPage() {
   const [editingProductId, setEditingProductId] = useState(null);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [displayOrderDraft, setDisplayOrderDraft] = useState([]);
+  const [isSavingDisplayOrder, setIsSavingDisplayOrder] = useState(false);
+  const [isLoadingDisplayOrder, setIsLoadingDisplayOrder] = useState(false);
+  const [productDisplayMode, setProductDisplayMode] = useState("priority");
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [isSavingVoucher, setIsSavingVoucher] = useState(false);
+  const [editingVoucherId, setEditingVoucherId] = useState(null);
+  const [deletingVoucherId, setDeletingVoucherId] = useState(null);
+  const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
+  const [selectedUserDetail, setSelectedUserDetail] = useState(null);
+  const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
+  const [isSavingUserDetail, setIsSavingUserDetail] = useState(false);
+  const [selectedUserDraft, setSelectedUserDraft] = useState(null);
+  const [userDetailError, setUserDetailError] = useState("");
   const [voucherForm, setVoucherForm] = useState({
     code: "",
     discountType: "PERCENT",
@@ -92,10 +511,69 @@ export default function AdminPage() {
     price: "",
     stockQuantity: "",
     warrantyMonths: "12",
+    isHomepageFeatured: false,
+    displayOrder: "9999",
     imageUrl: "",
-    specificationsText: '{\n  "brand": "",\n  "model": ""\n}',
+    specBrand: "",
+    specModel: "",
+    specCpu: "",
+    specRam: "",
+    specStorage: "",
+    specGpu: "",
+    fullDescription: "",
+    inTheBox: "",
+    manualUrl: "",
+    warrantyPolicy: "",
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
+  const [userSearchKeyword, setUserSearchKeyword] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
+  const [catalogSearchKeyword, setCatalogSearchKeyword] = useState("");
+  const [voucherSearchKeyword, setVoucherSearchKeyword] = useState("");
+  const [voucherStatusFilter, setVoucherStatusFilter] = useState("all");
+  const [warehouseSearchKeyword, setWarehouseSearchKeyword] = useState("");
+  const [warehouseOverview, setWarehouseOverview] = useState(null);
+  const [isLoadingWarehouse, setIsLoadingWarehouse] = useState(false);
+  const [isSavingWarehouse, setIsSavingWarehouse] = useState(false);
+  const [isImportingBatch, setIsImportingBatch] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({
+    name: "",
+    address: "",
+    managerName: "",
+  });
+  const [batchForm, setBatchForm] = useState({
+    warehouseId: "",
+    productId: "",
+    supplierId: "",
+    importPrice: "",
+    quantity: "",
+    batchCode: "",
+  });
+  const [reviewSearchKeyword, setReviewSearchKeyword] = useState("");
+  const [reviewSortBy, setReviewSortBy] = useState("newest");
+
+  useEffect(() => {
+    const tabIdFromUrl = resolveTabIdFromLocation();
+    if (tabIdFromUrl) {
+      setActiveTab(tabIdFromUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    const currentTabFromUrl = resolveTabIdFromLocation();
+    const targetHash = `#${activeTab}`;
+
+    if (currentTabFromUrl === activeTab && normalizeHash(window.location.hash || "") === targetHash) {
+      return;
+    }
+
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}${targetHash}`,
+    );
+  }, [activeTab]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -115,7 +593,9 @@ export default function AdminPage() {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message || "Không tải được dữ liệu quản trị");
+          throw new Error(
+            payload?.message || "Không tải được dữ liệu quản trị",
+          );
         }
 
         const payload = await response.json();
@@ -127,7 +607,10 @@ export default function AdminPage() {
                 item.id,
                 {
                   fullName: item.fullName ?? "",
+                  email: item.email ?? "",
                   phone: item.phone ?? "",
+                  address: item.address ?? "",
+                  avatarUrl: item.avatarUrl ?? "",
                   roleId: item.roleId ? String(item.roleId) : "",
                   status: item.status ?? "ACTIVE",
                 },
@@ -178,7 +661,9 @@ export default function AdminPage() {
           const categories = Array.isArray(payload.categories)
             ? payload.categories
             : [];
-          const products = Array.isArray(payload.products) ? payload.products : [];
+          const products = Array.isArray(payload.products)
+            ? payload.products
+            : [];
           const brands = Array.from(
             new Set(
               products
@@ -290,6 +775,52 @@ export default function AdminPage() {
     toast,
   ]);
 
+  const loadDisplayOrderDraft = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingDisplayOrder(true);
+    try {
+      const response = await fetch("/api/products/display-order", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được thứ tự hiển thị");
+      }
+
+      setDisplayOrderDraft(
+        (Array.isArray(payload) ? payload : []).map((item) => ({
+          id: Number(item.id),
+          name: String(item.name ?? ""),
+          displayOrder: Number(item.displayOrder ?? 9999),
+          isHomepageFeatured: Boolean(item.isHomepageFeatured),
+          stockQuantity: Number(item.stockQuantity ?? 0),
+        })),
+      );
+    } catch (error) {
+      toast({
+        title: "Không tải được thứ tự hiển thị",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDisplayOrder(false);
+    }
+  }, [token, toast]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "products") {
+      return;
+    }
+
+    loadDisplayOrderDraft();
+  }, [activeTab, isAuthenticated, isHydrated, token, loadDisplayOrderDraft]);
+
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
       return;
@@ -323,7 +854,8 @@ export default function AdminPage() {
         if (!cancelled) {
           toast({
             title: "Không tải được đơn hàng",
-            description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+            description:
+              error instanceof Error ? error.message : "Đã xảy ra lỗi",
             variant: "destructive",
           });
         }
@@ -336,6 +868,57 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isHydrated, token, toast]);
+
+  const loadWarehouseOverview = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingWarehouse(true);
+    try {
+      const response = await fetch("/api/admin/warehouse/overview", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được dữ liệu kho");
+      }
+
+      setWarehouseOverview(payload);
+      setBatchForm((prev) => ({
+        ...prev,
+        warehouseId:
+          prev.warehouseId || String(payload?.warehouses?.[0]?.id ?? ""),
+        productId: prev.productId || String(payload?.products?.[0]?.id ?? ""),
+        supplierId:
+          prev.supplierId || String(payload?.suppliers?.[0]?.id ?? ""),
+      }));
+    } catch (error) {
+      setWarehouseOverview(null);
+      toast({
+        title: "Không tải được dữ liệu kho",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingWarehouse(false);
+    }
+  }, [token, toast]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token) {
+      return;
+    }
+
+    if (activeTab !== "warehouse") {
+      return;
+    }
+
+    loadWarehouseOverview();
+  }, [activeTab, isAuthenticated, isHydrated, token, loadWarehouseOverview]);
 
   async function updateOrderStatus(orderId) {
     if (!token) {
@@ -367,10 +950,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-                ...order,
-                orderStatus: payload.orderStatus,
-                updatedAt: payload.updatedAt,
-              }
+              ...order,
+              orderStatus: payload.orderStatus,
+              updatedAt: payload.updatedAt,
+            }
             : order,
         ),
       );
@@ -416,7 +999,10 @@ export default function AdminPage() {
       ...prev,
       [item.id]: {
         fullName: item.fullName ?? "",
+        email: item.email ?? "",
         phone: item.phone ?? "",
+        address: item.address ?? "",
+        avatarUrl: item.avatarUrl ?? "",
         roleId: item.roleId ? String(item.roleId) : "",
         status: item.status ?? "ACTIVE",
       },
@@ -457,6 +1043,26 @@ export default function AdminPage() {
       return;
     }
 
+    const emailError = validateEmail(draft.email);
+    if (emailError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: emailError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const avatarError = validateOptionalUrl(draft.avatarUrl);
+    if (avatarError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: avatarError,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSavingUserId(userId);
     try {
       const response = await fetch(`/api/admin/users/${userId}`, {
@@ -467,7 +1073,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           fullName: draft.fullName,
+          email: draft.email?.trim(),
           phone: draft.phone?.trim() || undefined,
+          address: draft.address?.trim() || null,
+          avatarUrl: draft.avatarUrl?.trim() || null,
           roleId: draft.roleId ? Number(draft.roleId) : null,
           status: draft.status,
         }),
@@ -490,7 +1099,10 @@ export default function AdminPage() {
               ? {
                   ...item,
                   fullName: payload.fullName,
+                  email: payload.email,
                   phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
                   status: payload.status,
                   roleId: payload.roleId,
                   role: payload.role,
@@ -502,6 +1114,38 @@ export default function AdminPage() {
 
       setEditingUserId(null);
       toast({ title: "Đã cập nhật thông tin người dùng" });
+
+      if (selectedUserDetail?.id === userId) {
+        setSelectedUserDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
+            : prev,
+        );
+        setSelectedUserDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                fullName: payload.fullName ?? "",
+                email: payload.email ?? "",
+                phone: payload.phone ?? "",
+                address: payload.address ?? "",
+                avatarUrl: payload.avatarUrl ?? "",
+                roleId: payload.roleId ? String(payload.roleId) : "",
+                status: payload.status ?? "ACTIVE",
+              }
+            : prev,
+        );
+      }
     } catch (error) {
       toast({
         title: "Cập nhật thất bại",
@@ -510,6 +1154,186 @@ export default function AdminPage() {
       });
     } finally {
       setSavingUserId(null);
+    }
+  }
+
+  async function loadUserDetail(userId) {
+    if (!token) {
+      return;
+    }
+
+    setUserDetailError("");
+    setIsLoadingUserDetail(true);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/detail`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được chi tiết người dùng");
+      }
+
+      setSelectedUserDetail(payload);
+      setSelectedUserDraft({
+        fullName: payload.fullName ?? "",
+        email: payload.email ?? "",
+        phone: payload.phone ?? "",
+        address: payload.address ?? "",
+        avatarUrl: payload.avatarUrl ?? "",
+        roleId: payload.roleId ? String(payload.roleId) : "",
+        status: payload.status ?? "ACTIVE",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Đã xảy ra lỗi";
+      setUserDetailError(message);
+      toast({
+        title: "Không tải được hồ sơ người dùng",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingUserDetail(false);
+    }
+  }
+
+  async function saveSelectedUserDetail() {
+    if (!token || !selectedUserDetail?.id || !selectedUserDraft) {
+      return;
+    }
+
+    const fullNameError = validateDisplayName(selectedUserDraft.fullName);
+    if (fullNameError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: fullNameError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const emailError = validateEmail(selectedUserDraft.email);
+    if (emailError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: emailError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const phoneError = validateVietnamPhone(selectedUserDraft.phone);
+    if (phoneError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: phoneError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const avatarError = validateOptionalUrl(selectedUserDraft.avatarUrl);
+    if (avatarError) {
+      toast({
+        title: "Dữ liệu chưa hợp lệ",
+        description: avatarError,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingUserDetail(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUserDetail.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fullName: selectedUserDraft.fullName,
+          email: selectedUserDraft.email?.trim(),
+          phone: selectedUserDraft.phone?.trim() || undefined,
+          address: selectedUserDraft.address?.trim() || null,
+          avatarUrl: selectedUserDraft.avatarUrl?.trim() || null,
+          roleId: selectedUserDraft.roleId ? Number(selectedUserDraft.roleId) : null,
+          status: selectedUserDraft.status,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật hồ sơ người dùng");
+      }
+
+      setDashboard((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          users: (prev.users ?? []).map((item) =>
+            item.id === selectedUserDetail.id
+              ? {
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
+              : item,
+          ),
+        };
+      });
+
+      setSelectedUserDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
+          : prev,
+      );
+
+      setSelectedUserDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
+          : prev,
+      );
+
+      toast({ title: "Đã cập nhật đầy đủ thông tin khách hàng" });
+    } catch (error) {
+      toast({
+        title: "Cập nhật thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingUserDetail(false);
     }
   }
 
@@ -596,14 +1420,27 @@ export default function AdminPage() {
       price: "",
       stockQuantity: "",
       warrantyMonths: "12",
+      isHomepageFeatured: false,
+      displayOrder: "9999",
       imageUrl: "",
-      specificationsText: '{\n  "brand": "",\n  "model": ""\n}',
+      specBrand: "",
+      specModel: "",
+      specCpu: "",
+      specRam: "",
+      specStorage: "",
+      specGpu: "",
+      fullDescription: "",
+      inTheBox: "",
+      manualUrl: "",
+      warrantyPolicy: "",
     });
   }
 
   function startEditingProduct(product) {
     setEditingProductId(product.id);
     setSelectedImageFile(null);
+    const specs = product.specifications ?? {};
+    const detail = product.detail ?? {};
     setProductForm({
       name: String(product.name ?? ""),
       productCode: String(product.productCode ?? product.slug ?? ""),
@@ -612,9 +1449,78 @@ export default function AdminPage() {
       price: String(Number(product.price ?? 0)),
       stockQuantity: String(Number(product.stockQuantity ?? 0)),
       warrantyMonths: String(Number(product.warrantyMonths ?? 12)),
+      isHomepageFeatured: Boolean(product.isHomepageFeatured),
+      displayOrder: String(Number(product.displayOrder ?? 9999)),
       imageUrl: String(product.imageUrl ?? ""),
-      specificationsText: JSON.stringify(product.specifications ?? {}, null, 2),
+      specBrand: String(specs.brand ?? ""),
+      specModel: String(specs.model ?? ""),
+      specCpu: String(specs.cpu ?? ""),
+      specRam: String(specs.ram ?? ""),
+      specStorage: String(specs.storage ?? ""),
+      specGpu: String(specs.gpu ?? ""),
+      fullDescription: String(detail.fullDescription ?? ""),
+      inTheBox: String(detail.inTheBox ?? ""),
+      manualUrl: String(detail.manualUrl ?? ""),
+      warrantyPolicy: String(detail.warrantyPolicy ?? ""),
     });
+  }
+
+  function validateProductForm() {
+    const errors = [];
+
+    // Validate tên sản phẩm
+    if (!productForm.name.trim()) {
+      errors.push("Tên sản phẩm không được để trống");
+    }
+
+    // Validate danh mục
+    if (!productForm.categorySlug) {
+      errors.push("Vui lòng chọn danh mục");
+    }
+
+    // Validate giá
+    const price = Number(productForm.price);
+    if (!productForm.price || price <= 0) {
+      errors.push("Giá sản phẩm phải lớn hơn 0");
+    }
+
+    // Validate tồn kho
+    const stockQuantity = Number(productForm.stockQuantity);
+    if (productForm.stockQuantity === "" || stockQuantity < 0) {
+      errors.push("Tồn kho không được âm");
+    }
+
+    const displayOrder = Number(productForm.displayOrder);
+    if (!Number.isFinite(displayOrder) || displayOrder < 0) {
+      errors.push("Thứ tự hiển thị phải >= 0");
+    }
+
+    // Validate field bắt buộc theo category
+    const categoryConfig = CATEGORY_SPEC_CONFIG[productForm.categorySlug] || CATEGORY_SPEC_CONFIG.default;
+    const requiredFields = categoryConfig.required || [];
+
+    requiredFields.forEach((fieldName) => {
+      const formKey = `spec${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
+      const fieldLabel = {
+        brand: "Hãng sản xuất",
+        model: "Mẫu",
+        cpu: "CPU",
+        ram: "RAM",
+        storage: "Storage",
+        gpu: "GPU",
+      }[fieldName];
+
+      if (!productForm[formKey]?.trim()) {
+        errors.push(`${fieldLabel} là bắt buộc đối với danh mục này`);
+      }
+    });
+
+    // Validate ảnh sản phẩm
+    if (!productForm.imageUrl.trim() && !selectedImageFile) {
+      errors.push("Vui lòng upload ảnh sản phẩm hoặc dán URL ảnh");
+    }
+
+    return { errors };
   }
 
   async function saveProduct() {
@@ -624,17 +1530,49 @@ export default function AdminPage() {
 
     setIsSavingProduct(true);
     try {
-      let specifications = {};
-      try {
-        specifications = JSON.parse(productForm.specificationsText || "{}");
-      } catch {
-        throw new Error("Thông số kỹ thuật phải là JSON hợp lệ");
+      // Validate dữ liệu
+      const validation = validateProductForm();
+      const { errors: validationErrors } = validation;
+      
+      if (validationErrors.length > 0) {
+        toast({
+          title: "Dữ liệu không hợp lệ",
+          description: validationErrors.join("\n"),
+          variant: "destructive",
+        });
+        setIsSavingProduct(false);
+        return;
       }
 
+      const specifications = {
+        brand: productForm.specBrand.trim(),
+        model: productForm.specModel.trim(),
+        cpu: productForm.specCpu.trim(),
+        ram: productForm.specRam.trim(),
+        storage: productForm.specStorage.trim(),
+        gpu: productForm.specGpu.trim(),
+      };
+
       const uploadedImageUrl = await uploadProductImageIfNeeded();
+      const resolvedProductCode =
+        productForm.productCode.trim() || buildProductCode(productForm.name);
+
+      if (!resolvedProductCode) {
+        throw new Error("Vui lòng nhập tên sản phẩm để hệ thống tạo mã tự động");
+      }
+
+      // Validate mã sản phẩm không trùng lặp
+      const existingProduct = managedProducts.find(
+        (p) => p.productCode.toLowerCase() === resolvedProductCode.toLowerCase() 
+          && p.id !== editingProductId
+      );
+      if (existingProduct) {
+        throw new Error(`Mã sản phẩm "${resolvedProductCode}" đã tồn tại. Vui lòng sử dụng mã khác.`);
+      }
+
       const payload = {
         name: productForm.name.trim(),
-        productCode: productForm.productCode.trim(),
+        productCode: resolvedProductCode,
         categorySlug: productForm.categorySlug,
         supplierId: productForm.supplierId
           ? Number(productForm.supplierId)
@@ -642,8 +1580,16 @@ export default function AdminPage() {
         price: Number(productForm.price),
         stockQuantity: Number(productForm.stockQuantity),
         warrantyMonths: Number(productForm.warrantyMonths || 0),
+        isHomepageFeatured: Boolean(productForm.isHomepageFeatured),
+        displayOrder: Number(productForm.displayOrder || 9999),
         imageUrl: uploadedImageUrl,
         specifications,
+        detail: {
+          fullDescription: productForm.fullDescription.trim(),
+          inTheBox: productForm.inTheBox.trim(),
+          manualUrl: productForm.manualUrl.trim() || null,
+          warrantyPolicy: productForm.warrantyPolicy.trim(),
+        },
       };
 
       const endpoint = editingProductId
@@ -666,7 +1612,9 @@ export default function AdminPage() {
       }
 
       toast({
-        title: editingProductId ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới",
+        title: editingProductId
+          ? "Đã cập nhật sản phẩm"
+          : "Đã thêm sản phẩm mới",
       });
 
       resetProductForm();
@@ -680,6 +1628,275 @@ export default function AdminPage() {
       });
     } finally {
       setIsSavingProduct(false);
+    }
+  }
+
+  async function saveDisplayOrderDraft() {
+    if (!token || displayOrderDraft.length === 0) {
+      return;
+    }
+
+    setIsSavingDisplayOrder(true);
+    try {
+      const payload = {
+        items: displayOrderDraft.map((item, index) => ({
+          id: Number(item.id),
+          displayOrder: index,
+        })),
+      };
+
+      const response = await fetch("/api/products/display-order", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.message ?? "Không thể cập nhật thứ tự hiển thị");
+      }
+
+      await Promise.all([refreshManagedProducts(), refreshDashboardSummary()]);
+      await loadDisplayOrderDraft();
+      toast({ title: "Đã lưu thứ tự hiển thị" });
+    } catch (error) {
+      toast({
+        title: "Lưu thứ tự thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingDisplayOrder(false);
+    }
+  }
+
+  function prioritizeByName() {
+    setDisplayOrderDraft((prev) =>
+      [...prev].sort((a, b) => a.name.localeCompare(b.name, "vi")),
+    );
+  }
+
+  async function fetchProductRankByQuery({ sort, featuredOnly = false }) {
+    const pageSize = 50;
+    let page = 1;
+    const rankedItems = [];
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const query = new URLSearchParams();
+      query.set("page", String(page));
+      query.set("pageSize", String(pageSize));
+      if (sort) {
+        query.set("sort", sort);
+      }
+      if (featuredOnly) {
+        query.set("featuredOnly", "true");
+      }
+
+      const response = await fetch(`/api/products?${query.toString()}`);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được dữ liệu xếp hạng sản phẩm");
+      }
+
+      rankedItems.push(...(Array.isArray(payload?.items) ? payload.items : []));
+      totalPages = Number(payload?.pagination?.totalPages ?? 1);
+      page += 1;
+    }
+
+    return rankedItems;
+  }
+
+  function reorderDraftByRankedItems(rankedItems) {
+    setDisplayOrderDraft((prev) => {
+      const prevById = new Map(prev.map((item) => [Number(item.id), item]));
+      const used = new Set();
+
+      const ordered = rankedItems
+        .map((item) => {
+          const id = Number(item?.id);
+          const existing = prevById.get(id);
+          if (!existing) {
+            return null;
+          }
+          used.add(id);
+          return {
+            ...existing,
+            stockQuantity: Number(item?.stockQuantity ?? existing.stockQuantity ?? 0),
+            isHomepageFeatured: Boolean(
+              item?.isHomepageFeatured ?? existing.isHomepageFeatured,
+            ),
+          };
+        })
+        .filter(Boolean);
+
+      const remaining = prev.filter((item) => !used.has(Number(item.id)));
+      return [...ordered, ...remaining];
+    });
+  }
+
+  async function applyProductDisplayMode(mode) {
+    setProductDisplayMode(mode);
+
+    try {
+      if (mode === "priority") {
+        await loadDisplayOrderDraft();
+        return;
+      }
+
+      if (mode === "name") {
+        prioritizeByName();
+        return;
+      }
+
+      if (mode === "stock") {
+        setDisplayOrderDraft((prev) =>
+          [...prev].sort((a, b) =>
+            Number(b.stockQuantity ?? 0) - Number(a.stockQuantity ?? 0) ||
+            a.name.localeCompare(b.name, "vi"),
+          ),
+        );
+        return;
+      }
+
+      if (mode === "featured") {
+        setDisplayOrderDraft((prev) =>
+          [...prev].sort((a, b) =>
+            Number(Boolean(b.isHomepageFeatured)) - Number(Boolean(a.isHomepageFeatured)) ||
+            Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
+          ),
+        );
+        return;
+      }
+
+      const sortMap = {
+        bestSelling: "best_selling",
+        newest: "newest",
+        priceAsc: "price_asc",
+        priceDesc: "price_desc",
+      };
+
+      const sort = sortMap[mode];
+      if (!sort) {
+        return;
+      }
+
+      const rankedItems = await fetchProductRankByQuery({ sort });
+      reorderDraftByRankedItems(rankedItems);
+    } catch (error) {
+      toast({
+        title: "Không áp dụng được chế độ hiển thị",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
+
+  function moveDisplayOrderItem(fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+      return;
+    }
+
+    setDisplayOrderDraft((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      if (!moved) {
+        return prev;
+      }
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }
+
+  async function toggleHomepageFeatured(product) {
+    if (!token || !product?.id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          isHomepageFeatured: !Boolean(product.isHomepageFeatured),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật trạng thái nổi bật");
+      }
+
+      await Promise.all([refreshManagedProducts(), refreshDashboardSummary()]);
+      await loadDisplayOrderDraft();
+      toast({ title: "Đã cập nhật sản phẩm nổi bật" });
+    } catch (error) {
+      toast({
+        title: "Không thể cập nhật nổi bật",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function deleteWalletTransaction(userId, transactionId) {
+    if (!token) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      "Bạn có chắc muốn xóa giao dịch ví này? Hành động này không thể hoàn tác.",
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/users/${userId}/wallet-transactions/${transactionId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.message ?? "Xóa giao dịch ví thất bại",
+        );
+      }
+
+      // Remove transaction from selectedUserDetail
+      setSelectedUserDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          walletTransactions: (prev.walletTransactions ?? []).filter(
+            (tx) => tx.id !== transactionId,
+          ),
+        };
+      });
+
+      toast({
+        title: "Đã xóa giao dịch ví",
+        description: "Giao dịch ví đã được xóa thành công",
+      });
+    } catch (error) {
+      toast({
+        title: "Không thể xóa giao dịch",
+        description:
+          error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
     }
   }
 
@@ -784,6 +2001,254 @@ export default function AdminPage() {
     }
   }
 
+  async function editVoucher(item) {
+    if (!token || !item?.id) {
+      return;
+    }
+
+    const discountValueInput = window.prompt(
+      "Giá trị giảm mới",
+      String(item.discountValue ?? ""),
+    );
+    if (discountValueInput === null) {
+      return;
+    }
+
+    const minOrderInput = window.prompt(
+      "Đơn tối thiểu mới",
+      String(item.minOrderValue ?? "0"),
+    );
+    if (minOrderInput === null) {
+      return;
+    }
+
+    const usageLimitInput = window.prompt(
+      "Số lượt dùng mới",
+      String(item.usageLimit ?? "100"),
+    );
+    if (usageLimitInput === null) {
+      return;
+    }
+
+    const startDateInput = window.prompt(
+      "Thời gian bắt đầu (ISO: 2026-04-18T10:00:00.000Z)",
+      new Date(item.startDate).toISOString(),
+    );
+    if (startDateInput === null) {
+      return;
+    }
+
+    const endDateInput = window.prompt(
+      "Thời gian kết thúc (ISO: 2026-04-30T23:59:59.000Z)",
+      new Date(item.endDate).toISOString(),
+    );
+    if (endDateInput === null) {
+      return;
+    }
+
+    const statusInput = window.prompt(
+      "Trạng thái (ACTIVE / DISABLED / EXPIRED)",
+      String(item.status ?? "ACTIVE"),
+    );
+    if (statusInput === null) {
+      return;
+    }
+
+    setEditingVoucherId(item.id);
+    try {
+      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          discountValue: Number(discountValueInput),
+          minOrderValue: Number(minOrderInput),
+          usageLimit: Number(usageLimitInput),
+          startDate: startDateInput,
+          endDate: endDateInput,
+          status: String(statusInput).trim().toUpperCase(),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Cập nhật voucher thất bại");
+      }
+
+      await refreshDashboardSummary();
+      toast({ title: "Đã cập nhật voucher" });
+    } catch (error) {
+      toast({
+        title: "Không thể cập nhật voucher",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setEditingVoucherId(null);
+    }
+  }
+
+  async function deleteVoucher(item) {
+    if (!token || !item?.id) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Bạn có chắc muốn xóa voucher ${item.code}? Voucher đã dùng sẽ không xóa được.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingVoucherId(item.id);
+    try {
+      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Xóa voucher thất bại");
+      }
+
+      await refreshDashboardSummary();
+      toast({ title: "Đã xóa voucher" });
+    } catch (error) {
+      toast({
+        title: "Không thể xóa voucher",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingVoucherId(null);
+    }
+  }
+
+  async function createWarehouse() {
+    if (!token) {
+      return;
+    }
+
+    if (!warehouseForm.name.trim()) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Tên kho không được để trống",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingWarehouse(true);
+    try {
+      const response = await fetch("/api/admin/warehouses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: warehouseForm.name.trim(),
+          address: warehouseForm.address.trim() || null,
+          managerName: warehouseForm.managerName.trim() || null,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể tạo kho mới");
+      }
+
+      setWarehouseForm({
+        name: "",
+        address: "",
+        managerName: "",
+      });
+
+      await Promise.all([loadWarehouseOverview(), refreshDashboardSummary()]);
+      toast({ title: "Đã tạo kho mới" });
+    } catch (error) {
+      toast({
+        title: "Không thể tạo kho",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingWarehouse(false);
+    }
+  }
+
+  async function importBatchIntoWarehouse() {
+    if (!token) {
+      return;
+    }
+
+    if (
+      !batchForm.warehouseId ||
+      !batchForm.productId ||
+      !batchForm.supplierId ||
+      !batchForm.importPrice ||
+      !batchForm.quantity
+    ) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng chọn kho, sản phẩm, nhà cung cấp, giá nhập và số lượng",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsImportingBatch(true);
+    try {
+      const response = await fetch("/api/admin/warehouse/import-batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          warehouseId: Number(batchForm.warehouseId),
+          productId: Number(batchForm.productId),
+          supplierId: Number(batchForm.supplierId),
+          importPrice: Number(batchForm.importPrice),
+          quantity: Number(batchForm.quantity),
+          batchCode: batchForm.batchCode.trim() || undefined,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể nhập lô hàng");
+      }
+
+      setBatchForm((prev) => ({
+        ...prev,
+        importPrice: "",
+        quantity: "",
+        batchCode: "",
+      }));
+
+      await Promise.all([
+        loadWarehouseOverview(),
+        refreshDashboardSummary(),
+        refreshManagedProducts(),
+      ]);
+      toast({ title: "Đã nhập lô hàng và cập nhật tồn kho" });
+    } catch (error) {
+      toast({
+        title: "Không thể nhập lô",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImportingBatch(false);
+    }
+  }
+
   const orderStatusRows = useMemo(() => {
     if (!dashboard?.orderStatuses) {
       return [];
@@ -795,35 +2260,337 @@ export default function AdminPage() {
     ]);
   }, [dashboard]);
 
-  const displayedOrders = useMemo(() => {
-    if (!selectedOrderUserFilter?.id) {
-      return adminOrders;
+  const orderStatusChartData = useMemo(() => {
+    if (!dashboard?.orderStatuses) {
+      return [];
     }
 
-    return adminOrders.filter(
-      (item) => Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
-    );
-  }, [adminOrders, selectedOrderUserFilter]);
+    return dashboard.orderStatuses.map((item) => ({
+      name: formatEnum(item.orderStatus),
+      value: item._count?.orderStatus ?? 0,
+    }));
+  }, [dashboard]);
+
+  const userStatusChartData = useMemo(() => {
+    if (!dashboard?.userStatuses) {
+      return [];
+    }
+
+    return dashboard.userStatuses.map((item) => ({
+      name: formatEnum(item.status),
+      value: item._count?.status ?? 0,
+    }));
+  }, [dashboard]);
+
+  const displayedOrders = useMemo(() => {
+    let filtered = [];
+
+    if (selectedOrderUserFilter?.id) {
+      if (selectedOrderUserOrders.length > 0) {
+        filtered = selectedOrderUserOrders;
+      } else {
+        filtered = adminOrders.filter(
+          (item) =>
+            Number(item.customer?.id) === Number(selectedOrderUserFilter.id),
+        );
+      }
+    } else {
+      filtered = adminOrders;
+    }
+
+    // Apply search filter
+    if (orderSearchKeyword.trim()) {
+      const keyword = orderSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const orderId = String(item.id).toLowerCase();
+        const customerName = (item.customer?.fullName ?? "").toLowerCase();
+        const customerEmail = (item.customer?.email ?? "").toLowerCase();
+        return (
+          orderId.includes(keyword) ||
+          customerName.includes(keyword) ||
+          customerEmail.includes(keyword)
+        );
+      });
+    }
+
+    // Apply status filter
+    if (orderFilterStatus !== "all") {
+      filtered = filtered.filter(
+        (item) => item.orderStatus === orderFilterStatus
+      );
+    }
+
+    // Apply sort
+    if (orderSortBy === "newest") {
+      filtered.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+    } else if (orderSortBy === "oldest") {
+      filtered.sort(
+        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+      );
+    } else if (orderSortBy === "highest-amount") {
+      filtered.sort((a, b) => (b.totalAmount ?? 0) - (a.totalAmount ?? 0));
+    } else if (orderSortBy === "lowest-amount") {
+      filtered.sort((a, b) => (a.totalAmount ?? 0) - (b.totalAmount ?? 0));
+    }
+
+    return filtered;
+  }, [
+    adminOrders,
+    selectedOrderUserFilter,
+    selectedOrderUserOrders,
+    orderSearchKeyword,
+    orderSortBy,
+    orderFilterStatus,
+  ]);
+
+  const filteredUsers = useMemo(() => {
+    let filtered = dashboard?.users ?? [];
+
+    if (userSearchKeyword.trim()) {
+      const keyword = userSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.fullName ?? "").toLowerCase().includes(keyword) ||
+        (item.email ?? "").toLowerCase().includes(keyword) ||
+        (item.phone ?? "").includes(keyword),
+      );
+    }
+
+    if (userStatusFilter !== "all") {
+      filtered = filtered.filter((item) => item.status === userStatusFilter);
+    }
+
+    return filtered;
+  }, [dashboard, userSearchKeyword, userStatusFilter]);
+
+  const filteredSuppliers = useMemo(() => {
+    let filtered = dashboard?.suppliers ?? [];
+
+    if (catalogSearchKeyword.trim()) {
+      const keyword = catalogSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.name ?? "").toLowerCase().includes(keyword) ||
+        (item.email ?? "").toLowerCase().includes(keyword) ||
+        (item.phone ?? "").includes(keyword),
+      );
+    }
+
+    return filtered;
+  }, [dashboard, catalogSearchKeyword]);
+
+  const filteredCoupons = useMemo(() => {
+    let filtered = dashboard?.coupons ?? [];
+
+    if (voucherSearchKeyword.trim()) {
+      const keyword = voucherSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.code ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    if (voucherStatusFilter !== "all") {
+      filtered = filtered.filter((item) => item.status === voucherStatusFilter);
+    }
+
+    return filtered;
+  }, [dashboard, voucherSearchKeyword, voucherStatusFilter]);
+
+  const filteredReviews = useMemo(() => {
+    let filtered = dashboard?.reviews ?? [];
+
+    if (reviewSearchKeyword.trim()) {
+      const keyword = reviewSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.user?.fullName ?? "").toLowerCase().includes(keyword) ||
+        (item.user?.email ?? "").toLowerCase().includes(keyword) ||
+        (item.product?.name ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    if (reviewSortBy === "newest") {
+      filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else if (reviewSortBy === "oldest") {
+      filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    } else if (reviewSortBy === "highest-rating") {
+      filtered.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    } else if (reviewSortBy === "lowest-rating") {
+      filtered.sort((a, b) => (a.rating ?? 0) - (b.rating ?? 0));
+    }
+
+    return filtered;
+  }, [dashboard, reviewSearchKeyword, reviewSortBy]);
+
+  const filteredWarehouses = useMemo(() => {
+    let filtered = warehouseOverview?.warehouses ?? dashboard?.warehouses ?? [];
+
+    if (warehouseSearchKeyword.trim()) {
+      const keyword = warehouseSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) =>
+        (item.name ?? "").toLowerCase().includes(keyword) ||
+        (item.address ?? "").toLowerCase().includes(keyword) ||
+        (item.managerName ?? "").toLowerCase().includes(keyword),
+      );
+    }
+
+    return filtered;
+  }, [dashboard, warehouseOverview, warehouseSearchKeyword]);
+
+  const warehouseRecentBatches = useMemo(
+    () => warehouseOverview?.batches ?? [],
+    [warehouseOverview],
+  );
+
+  const warehouseSummary = useMemo(
+    () =>
+      warehouseOverview?.summary ?? {
+        totalWarehouses: filteredWarehouses.length,
+        totalBatches: 0,
+        totalProducts: 0,
+        totalStockQuantity: 0,
+      },
+    [warehouseOverview, filteredWarehouses.length],
+  );
+
+  async function openUserOrders(user) {
+    if (!token || !user?.id) {
+      return;
+    }
+
+    try {
+      setSelectedOrderUserFilter({
+        id: user.id,
+        fullName: user.fullName ?? user.email,
+      });
+      setActiveTab("orders");
+
+      const response = await fetch(`/api/admin/users/${user.id}/detail`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được đơn hàng của người dùng");
+      }
+
+      const mappedOrders = (Array.isArray(payload?.orders) ? payload.orders : []).map(
+        (order) => ({
+          ...order,
+          customer: {
+            id: user.id,
+            fullName: user.fullName ?? user.email,
+            email: user.email ?? "-",
+          },
+          itemCount: Number(order.itemCount ?? order.orderItems?.length ?? 0),
+        }),
+      );
+
+      setSelectedOrderUserOrders(mappedOrders);
+    } catch (error) {
+      setSelectedOrderUserOrders([]);
+      toast({
+        title: "Không tải được đơn của người dùng",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    }
+  }
 
   const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
   const summaryCards = [
     {
+      id: "users",
       label: "Người dùng",
       value: Number(dashboard?.summary?.totalUsers ?? 0),
     },
     {
+      id: "orders",
       label: "Đơn hàng",
       value: Number(dashboard?.summary?.totalOrders ?? 0),
     },
     {
+      id: "products",
       label: "Sản phẩm",
       value: Number(dashboard?.summary?.totalProducts ?? 0),
     },
     {
+      id: "revenue",
       label: "Doanh thu",
       value: formatMoney(totalRevenue),
     },
   ];
+
+  const summaryDetailByCard = useMemo(() => {
+    const usersRows = (dashboard?.users ?? []).slice(0, 8).map((item) => [
+      item.fullName ?? "-",
+      item.email ?? "-",
+      item.role?.name ?? "User",
+      statusBadge(formatEnum(item.status)),
+    ]);
+
+    const ordersRows = (adminOrders ?? []).slice(0, 8).map((item) => [
+      `#${item.id}`,
+      item.customer?.fullName ?? item.customer?.email ?? "-",
+      formatMoney(item.totalAmount),
+      statusBadge(formatEnum(item.paymentStatus)),
+      statusBadge(formatEnum(item.orderStatus)),
+    ]);
+
+    const productRows = (managedProducts ?? []).slice(0, 8).map((item) => [
+      item.name ?? "-",
+      item.productCode ?? "-",
+      formatMoney(item.price),
+      String(item.stockQuantity ?? 0),
+    ]);
+
+    const paidOrders = (adminOrders ?? []).filter(
+      (item) => String(item.paymentStatus ?? "").toUpperCase() === "PAID",
+    );
+    const pendingOrders = (adminOrders ?? []).filter(
+      (item) => String(item.paymentStatus ?? "").toUpperCase() === "PENDING",
+    );
+    const revenueRows = [
+      ["Tổng doanh thu", formatMoney(totalRevenue)],
+      ["Đơn đã thanh toán", String(paidOrders.length)],
+      ["Đơn chờ thanh toán", String(pendingOrders.length)],
+      [
+        "Giá trị trung bình / đơn",
+        formatMoney(paidOrders.length > 0 ? totalRevenue / paidOrders.length : 0),
+      ],
+    ];
+
+    return {
+      users: {
+        title: "Chi tiết người dùng",
+        description: "8 người dùng mới nhất trong hệ thống",
+        columns: ["Tên", "Email", "Role", "Trạng thái"],
+        rows: usersRows,
+      },
+      orders: {
+        title: "Chi tiết đơn hàng",
+        description: "8 đơn hàng gần nhất",
+        columns: ["Mã đơn", "Khách hàng", "Tổng tiền", "Thanh toán", "Trạng thái"],
+        rows: ordersRows,
+      },
+      products: {
+        title: "Chi tiết sản phẩm",
+        description: "8 sản phẩm gần nhất từ danh sách quản trị",
+        columns: ["Tên", "Mã", "Giá", "Tồn kho"],
+        rows: productRows,
+      },
+      revenue: {
+        title: "Chi tiết doanh thu",
+        description: "Số liệu tổng hợp từ dashboard và đơn hàng",
+        columns: ["Chỉ số", "Giá trị"],
+        rows: revenueRows,
+      },
+    };
+  }, [dashboard, adminOrders, managedProducts, totalRevenue]);
+
+  const selectedSummaryDetail =
+    summaryDetailByCard[selectedSummaryCard] ?? summaryDetailByCard.users;
 
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
@@ -832,9 +2599,9 @@ export default function AdminPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,1)_0%,_rgba(240,253,250,1)_100%)]">
       <Navbar />
 
-      <div className="mx-auto flex max-w-[1600px] gap-6 px-4 pb-10 pt-24 lg:px-6">
-        <aside className="hidden w-72 shrink-0 lg:block">
-          <div className="sticky top-24 space-y-4 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="mx-auto max-w-[1600px] px-4 pb-10 pt-24 lg:px-6">
+        <aside className="hidden lg:fixed lg:top-24 lg:block lg:w-72">
+          <div className="space-y-4 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
             <h1 className="text-xl font-bold">Trang quản trị</h1>
 
             <div className="space-y-1">
@@ -843,11 +2610,10 @@ export default function AdminPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    activeTab === item.id
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${activeTab === item.id
                       ? "bg-primary text-primary-foreground"
                       : "text-slate-700 hover:bg-secondary hover:text-primary"
-                  }`}
+                    }`}
                 >
                   <span className="flex items-center gap-3">
                     <item.icon className="h-4 w-4" />
@@ -860,7 +2626,7 @@ export default function AdminPage() {
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 space-y-6">
+        <main className="min-w-0 space-y-6 lg:ml-[19rem]">
           <div className="lg:hidden">
             <div className="rounded-2xl border border-border/60 bg-white/85 p-3 shadow-sm">
               <label className="mb-1 block text-xs font-semibold text-muted-foreground">
@@ -879,56 +2645,9 @@ export default function AdminPage() {
               </select>
             </div>
           </div>
-
-          <section className="overflow-hidden rounded-[32px] border border-border/60 bg-white/85 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl">
-                <Badge className="mb-4 bg-primary/10 text-primary hover:bg-primary/10">
-                  {isHydrated && isAuthenticated ? "Đang đăng nhập" : "Chưa đăng nhập"}
-                </Badge>
-                <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-                  Bảng điều khiển quản trị PC Perfect
-                </h2>
-                <p className="mt-3 text-muted-foreground">
-                  {isHydrated && isAuthenticated
-                    ? `Tài khoản hiện tại: ${user?.fullName ?? user?.email} · ${user?.role ?? "User"}`
-                    : "Bạn chưa đăng nhập."}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {isHydrated && isAuthenticated ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="w-full"
-                    onClick={() => {
-                      logout();
-                      navigate("/");
-                    }}
-                  >
-                    Đăng xuất
-                  </Button>
-                ) : (
-                  <>
-                    <Link to="/login">
-                      <Button variant="hero" size="lg" className="w-full">
-                        Đăng nhập
-                      </Button>
-                    </Link>
-                    <Link to="/register">
-                      <Button variant="outline" size="lg" className="w-full">
-                        Đăng ký
-                      </Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-
           <section id="dashboard" className={sectionClassName("dashboard")}>
             <SectionHeader
+              sectionId="dashboard"
               icon={LayoutDashboard}
               title="Bảng tổng quan"
               description="Dữ liệu tổng quan từ MySQL"
@@ -936,32 +2655,83 @@ export default function AdminPage() {
 
             {isLoading ? (
               <Panel title="Đang tải" description="Đang lấy dữ liệu từ máy chủ">
-                <p className="text-sm text-muted-foreground">Vui lòng chờ trong giây lát.</p>
+                <p className="text-sm text-muted-foreground">
+                  Vui lòng chờ trong giây lát.
+                </p>
               </Panel>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {summaryCards.map((card) => (
-                <div
-                  key={card.label}
-                  className="rounded-3xl border bg-white p-5 shadow-sm"
-                >
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <div className="mt-3 text-3xl font-bold">{card.value}</div>
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {summaryCards.map((card) => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => setSelectedSummaryCard(card.id)}
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                        selectedSummaryCard === card.id
+                          ? "border-primary ring-2 ring-primary/20"
+                          : "hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="text-sm text-muted-foreground">{card.label}</p>
+                      <div className="mt-3 text-3xl font-bold">{card.value}</div>
+                    </button>
+                  ))}
                 </div>
-              ))}
+
+                <Panel
+                  title={selectedSummaryDetail.title}
+                  description={selectedSummaryDetail.description}
+                >
+                  {selectedSummaryDetail.rows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có dữ liệu chi tiết cho mục này.
+                    </p>
+                  ) : (
+                    <DataTable
+                      columns={selectedSummaryDetail.columns}
+                      rows={selectedSummaryDetail.rows}
+                    />
+                  )}
+                </Panel>
               </div>
             )}
 
-            <Panel title="Trạng thái đơn hàng" description="Số lượng theo trạng thái">
-              <DataTable
-                columns={["Trạng thái", "Số lượng"]}
-                rows={orderStatusRows}
-              />
+            <Panel
+              title="Trạng thái đơn hàng"
+              description="Số lượng theo trạng thái"
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Biểu đồ cột</h4>
+                  {orderStatusChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={orderStatusChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
+                  )}
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Bảng dữ liệu</h4>
+                  <DataTable
+                    columns={["Trạng thái", "Số lượng"]}
+                    rows={orderStatusRows}
+                  />
+                </div>
+              </div>
             </Panel>
           </section>
 
           <section id="users" className={sectionClassName("users")}>
             <SectionHeader
+              sectionId="users"
               icon={Users}
               title="Quản lý người dùng"
               description="Danh sách người dùng mới nhất, có thể chỉnh sửa trực tiếp"
@@ -970,9 +2740,47 @@ export default function AdminPage() {
               title="Danh sách user"
               description="Dữ liệu trực tiếp từ bảng Users"
             >
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Tên, email, điện thoại..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={userSearchKeyword}
+                    onChange={(e) => setUserSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Trạng thái</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả</option>
+                    <option value="ACTIVE">Đang hoạt động</option>
+                    <option value="UNVERIFIED">Chưa xác minh</option>
+                    <option value="BANNED">Đã khóa</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredUsers.length}</strong> user
+                  </span>
+                </div>
+              </div>
+
               <DataTable
-                columns={["Tên", "Email", "Điện thoại", "Role", "Trạng thái", "Thao tác"]}
-                rows={(dashboard?.users ?? []).map((item) => [
+                columns={[
+                  "Tên",
+                  "Email",
+                  "Điện thoại",
+                  "Role",
+                  "Trạng thái",
+                  "Thao tác",
+                ]}
+                rows={(filteredUsers ?? []).map((item) => [
                   editingUserId === item.id ? (
                     <input
                       key={`fullname-${item.id}`}
@@ -989,7 +2797,14 @@ export default function AdminPage() {
                       }
                     />
                   ) : (
-                    item.fullName
+                    <button
+                      key={`open-user-${item.id}`}
+                      type="button"
+                      className="text-left text-primary underline"
+                      onClick={() => loadUserDetail(item.id)}
+                    >
+                      {item.fullName}
+                    </button>
                   ),
                   item.email,
                   editingUserId === item.id ? (
@@ -1002,13 +2817,15 @@ export default function AdminPage() {
                           ...prev,
                           [item.id]: {
                             ...prev[item.id],
-                            phone: event.target.value.replace(/\D/g, "").slice(0, 10),
+                            phone: event.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 10),
                           },
                         }))
                       }
                     />
                   ) : (
-                    item.phone ?? "-"
+                    (item.phone ?? "-")
                   ),
                   editingUserId === item.id ? (
                     <select
@@ -1077,7 +2894,10 @@ export default function AdminPage() {
                       </Button>
                     </div>
                   ) : (
-                    <div key={`edit-${item.id}`} className="flex flex-wrap gap-2">
+                    <div
+                      key={`edit-${item.id}`}
+                      className="flex flex-wrap gap-2"
+                    >
                       <Button
                         size="sm"
                         variant="outline"
@@ -1091,25 +2911,307 @@ export default function AdminPage() {
                         size="sm"
                         variant="ghost"
                         className="gap-1"
-                        onClick={() => {
-                          setSelectedOrderUserFilter({
-                            id: item.id,
-                            fullName: item.fullName ?? item.email,
-                          });
-                          setActiveTab("orders");
-                        }}
+                        onClick={() => openUserOrders(item)}
                       >
                         Xem đơn
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1"
+                        onClick={() => loadUserDetail(item.id)}
+                      >
+                        Chi tiết
                       </Button>
                     </div>
                   ),
                 ])}
               />
             </Panel>
+
+            {(isLoadingUserDetail || selectedUserDetail) && (
+              <Panel
+                title={
+                  selectedUserDetail
+                    ? `Hồ sơ khách hàng: ${selectedUserDetail.fullName ?? selectedUserDetail.email}`
+                    : "Đang tải hồ sơ khách hàng"
+                }
+                description="Xem và cập nhật đầy đủ thông tin, cùng dữ liệu liên quan của người dùng"
+              >
+                {isLoadingUserDetail && !selectedUserDetail ? (
+                  <p className="text-sm text-muted-foreground">Đang tải chi tiết người dùng...</p>
+                ) : userDetailError ? (
+                  <p className="text-sm text-rose-600">
+                    Không thể tải dữ liệu chi tiết: {userDetailError}
+                  </p>
+                ) : selectedUserDetail && selectedUserDraft ? (
+                  <div className="space-y-6">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Họ và tên</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.fullName}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              fullName: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Email</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.email}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Điện thoại</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.phone}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              phone: event.target.value.replace(/\D/g, "").slice(0, 10),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Avatar URL</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.avatarUrl}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              avatarUrl: event.target.value,
+                            }))
+                          }
+                          placeholder="https://..."
+                        />
+                      </div>
+
+                      <div className="grid gap-2 md:col-span-2">
+                        <label className="text-sm font-medium">Địa chỉ tổng quát</label>
+                        <textarea
+                          className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.address}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              address: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Vai trò</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.roleId}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              roleId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Không gán role</option>
+                          {(dashboard?.roles ?? []).map((role) => (
+                            <option key={role.id} value={String(role.id)}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Trạng thái</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={selectedUserDraft.status}
+                          onChange={(event) =>
+                            setSelectedUserDraft((prev) => ({
+                              ...prev,
+                              status: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="ACTIVE">Đang hoạt động</option>
+                          <option value="UNVERIFIED">Chưa xác minh</option>
+                          <option value="BANNED">Đã khóa</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={saveSelectedUserDetail}
+                        disabled={isSavingUserDetail}
+                      >
+                        {isSavingUserDetail ? "Đang lưu..." : "Lưu hồ sơ khách hàng"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => loadUserDetail(selectedUserDetail.id)}
+                        disabled={isLoadingUserDetail}
+                      >
+                        Tải lại dữ liệu liên quan
+                      </Button>
+                      <div className="ml-auto text-sm text-muted-foreground">
+                        Số dư ví: {formatMoney(selectedUserDetail.walletBalance)}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Panel title="Địa chỉ giao hàng" description="Danh sách địa chỉ của khách hàng">
+                        <DataTable
+                          columns={["Nhãn", "Người nhận", "SĐT", "Địa chỉ", "Mặc định"]}
+                          rows={(selectedUserDetail.addresses ?? []).map((addr) => [
+                            addr.label ?? "-",
+                            addr.receiverName,
+                            addr.phoneNumber,
+                            addr.addressLine,
+                            addr.isDefault ? "Có" : "Không",
+                          ])}
+                        />
+                      </Panel>
+
+                      <Panel title="Đơn hàng liên quan" description="20 đơn gần nhất của khách hàng">
+                        <DataTable
+                          columns={["Mã đơn", "Tổng tiền", "Thanh toán", "Trạng thái", "Số món", "Ngày tạo"]}
+                          rows={(selectedUserDetail.orders ?? []).map((order) => [
+                            `#${order.id}`,
+                            formatMoney(order.totalAmount),
+                            statusBadge(formatEnum(order.paymentStatus)),
+                            statusBadge(formatEnum(order.orderStatus)),
+                            String(order.itemCount ?? 0),
+                            formatDate(order.createdAt),
+                          ])}
+                        />
+                      </Panel>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Panel title="Giao dịch ví" description="Lịch sử topup, thanh toán, hoàn tiền">
+                        <DataTable
+                          columns={["Loại", "Số tiền", "Đơn", "Ghi chú", "Thời gian", "Thao tác"]}
+                          rows={(selectedUserDetail.walletTransactions ?? []).map((tx) => [
+                            formatEnum(tx.type),
+                            formatMoney(tx.amount),
+                            tx.orderId ? `#${tx.orderId}` : "-",
+                            tx.note ?? "-",
+                            formatDate(tx.createdAt),
+                            <Button
+                              key={`delete-tx-${tx.id}`}
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-rose-600"
+                              onClick={() => deleteWalletTransaction(selectedUserDetail.id, tx.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Xóa
+                            </Button>,
+                          ])}
+                        />
+                      </Panel>
+
+                      <Panel title="Yêu cầu trả hàng" description="Các yêu cầu trả hàng của khách hàng">
+                        <DataTable
+                          columns={["Mã", "Đơn", "Lý do", "Trạng thái", "Hoàn", "Yêu cầu lúc"]}
+                          rows={(selectedUserDetail.returnRequests ?? []).map((request) => [
+                            `#${request.id}`,
+                            `#${request.orderId}`,
+                            request.reason ?? "-",
+                            statusBadge(formatEnum(request.status)),
+                            request.refundAmount ? formatMoney(request.refundAmount) : "-",
+                            formatDate(request.requestedAt),
+                          ])}
+                        />
+                      </Panel>
+                    </div>
+                  </div>
+                ) : null}
+              </Panel>
+            )}
+
+            <Panel
+              title="Thống kê trạng thái người dùng"
+              description="Phân bố người dùng theo trạng thái"
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Biểu đồ tròn</h4>
+                  {userStatusChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={userStatusChartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value }) => `${name}: ${value}`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {userStatusChartData.map((_, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={
+                                [
+                                  "#10b981",
+                                  "#f59e0b",
+                                  "#ef4444",
+                                  "#6366f1",
+                                ][index % 4]
+                              }
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
+                  )}
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Chi tiết</h4>
+                  <div className="space-y-2">
+                    {userStatusChartData.map((item) => (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>{item.name}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
           </section>
 
           <section id="products" className={sectionClassName("products")}>
             <SectionHeader
+              sectionId="products"
               icon={Package}
               title="Quản lý sản phẩm"
               description="Thêm, sửa, xóa, upload ảnh và tìm kiếm sản phẩm"
@@ -1117,33 +3219,63 @@ export default function AdminPage() {
             <div className="grid gap-6 xl:grid-cols-5">
               <div className="xl:col-span-2">
                 <Panel
-                  title={editingProductId ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
-                  description="Task #11: validate giá, tồn kho, mã sản phẩm và upload ảnh"
+                  title={
+                    editingProductId
+                      ? "Chỉnh sửa sản phẩm"
+                      : "Thêm sản phẩm mới"
+                  }
+                  description="Điền thông tin cơ bản, giá bán, tồn kho và hình ảnh sản phẩm"
                 >
                   <div className="space-y-3">
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+                      <p className="font-semibold">Hướng dẫn nhanh</p>
+                      <p className="mt-1">1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu.</p>
+                    </div>
+
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Tên sản phẩm</label>
+                      <label className="text-sm font-medium">
+                        Tên sản phẩm
+                      </label>
                       <input
                         className="rounded-md border bg-background px-3 py-2 text-sm"
+                        placeholder="VD: RTX 4060 8GB GDDR6"
                         value={productForm.name}
                         onChange={(event) =>
-                          setProductForm((prev) => ({ ...prev, name: event.target.value }))
+                          setProductForm((prev) => ({
+                            ...prev,
+                            name: event.target.value,
+                          }))
                         }
                       />
                     </div>
 
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Mã sản phẩm (duy nhất)</label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        value={productForm.productCode}
-                        onChange={(event) =>
-                          setProductForm((prev) => ({
-                            ...prev,
-                            productCode: event.target.value,
-                          }))
-                        }
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Để trống sẽ tự tạo theo tên"
+                          value={productForm.productCode}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              productCode: event.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              productCode: buildProductCode(prev.name),
+                            }))
+                          }
+                        >
+                          Tự tạo
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -1167,7 +3299,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Nhà cung cấp</label>
+                      <label className="text-sm font-medium">
+                        Nhà cung cấp
+                      </label>
                       <select
                         className="rounded-md border bg-background px-3 py-2 text-sm"
                         value={productForm.supplierId}
@@ -1196,7 +3330,10 @@ export default function AdminPage() {
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={productForm.price}
                           onChange={(event) =>
-                            setProductForm((prev) => ({ ...prev, price: event.target.value }))
+                            setProductForm((prev) => ({
+                              ...prev,
+                              price: event.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1218,7 +3355,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Bảo hành (tháng)</label>
+                      <label className="text-sm font-medium">
+                        Bảo hành (tháng)
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -1233,8 +3372,48 @@ export default function AdminPage() {
                       />
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thứ tự hiển thị</label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={productForm.displayOrder}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              displayOrder: event.target.value,
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Số càng nhỏ hiển thị càng trước ở trang linh kiện.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Ưu tiên trang chủ</label>
+                        <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(productForm.isHomepageFeatured)}
+                            onChange={(event) =>
+                              setProductForm((prev) => ({
+                                ...prev,
+                                isHomepageFeatured: event.target.checked,
+                              }))
+                            }
+                          />
+                          Hiện trong nhóm sản phẩm nổi bật trang chủ
+                        </label>
+                      </div>
+                    </div>
+
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Ảnh sản phẩm</label>
+                      <label className="text-sm font-medium">
+                        Ảnh sản phẩm
+                      </label>
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg"
@@ -1246,7 +3425,7 @@ export default function AdminPage() {
                       <input
                         type="text"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
-                        placeholder="Hoặc dán trực tiếp imageUrl"
+                        placeholder="Hoặc dán trực tiếp đường dẫn ảnh (https://...)"
                         value={productForm.imageUrl}
                         onChange={(event) =>
                           setProductForm((prev) => ({
@@ -1256,31 +3435,192 @@ export default function AdminPage() {
                         }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Chấp nhận jpg/jpeg/png. Nếu chọn file, hệ thống sẽ upload và tự gắn URL.
+                        Hỗ trợ JPG/JPEG/PNG. Nếu đã chọn file, hệ thống tự upload ảnh khi bấm lưu.
                       </p>
                     </div>
 
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thông số kỹ thuật (JSON)</label>
-                      <textarea
-                        className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm"
-                        value={productForm.specificationsText}
-                        onChange={(event) =>
-                          setProductForm((prev) => ({
-                            ...prev,
-                            specificationsText: event.target.value,
-                          }))
-                        }
-                      />
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium">
+                        Thông số kỹ thuật ({CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.label || CATEGORY_SPEC_CONFIG.default.label})
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(CATEGORY_SPEC_CONFIG[productForm.categorySlug]?.fields || CATEGORY_SPEC_CONFIG.default.fields).map((fieldName) => {
+                          const config = CATEGORY_SPEC_CONFIG[productForm.categorySlug] || CATEGORY_SPEC_CONFIG.default;
+                          const isRequired = config.required?.includes(fieldName);
+                          const fieldLabel = {
+                            cpu: "CPU",
+                            ram: "RAM",
+                            storage: "Storage",
+                            gpu: "GPU",
+                          }[fieldName];
+                          const formKey = `spec${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
+                          const hint = config.hints?.[fieldName] || "";
+                          
+                          // Determine field type and options
+                          let fieldOptions = [];
+                          let inputType = "text";
+                          
+                          if (fieldName === "brand") {
+                            // Brand is datalist (combobox)
+                            inputType = "datalist";
+                            const categorySlug = productForm.categorySlug;
+                            fieldOptions = SPEC_OPTIONS.brand[categorySlug] || SPEC_OPTIONS.brand.gpu;
+                          } else if (fieldName === "ram") {
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.ram;
+                          } else if (fieldName === "storage" && productForm.categorySlug?.includes("gpu")) {
+                            // For GPU, storage is VRAM
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.gpuRam;
+                          } else if (fieldName === "storage") {
+                            inputType = "select";
+                            fieldOptions = SPEC_OPTIONS.storage;
+                          }
+
+                          return (
+                            <div key={fieldName} className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">
+                                {fieldLabel}
+                                {isRequired && <span className="text-red-500 ml-0.5">*</span>}
+                              </label>
+                              {inputType === "select" ? (
+                                <select
+                                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                                  value={productForm[formKey] || ""}
+                                  onChange={(event) =>
+                                    setProductForm((prev) => ({
+                                      ...prev,
+                                      [formKey]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">Chọn {fieldLabel.toLowerCase()}</option>
+                                  {fieldOptions.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : inputType === "datalist" ? (
+                                <>
+                                  <input
+                                    type="text"
+                                    placeholder={hint}
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    value={productForm[formKey] || ""}
+                                    onChange={(event) =>
+                                      setProductForm((prev) => ({
+                                        ...prev,
+                                        [formKey]: event.target.value,
+                                      }))
+                                    }
+                                    list={`${fieldName}-options-${productForm.categorySlug}`}
+                                  />
+                                  <datalist id={`${fieldName}-options-${productForm.categorySlug}`}>
+                                    {fieldOptions.map((opt) => (
+                                      <option key={opt} value={opt} />
+                                    ))}
+                                  </datalist>
+                                </>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder={hint}
+                                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                                  value={productForm[formKey] || ""}
+                                  onChange={(event) =>
+                                    setProductForm((prev) => ({
+                                      ...prev,
+                                      [formKey]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Điền các thông số phù hợp với danh mục được chọn. <span className="text-red-500">*</span> = bắt buộc
+                      </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="space-y-3 pt-3 border-t">
+                      <h3 className="text-sm font-semibold">Chi tiết sản phẩm</h3>
+                      
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Mô tả đầy đủ</label>
+                        <textarea
+                          className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Mô tả chi tiết sản phẩm, công nghệ, cảm nhận, ưu và nhược điểm..."
+                          value={productForm.fullDescription}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              fullDescription: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Gì trong hộp</label>
+                        <textarea
+                          className="min-h-16 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Liệt kê những gì có trong hộp sản phẩm. VD: Sản phẩm chính, Hộp bao bì, Sách hướng dẫn, Cáp USB, ..."
+                          value={productForm.inTheBox}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              inTheBox: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Link tài liệu hướng dẫn</label>
+                        <input
+                          type="url"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="https://example.com/manual.pdf"
+                          value={productForm.manualUrl}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              manualUrl: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Chính sách bảo hành</label>
+                        <textarea
+                          className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm"
+                          placeholder="Mô tả điều kiện bảo hành, cách thức yêu cầu bảo hành, thời hạn bảo hành..."
+                          value={productForm.warrantyPolicy}
+                          onChange={(event) =>
+                            setProductForm((prev) => ({
+                              ...prev,
+                              warrantyPolicy: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-3">
                       <Button
                         className="gap-2"
                         onClick={saveProduct}
                         disabled={isSavingProduct}
                       >
-                        {editingProductId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {editingProductId ? (
+                          <Pencil className="h-4 w-4" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
                         {editingProductId ? "Cập nhật" : "Thêm sản phẩm"}
                       </Button>
                       <Button
@@ -1300,16 +3640,135 @@ export default function AdminPage() {
                   title="Kho sản phẩm"
                   description="Task #31 + #32: tìm kiếm nhanh, phân trang 12 sản phẩm/trang"
                 >
+                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Chế độ hiển thị
+                    </p>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priority" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priority")}
+                      >
+                        Ưu tiên thủ công
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "stock" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("stock")}
+                      >
+                        Nhiều hàng
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "bestSelling" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("bestSelling")}
+                      >
+                        Bán chạy
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "featured" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("featured")}
+                      >
+                        Sản phẩm nổi bật
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "newest" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("newest")}
+                      >
+                        Mới nhất
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priceAsc" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priceAsc")}
+                      >
+                        Giá tăng dần
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "priceDesc" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("priceDesc")}
+                      >
+                        Giá giảm dần
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={productDisplayMode === "name" ? "default" : "outline"}
+                        onClick={() => applyProductDisplayMode("name")}
+                      >
+                        Theo tên
+                      </Button>
+                    </div>
+
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={prioritizeByName}>
+                        Ưu tiên theo tên A-Z
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={saveDisplayOrderDraft}
+                        disabled={isSavingDisplayOrder || displayOrderDraft.length === 0}
+                      >
+                        {isSavingDisplayOrder ? "Đang lưu..." : "Lưu thứ tự kéo-thả"}
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-2 text-xs text-muted-foreground">
+                      <p>Kéo-thả danh sách dưới đây để đổi thứ tự hiển thị trên trang linh kiện.</p>
+                      <div className="max-h-72 overflow-auto rounded-md border bg-background/70 p-2">
+                        {isLoadingDisplayOrder ? (
+                          <p className="px-2 py-1 text-xs text-muted-foreground">Đang tải danh sách...</p>
+                        ) : displayOrderDraft.length === 0 ? (
+                          <p className="px-2 py-1 text-xs text-muted-foreground">Chưa có dữ liệu sản phẩm.</p>
+                        ) : displayOrderDraft.map((item, index) => (
+                          <div
+                            key={`order-${item.id}`}
+                            className="flex cursor-move items-center justify-between rounded border px-2 py-1"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData("text/plain", String(index));
+                            }}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              const from = Number(event.dataTransfer.getData("text/plain"));
+                              moveDisplayOrderItem(from, index);
+                            }}
+                          >
+                            <div className="min-w-0">
+                              <p className="line-clamp-1">#{index + 1} {item.name}</p>
+                              <p className="text-[10px] text-muted-foreground">Tồn: {item.stockQuantity}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {item.isHomepageFeatured && (
+                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  Nổi bật
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <input
                       className="w-full max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
                       placeholder="Tìm theo tên hoặc mã sản phẩm"
                       value={managedProductKeywordInput}
-                      onChange={(event) => setManagedProductKeywordInput(event.target.value)}
+                      onChange={(event) =>
+                        setManagedProductKeywordInput(event.target.value)
+                      }
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           setManagedProductPage(1);
-                          setManagedProductKeyword(managedProductKeywordInput.trim());
+                          setManagedProductKeyword(
+                            managedProductKeywordInput.trim(),
+                          );
                         }
                       }}
                     />
@@ -1317,7 +3776,9 @@ export default function AdminPage() {
                       variant="outline"
                       onClick={() => {
                         setManagedProductPage(1);
-                        setManagedProductKeyword(managedProductKeywordInput.trim());
+                        setManagedProductKeyword(
+                          managedProductKeywordInput.trim(),
+                        );
                       }}
                     >
                       Tìm
@@ -1373,6 +3834,8 @@ export default function AdminPage() {
                       "Tên",
                       "Mã",
                       "Danh mục",
+                      "Ưu tiên",
+                      "Thứ tự",
                       "Giá",
                       "Tồn kho",
                       "Trạng thái",
@@ -1383,9 +3846,15 @@ export default function AdminPage() {
                       item.name,
                       item.productCode,
                       item.category?.name ?? "-",
+                      item.isHomepageFeatured ? "Trang chủ" : "-",
+                      String(Number(item.displayOrder ?? 9999)),
                       formatMoney(item.price),
                       String(item.stockQuantity ?? 0),
-                      statusBadge(Number(item.stockQuantity ?? 0) > 0 ? "Còn hàng" : "Hết hàng"),
+                      statusBadge(
+                        Number(item.stockQuantity ?? 0) > 0
+                          ? "Còn hàng"
+                          : "Hết hàng",
+                      ),
                       item.imageUrl ? (
                         <a
                           key={`image-${item.id}`}
@@ -1400,7 +3869,18 @@ export default function AdminPage() {
                       ) : (
                         "-"
                       ),
-                      <div key={`actions-${item.id}`} className="flex flex-wrap gap-2">
+                      <div
+                        key={`actions-${item.id}`}
+                        className="flex flex-wrap gap-2"
+                      >
+                        <Button
+                          size="sm"
+                          variant={item.isHomepageFeatured ? "default" : "outline"}
+                          className="gap-1"
+                          onClick={() => toggleHomepageFeatured(item)}
+                        >
+                          {item.isHomepageFeatured ? "Đang nổi bật" : "Đặt nổi bật"}
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1440,7 +3920,8 @@ export default function AdminPage() {
                         Trước
                       </Button>
                       <span>
-                        Trang {managedProductPagination.page} / {managedProductPagination.totalPages}
+                        Trang {managedProductPagination.page} /{" "}
+                        {managedProductPagination.totalPages}
                       </span>
                       <Button
                         size="sm"
@@ -1469,14 +3950,36 @@ export default function AdminPage() {
 
           <section id="catalog" className={sectionClassName("catalog")}>
             <SectionHeader
+              sectionId="catalog"
               icon={Building2}
               title="Danh mục và nhà cung cấp"
               description="Danh sách nhà cung cấp"
             />
-            <Panel title="Nhà cung cấp" description="Dữ liệu trực tiếp từ bảng Suppliers">
+            <Panel
+              title="Nhà cung cấp"
+              description="Dữ liệu trực tiếp từ bảng Suppliers"
+            >
+              <div className="mb-4 flex gap-3">
+                <div className="flex-1 grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Tên, email, điện thoại..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={catalogSearchKeyword}
+                    onChange={(e) => setCatalogSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredSuppliers.length}</strong> NCC
+                  </span>
+                </div>
+              </div>
+
               <DataTable
                 columns={["Tên", "Email", "Điện thoại", "Người liên hệ"]}
-                rows={(dashboard?.suppliers ?? []).map((item) => [
+                rows={(filteredSuppliers ?? []).map((item) => [
                   item.name,
                   item.email ?? "-",
                   item.phone ?? "-",
@@ -1488,6 +3991,7 @@ export default function AdminPage() {
 
           <section id="vouchers" className={sectionClassName("vouchers")}>
             <SectionHeader
+              sectionId="vouchers"
               icon={TicketPercent}
               title="Mã giảm giá"
               description="Tạo mã giảm giá tại trang quản trị và theo dõi lượt dùng"
@@ -1495,7 +3999,10 @@ export default function AdminPage() {
 
             <div className="grid gap-6 xl:grid-cols-5">
               <div className="xl:col-span-2">
-                <Panel title="Tạo mã giảm giá" description="Áp dụng cho thanh toán giỏ hàng">
+                <Panel
+                  title="Tạo mã giảm giá"
+                  description="Áp dụng cho thanh toán giỏ hàng"
+                >
                   <div className="space-y-3">
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Mã giảm giá</label>
@@ -1531,7 +4038,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Giá trị giảm</label>
+                        <label className="text-sm font-medium">
+                          Giá trị giảm
+                        </label>
                         <input
                           type="number"
                           min="1"
@@ -1549,7 +4058,9 @@ export default function AdminPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Đơn tối thiểu</label>
+                        <label className="text-sm font-medium">
+                          Đơn tối thiểu
+                        </label>
                         <input
                           type="number"
                           min="0"
@@ -1564,7 +4075,9 @@ export default function AdminPage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Số lượt dùng</label>
+                        <label className="text-sm font-medium">
+                          Số lượt dùng
+                        </label>
                         <input
                           type="number"
                           min="1"
@@ -1581,7 +4094,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                      <label className="text-sm font-medium">
+                        Thời gian bắt đầu
+                      </label>
                       <input
                         type="datetime-local"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -1596,7 +4111,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Thời gian kết thúc</label>
+                      <label className="text-sm font-medium">
+                        Thời gian kết thúc
+                      </label>
                       <input
                         type="datetime-local"
                         className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -1628,7 +4145,11 @@ export default function AdminPage() {
                       </select>
                     </div>
 
-                    <Button onClick={createVoucher} disabled={isSavingVoucher} className="gap-2">
+                    <Button
+                      onClick={createVoucher}
+                      disabled={isSavingVoucher}
+                      className="gap-2"
+                    >
                       <Plus className="h-4 w-4" />
                       Tạo mã giảm giá
                     </Button>
@@ -1637,7 +4158,41 @@ export default function AdminPage() {
               </div>
 
               <div className="xl:col-span-3">
-                <Panel title="Danh sách mã giảm giá" description="Mã giảm giá được tạo từ trang quản trị">
+                <Panel
+                  title="Danh sách mã giảm giá"
+                  description="Mã giảm giá được tạo từ trang quản trị"
+                >
+                  <div className="mb-4 grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Mã giảm giá..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={voucherSearchKeyword}
+                        onChange={(e) => setVoucherSearchKeyword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Trạng thái</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={voucherStatusFilter}
+                        onChange={(e) => setVoucherStatusFilter(e.target.value)}
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="ACTIVE">Đang hoạt động</option>
+                        <option value="EXPIRED">Hết hạn</option>
+                        <option value="DISABLED">Vô hiệu hóa</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <span className="text-xs text-muted-foreground">
+                        Tìm thấy: <strong>{filteredCoupons.length}</strong> mã
+                      </span>
+                    </div>
+                  </div>
+
                   <DataTable
                     columns={[
                       "Mã",
@@ -1647,8 +4202,9 @@ export default function AdminPage() {
                       "Đã dùng / Giới hạn",
                       "Thời gian",
                       "Trạng thái",
+                      "Thao tác",
                     ]}
-                    rows={(dashboard?.coupons ?? []).map((item) => [
+                    rows={(filteredCoupons ?? []).map((item) => [
                       item.code,
                       formatEnum(item.discountType),
                       item.discountType === "PERCENT"
@@ -1658,6 +4214,24 @@ export default function AdminPage() {
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
                       statusBadge(formatEnum(item.status)),
+                      <div key={`voucher-action-${item.id}`} className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => editVoucher(item)}
+                          disabled={editingVoucherId === item.id || deletingVoucherId === item.id}
+                        >
+                          {editingVoucherId === item.id ? "Đang lưu..." : "Sửa"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => deleteVoucher(item)}
+                          disabled={editingVoucherId === item.id || deletingVoucherId === item.id}
+                        >
+                          {deletingVoucherId === item.id ? "Đang xóa..." : "Xóa"}
+                        </Button>
+                      </div>,
                     ])}
                   />
                 </Panel>
@@ -1667,6 +4241,7 @@ export default function AdminPage() {
 
           <section id="orders" className={sectionClassName("orders")}>
             <SectionHeader
+              sectionId="orders"
               icon={ClipboardList}
               title="Quản lý đơn hàng"
               description="Danh sách đơn mới nhất"
@@ -1678,20 +4253,75 @@ export default function AdminPage() {
               {selectedOrderUserFilter?.id && (
                 <div className="mb-3 flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2 text-sm text-sky-700">
                   <span>
-                    Đang lọc theo người dùng: <strong>{selectedOrderUserFilter.fullName}</strong>
+                    Đang xem trực tiếp đơn hàng của: <strong>{selectedOrderUserFilter.fullName}</strong>
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setSelectedOrderUserFilter(null)}
+                    onClick={() => {
+                      setSelectedOrderUserFilter(null);
+                      setSelectedOrderUserOrders([]);
+                    }}
                   >
                     Bỏ lọc
                   </Button>
                 </div>
               )}
 
+              <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Mã đơn, tên khách, email..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderSearchKeyword}
+                    onChange={(e) => setOrderSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Sắp xếp</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderSortBy}
+                    onChange={(e) => setOrderSortBy(e.target.value)}
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="highest-amount">Số tiền cao</option>
+                    <option value="lowest-amount">Số tiền thấp</option>
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Trạng thái</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={orderFilterStatus}
+                    onChange={(e) => setOrderFilterStatus(e.target.value)}
+                  >
+                    <option value="all">Tất cả</option>
+                    <option value="PENDING">Chờ xác nhận</option>
+                    <option value="SHIPPING">Đang giao</option>
+                    <option value="DELIVERED">Hoàn thành</option>
+                    <option value="CANCELLED">Đã hủy</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{displayedOrders.length}</strong> đơn
+                  </span>
+                </div>
+              </div>
+
               <DataTable
-                columns={["Mã đơn", "Khách hàng", "Tổng tiền", "Thanh toán", "Trạng thái", "Cập nhật"]}
+                columns={[
+                  "Mã đơn",
+                  "Khách hàng",
+                  "Tổng tiền",
+                  "Thanh toán",
+                  "Trạng thái",
+                  "Cập nhật",
+                ]}
                 rows={(displayedOrders ?? []).map((item) => [
                   <button
                     key={`order-${item.id}`}
@@ -1705,7 +4335,9 @@ export default function AdminPage() {
                   statusBadge(formatEnum(item.paymentStatus)),
                   statusBadge(formatEnum(item.orderStatus)),
                   item.orderStatus === "DELIVERED" ? (
-                    <span className="text-xs text-muted-foreground">Đã hoàn thành</span>
+                    <span className="text-xs text-muted-foreground">
+                      Đã hoàn thành
+                    </span>
                   ) : (
                     <div className="flex items-center gap-2">
                       <select
@@ -1736,7 +4368,9 @@ export default function AdminPage() {
                 ])}
               />
               {displayedOrders.length === 0 && (
-                <p className="mt-3 text-sm text-muted-foreground">Không có đơn hàng phù hợp.</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Không có đơn hàng phù hợp.
+                </p>
               )}
             </Panel>
 
@@ -1755,15 +4389,19 @@ export default function AdminPage() {
                   ])}
                 />
                 <div className="mt-4">
-                  <h4 className="mb-2 text-sm font-semibold">Lịch sử trạng thái</h4>
+                  <h4 className="mb-2 text-sm font-semibold">
+                    Lịch sử trạng thái
+                  </h4>
                   <DataTable
                     columns={["Từ", "Sang", "Thời gian", "Ghi chú"]}
-                    rows={(selectedOrderDetail.statusHistory ?? []).map((history) => [
-                      formatEnum(history.fromStatus),
-                      formatEnum(history.toStatus),
-                      formatDate(history.createdAt),
-                      history.note ?? "-",
-                    ])}
+                    rows={(selectedOrderDetail.statusHistory ?? []).map(
+                      (history) => [
+                        formatEnum(history.fromStatus),
+                        formatEnum(history.toStatus),
+                        formatDate(history.createdAt),
+                        history.note ?? "-",
+                      ],
+                    )}
                   />
                 </div>
               </Panel>
@@ -1772,28 +4410,289 @@ export default function AdminPage() {
 
           <section id="warehouse" className={sectionClassName("warehouse")}>
             <SectionHeader
+              sectionId="warehouse"
               icon={Warehouse}
               title="Quản lý kho"
-              description="Danh sách kho và số lô"
+              description="Tạo kho, nhập lô và theo dõi tồn kho"
             />
-            <Panel
-              title="Tình trạng kho"
-              description="Dữ liệu trực tiếp từ bảng Warehouses"
-            >
-              <DataTable
-                columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
-                rows={(dashboard?.warehouses ?? []).map((item) => [
-                  item.name,
-                  item.address ?? "-",
-                  item.managerName ?? "-",
-                  String(item.batches?.length ?? 0),
-                ])}
-              />
-            </Panel>
+            <div className="grid gap-6 xl:grid-cols-5">
+              <div className="xl:col-span-2 space-y-6">
+                <Panel
+                  title="Tạo kho mới"
+                  description="Thêm kho để quản lý lô hàng"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Tên kho</label>
+                      <input
+                        type="text"
+                        placeholder="VD: Kho Hà Nội"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.name}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            name: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Địa chỉ</label>
+                      <input
+                        type="text"
+                        placeholder="Địa chỉ kho"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.address}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Quản lý kho</label>
+                      <input
+                        type="text"
+                        placeholder="Tên người quản lý"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseForm.managerName}
+                        onChange={(e) =>
+                          setWarehouseForm((prev) => ({
+                            ...prev,
+                            managerName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Button
+                      onClick={createWarehouse}
+                      disabled={isSavingWarehouse}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isSavingWarehouse ? "Đang tạo..." : "Tạo kho"}
+                    </Button>
+                  </div>
+                </Panel>
+
+                <Panel
+                  title="Nhập lô hàng"
+                  description="Tạo batch mới và cộng tồn kho sản phẩm"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Kho</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.warehouseId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            warehouseId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn kho</option>
+                        {(warehouseOverview?.warehouses ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Sản phẩm</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.productId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            productId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn sản phẩm</option>
+                        {(warehouseOverview?.products ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} (tồn: {Number(item.stockQuantity ?? 0)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Nhà cung cấp</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.supplierId}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            supplierId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn nhà cung cấp</option>
+                        {(warehouseOverview?.suppliers ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Giá nhập</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={batchForm.importPrice}
+                          onChange={(e) =>
+                            setBatchForm((prev) => ({
+                              ...prev,
+                              importPrice: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Số lượng</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={batchForm.quantity}
+                          onChange={(e) =>
+                            setBatchForm((prev) => ({
+                              ...prev,
+                              quantity: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Mã lô (tuỳ chọn)</label>
+                      <input
+                        type="text"
+                        placeholder="Để trống để hệ thống tự sinh"
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={batchForm.batchCode}
+                        onChange={(e) =>
+                          setBatchForm((prev) => ({
+                            ...prev,
+                            batchCode: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <Button
+                      onClick={importBatchIntoWarehouse}
+                      disabled={isImportingBatch}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isImportingBatch ? "Đang nhập..." : "Nhập lô hàng"}
+                    </Button>
+                  </div>
+                </Panel>
+              </div>
+
+              <div className="xl:col-span-3 space-y-6">
+                <Panel
+                  title="Tình trạng kho"
+                  description="Dữ liệu tổng hợp kho, lô và tồn sản phẩm"
+                >
+                  <div className="mb-4 grid gap-3 md:grid-cols-4">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng kho</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalWarehouses}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Lô gần nhất</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalBatches}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Sản phẩm</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalProducts}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng tồn</p>
+                      <p className="text-xl font-semibold">{warehouseSummary.totalStockQuantity}</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 flex gap-3">
+                    <div className="flex-1 grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Tên kho, địa chỉ, quản lý..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={warehouseSearchKeyword}
+                        onChange={(e) => setWarehouseSearchKeyword(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <span className="text-xs text-muted-foreground">
+                        Tìm thấy: <strong>{filteredWarehouses.length}</strong> kho
+                      </span>
+                    </div>
+                  </div>
+
+                  {isLoadingWarehouse ? (
+                    <p className="text-sm text-muted-foreground">Đang tải dữ liệu kho...</p>
+                  ) : (filteredWarehouses ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu kho</p>
+                  ) : (
+                    <DataTable
+                      columns={["Kho", "Địa chỉ", "Quản lý", "Số lô"]}
+                      rows={(filteredWarehouses ?? []).map((item) => [
+                        item.name,
+                        item.address ?? "-",
+                        item.managerName ?? "-",
+                        String(item.batches?.length ?? 0),
+                      ])}
+                    />
+                  )}
+                </Panel>
+
+                <Panel
+                  title="Lô hàng mới nhất"
+                  description="Theo dõi nhập kho gần đây"
+                >
+                  {(warehouseRecentBatches ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có lô hàng nào</p>
+                  ) : (
+                    <DataTable
+                      columns={["Mã lô", "Kho", "Sản phẩm", "NCC", "Giá nhập", "Số lượng"]}
+                      rows={(warehouseRecentBatches ?? []).map((item) => [
+                        item.batchCode ?? "-",
+                        item.warehouse?.name ?? "-",
+                        item.product?.name ?? "-",
+                        item.supplier?.name ?? "-",
+                        formatMoney(item.importPrice),
+                        String(item.quantity ?? 0),
+                      ])}
+                    />
+                  )}
+                </Panel>
+              </div>
+            </div>
           </section>
 
           <section id="reviews" className={sectionClassName("reviews")}>
             <SectionHeader
+              sectionId="reviews"
               icon={Star}
               title="Quản lý đánh giá"
               description="Đánh giá mới nhất"
@@ -1802,9 +4701,40 @@ export default function AdminPage() {
               title="Review moderation"
               description="Dữ liệu trực tiếp từ bảng Reviews"
             >
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Tìm kiếm</label>
+                  <input
+                    type="text"
+                    placeholder="Khách, sản phẩm..."
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={reviewSearchKeyword}
+                    onChange={(e) => setReviewSearchKeyword(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium">Sắp xếp</label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    value={reviewSortBy}
+                    onChange={(e) => setReviewSortBy(e.target.value)}
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="highest-rating">Đánh giá cao</option>
+                    <option value="lowest-rating">Đánh giá thấp</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <span className="text-xs text-muted-foreground">
+                    Tìm thấy: <strong>{filteredReviews.length}</strong> review
+                  </span>
+                </div>
+              </div>
+
               <DataTable
                 columns={["Sản phẩm", "Rating", "Khách hàng", "Nội dung"]}
-                rows={(dashboard?.reviews ?? []).map((item) => [
+                rows={(filteredReviews ?? []).map((item) => [
                   item.product?.name ?? "-",
                   `${item.rating} sao`,
                   item.user?.fullName ?? item.user?.email ?? "-",
@@ -1816,6 +4746,7 @@ export default function AdminPage() {
 
           <section id="chat" className={sectionClassName("chat")}>
             <SectionHeader
+              sectionId="chat"
               icon={MessageSquareMore}
               title="Chat khách hàng"
               description="Phòng chat mới nhất"
@@ -1838,6 +4769,7 @@ export default function AdminPage() {
 
           <section id="ai-build" className={sectionClassName("ai-build")}>
             <SectionHeader
+              sectionId="ai-build"
               icon={Sparkles}
               title="Cấu hình AI"
               description="Build được lưu gần đây"
@@ -1858,8 +4790,12 @@ export default function AdminPage() {
             </Panel>
           </section>
 
-          <section id="verification" className={sectionClassName("verification")}>
+          <section
+            id="verification"
+            className={sectionClassName("verification")}
+          >
             <SectionHeader
+              sectionId="verification"
               icon={MailCheck}
               title="Xác thực email"
               description="Danh sách OTP gần đây"
@@ -1869,7 +4805,14 @@ export default function AdminPage() {
               description="Dữ liệu trực tiếp từ bảng Email_Verifications"
             >
               <DataTable
-                columns={["Email", "OTP", "Mục đích", "Tạo lúc", "Hết hạn", "Trạng thái"]}
+                columns={[
+                  "Email",
+                  "OTP",
+                  "Mục đích",
+                  "Tạo lúc",
+                  "Hết hạn",
+                  "Trạng thái",
+                ]}
                 rows={(dashboard?.emailVerifications ?? []).map((item) => [
                   item.email,
                   item.otp,
@@ -1884,6 +4827,7 @@ export default function AdminPage() {
 
           <section id="roles" className={sectionClassName("roles")}>
             <SectionHeader
+              sectionId="roles"
               icon={ShieldCheck}
               title="Phân quyền hệ thống"
               description="Vai trò và quyền truy cập"
@@ -1916,7 +4860,10 @@ export default function AdminPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title, description }) {
+function SectionHeader({ icon: Icon, title, description, sectionId }) {
+  const schema =
+    schemaBySection[sectionId] ?? schemaBySection.dashboard;
+
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
@@ -1927,10 +4874,7 @@ function SectionHeader({ icon: Icon, title, description }) {
         <h3 className="text-2xl font-bold">{title}</h3>
         <p className="mt-1 text-muted-foreground">{description}</p>
       </div>
-      <Button variant="outline" className="w-fit gap-2">
-        <Activity className="h-4 w-4" />
-        Bảng dữ liệu thực
-      </Button>
+
     </div>
   );
 }
@@ -1982,26 +4926,26 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-    value === "Đã thanh toán" ||
-    value === "Đã giao" ||
-    value === "Đã kết nối" ||
-    value === "Đã đăng" ||
-    value === "Phổ biến" ||
-    value === "Đã xác minh" ||
-    value === "Còn hàng" ||
-    value === "Đã dùng"
+      value === "Đã thanh toán" ||
+      value === "Đã giao" ||
+      value === "Đã kết nối" ||
+      value === "Đã đăng" ||
+      value === "Phổ biến" ||
+      value === "Đã xác minh" ||
+      value === "Còn hàng" ||
+      value === "Đã dùng"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-          value === "Đang xử lý" ||
-          value === "Tạm dừng" ||
-          value === "Cần xem xét" ||
-          value === "Bản nháp" ||
-          value === "Ổn định"
+        value === "Đang xử lý" ||
+        value === "Tạm dừng" ||
+        value === "Cần xem xét" ||
+        value === "Bản nháp" ||
+        value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-            value === "Quản trị viên" ||
-            value === "Nhân viên" ||
-            value === "Mở"
+          value === "Quản trị viên" ||
+          value === "Nhân viên" ||
+          value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : "bg-rose-100 text-rose-700";
 
@@ -2105,4 +5049,123 @@ function validateVietnamPhone(value) {
     return "Số điện thoại phải đúng 10 chữ số";
   }
   return "";
+}
+
+function validateEmail(value) {
+  const email = String(value ?? "").trim();
+  if (!email) {
+    return "Email không được để trống";
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "Email không đúng định dạng";
+  }
+
+  return "";
+}
+
+function validateOptionalUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!url) {
+    return "";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    return "Avatar URL phải bắt đầu bằng http:// hoặc https://";
+  }
+
+  return "";
+}
+
+function buildProductCode(name) {
+  const base = String(name ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "D")
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 18);
+
+  if (!base) {
+    return "";
+  }
+
+  const suffix = String(Date.now()).slice(-6);
+  return `${base}-${suffix}`;
+}
+
+function slugifyTabLabel(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function normalizeHash(value) {
+  try {
+    return decodeURIComponent(String(value ?? "").trim().toLowerCase());
+  } catch {
+    return String(value ?? "").trim().toLowerCase();
+  }
+}
+
+function normalizeTabToken(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/^#+/, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getTabAliases(item) {
+  const compactSlug = slugifyTabLabel(item.label).replace(/-/g, "");
+  const aliases = [
+    item.id,
+    item.hash,
+    item.label,
+    slugifyTabLabel(item.label),
+    compactSlug,
+  ];
+
+  if (item.id === "products") {
+    aliases.push("sanpham", "san-pham", "sp");
+  }
+  if (item.id === "users") {
+    aliases.push("nguoidung", "nguoi-dung", "user");
+  }
+  if (item.id === "orders") {
+    aliases.push("donhang", "don-hang", "order");
+  }
+
+  return aliases.map(normalizeTabToken).filter(Boolean);
+}
+
+function resolveTabIdFromLocation() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const hashToken = normalizeTabToken(normalizeHash(window.location.hash || ""));
+  const queryToken = normalizeTabToken(
+    new URLSearchParams(window.location.search).get("tab") ?? "",
+  );
+  const token = hashToken || queryToken;
+
+  if (!token) {
+    return null;
+  }
+
+  const match = navItems.find((item) => getTabAliases(item).includes(token));
+  return match?.id ?? null;
 }
