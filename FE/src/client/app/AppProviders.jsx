@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { CartProvider } from "@/client/features/cart/context/CartContext";
 import { BuildProvider } from "@/client/features/build/context/BuildContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 
 const queryClient = new QueryClient();
 
@@ -13,13 +14,15 @@ export function AppProviders({ children }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <CartProvider>
-            <BuildProvider>
-              <Toaster />
-              <Sonner />
-              {children}
-            </BuildProvider>
-          </CartProvider>
+          <NotificationProvider>
+            <CartProvider>
+              <BuildProvider>
+                <Toaster />
+                <Sonner />
+                {children}
+              </BuildProvider>
+            </CartProvider>
+          </NotificationProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

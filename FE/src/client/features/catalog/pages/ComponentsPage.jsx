@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 12;
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_HISTORY_KEY = "techbuiltai-search-history";
 
 export default function ComponentsPage() {
   const [searchParams] = useSearchParams();
@@ -25,13 +27,16 @@ export default function ComponentsPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedBrand, setSelectedBrand] = useState("all");
   const [stockStatus, setStockStatus] = useState("all");
-  const [sortBy, setSortBy] = useState("newest");
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState("display_order");
   const [priceRange, setPriceRange] = useState([0, 50000000]);
   const [customMinPrice, setCustomMinPrice] = useState(0);
   const [customMaxPrice, setCustomMaxPrice] = useState(50000000);
   const [page, setPage] = useState(1);
+  const [jumpPageInput, setJumpPageInput] = useState("1");
   const [searchPool, setSearchPool] = useState([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -45,9 +50,28 @@ export default function ComponentsPage() {
     selectedCategory !== "all" ||
     selectedBrand !== "all" ||
     stockStatus !== "all" ||
-    sortBy !== "newest" ||
+    featuredOnly ||
+    sortBy !== "display_order" ||
     priceRange[0] > 0 ||
     priceRange[1] < 50000000;
+
+  useEffect(() => {
+    setSearchHistory(readSearchHistory());
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextKeyword = keywordInput.trim();
+      if (nextKeyword === keyword) {
+        return;
+      }
+
+      setKeyword(nextKeyword);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [keywordInput, keyword]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,7 +164,11 @@ export default function ComponentsPage() {
           query.set("stockStatus", stockStatus);
         }
 
-        if (sortBy !== "newest") {
+        if (featuredOnly) {
+          query.set("featuredOnly", "true");
+        }
+
+        if (sortBy !== "display_order") {
           query.set("sort", sortBy);
         }
 
@@ -189,7 +217,7 @@ export default function ComponentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [keyword, selectedCategory, selectedBrand, stockStatus, sortBy, priceRange, page]);
+  }, [keyword, selectedCategory, selectedBrand, stockStatus, featuredOnly, sortBy, priceRange, page]);
 
   useEffect(() => {
     setCustomMinPrice(priceRange[0]);
@@ -197,6 +225,10 @@ export default function ComponentsPage() {
   }, [priceRange]);
 
   const totalPages = Math.max(1, Number(pagination.totalPages ?? 1));
+  const visiblePageItems = useMemo(
+    () => buildVisiblePageItems(page, totalPages),
+    [page, totalPages],
+  );
 
   useEffect(() => {
     if (page > totalPages) {
@@ -204,9 +236,15 @@ export default function ComponentsPage() {
     }
   }, [page, totalPages]);
 
+  useEffect(() => {
+    setJumpPageInput(String(page));
+  }, [page]);
+
   const applyKeywordSearch = () => {
+    const normalizedKeyword = keywordInput.trim();
     setPage(1);
-    setKeyword(keywordInput.trim());
+    setKeyword(normalizedKeyword);
+    pushSearchHistory(normalizedKeyword, setSearchHistory);
     setIsSearchFocused(false);
   };
 
@@ -216,7 +254,8 @@ export default function ComponentsPage() {
     setSelectedCategory("all");
     setSelectedBrand("all");
     setStockStatus("all");
-    setSortBy("newest");
+    setFeaturedOnly(false);
+    setSortBy("display_order");
     setPriceRange([0, 50000000]);
     setCustomMinPrice(0);
     setCustomMaxPrice(50000000);
@@ -251,6 +290,7 @@ export default function ComponentsPage() {
     setKeywordInput(value);
     setKeyword(value);
     setPage(1);
+    pushSearchHistory(value, setSearchHistory);
     setIsSearchFocused(false);
   };
 
@@ -261,6 +301,18 @@ export default function ComponentsPage() {
     const normalizedMax = Math.max(min, max);
     setPriceRange([normalizedMin, normalizedMax]);
     setPage(1);
+  };
+
+  const jumpToPage = () => {
+    const parsed = Number.parseInt(jumpPageInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setJumpPageInput(String(page));
+      return;
+    }
+
+    const targetPage = Math.max(1, Math.min(totalPages, parsed));
+    setPage(targetPage);
+    setJumpPageInput(String(targetPage));
   };
 
   const categoryButtons = useMemo(
@@ -332,6 +384,38 @@ export default function ComponentsPage() {
                   </div>
                 </div>
               )}
+
+              {isSearchFocused && suggestions.length === 0 && searchHistory.length > 0 && !keywordInput.trim() && (
+                <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
+                  <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Lịch sử tìm kiếm
+                    </p>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onMouseDown={() => {
+                        clearSearchHistory();
+                        setSearchHistory([]);
+                      }}
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                  <div className="py-1">
+                    {searchHistory.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
+                        onMouseDown={() => applySuggestedKeyword(item)}
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <select
@@ -342,6 +426,8 @@ export default function ComponentsPage() {
                 setPage(1);
               }}
             >
+              <option value="display_order">Thứ tự ưu tiên</option>
+              <option value="best_selling">Đang bán chạy</option>
               <option value="newest">Mới nhất</option>
               <option value="price_asc">Giá tăng dần</option>
               <option value="price_desc">Giá giảm dần</option>
@@ -518,59 +604,6 @@ export default function ComponentsPage() {
             </Link>
           </div>
 
-          <div className="hidden">
-            <Button
-              variant={stockStatus === "in-stock" ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
-                setPage(1);
-              }}
-              className="gap-1"
-            >
-              {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
-              Còn hàng
-            </Button>
-            <Button
-              variant={priceRange[1] <= 5000000 ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setPriceRange((prev) => {
-                  if (prev[0] === 0 && prev[1] <= 5000000) {
-                    return [0, 50000000];
-                  }
-                  return [0, 5000000];
-                });
-                setPage(1);
-              }}
-            >
-              Dưới 5 triệu
-            </Button>
-            <Button
-              variant={selectedCategory === "all" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => {
-                setSelectedCategory("all");
-                setPage(1);
-              }}
-            >
-              Tất cả
-            </Button>
-            {categoryButtons.map((category) => (
-              <Button
-                key={category.id}
-                variant={selectedCategory === category.id ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setSelectedCategory(category.id);
-                  setPage(1);
-                }}
-              >
-                {category.name}
-              </Button>
-            ))}
-          </div>
-
           {hasActiveFilters && (
             <div className="flex flex-wrap gap-2 mb-6">
               {keyword && (
@@ -625,6 +658,18 @@ export default function ComponentsPage() {
                   />
                 </Badge>
               )}
+              {featuredOnly && (
+                <Badge variant="secondary" className="gap-1">
+                  Sản phẩm nổi bật
+                  <X
+                    className="w-3 h-3 cursor-pointer"
+                    onClick={() => {
+                      setFeaturedOnly(false);
+                      setPage(1);
+                    }}
+                  />
+                </Badge>
+              )}
             </div>
           )}
 
@@ -651,6 +696,11 @@ export default function ComponentsPage() {
           ) : (
             <div className="text-center py-20">
               <p className="text-muted-foreground mb-4">Không tìm thấy sản phẩm</p>
+              {featuredOnly && (
+                <p className="mb-4 text-xs text-amber-600">
+                  Chưa có sản phẩm nổi bật. Vào trang admin sản phẩm để bật nút "Đặt nổi bật".
+                </p>
+              )}
               <Button variant="outline" onClick={clearFilters}>
                 Xóa bộ lọc
               </Button>
@@ -658,35 +708,62 @@ export default function ComponentsPage() {
           )}
 
           {!isLoading && totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              >
-                Trước
-              </Button>
-
-              {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageItem) => (
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button
-                  key={pageItem}
-                  variant={page === pageItem ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => setPage(pageItem)}
+                  disabled={page === 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 >
-                  {pageItem}
+                  Trước
                 </Button>
-              ))}
 
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === totalPages}
-                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              >
-                Sau
-              </Button>
+                {visiblePageItems.map((item, index) =>
+                  item === "..." ? (
+                    <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                      ...
+                    </span>
+                  ) : (
+                    <Button
+                      key={item}
+                      variant={page === item ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </Button>
+                  ),
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === totalPages}
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                >
+                  Sau
+                </Button>
+              </div>
+
+              <div className="ml-0 flex items-center gap-2 sm:ml-4">
+                <Input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpPageInput}
+                  onChange={(event) => setJumpPageInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      jumpToPage();
+                    }
+                  }}
+                  className="h-9 w-24"
+                />
+                <Button size="sm" variant="secondary" onClick={jumpToPage}>
+                  Đến
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -695,17 +772,60 @@ export default function ComponentsPage() {
   );
 }
 
+function buildVisiblePageItems(page, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const slidingStart = Math.max(1, Math.min(page - 1, totalPages - 5));
+
+  return [
+    slidingStart,
+    slidingStart + 1,
+    slidingStart + 2,
+    "...",
+    totalPages - 2,
+    totalPages - 1,
+    totalPages,
+  ];
+}
+
 function mapProductToCardData(product) {
   const categoryMap = {
     cpu: "cpu",
+    gpu: "gpu",
     ram: "ram",
+    storage: "storage",
+    motherboard: "motherboard",
+    psu: "psu",
+    case: "case",
+    cooling: "cooling",
+    hdd: "hdd",
+    monitor: "monitor",
+    mouse: "mouse",
+    keyboard: "keyboard",
+    headset: "headset",
+    speaker: "speaker",
+    webcam: "webcam",
+    microphone: "microphone",
+    cable: "cable",
+    hub: "hub",
+    stand: "stand",
+    pad: "pad",
     vga: "gpu",
     ssd: "storage",
     mainboard: "motherboard",
   };
 
   const categorySlug = String(product?.category?.slug ?? "cpu").toLowerCase();
-  const category = categoryMap[categorySlug] ?? "cpu";
+  const category = categoryMap[categorySlug] ?? categorySlug;
+
+  const reviewCountRaw = Number(product?.reviewCount ?? product?.reviews ?? 0);
+  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+  const ratingRaw = Number(product?.rating);
+  const rating = reviewCount > 0 && Number.isFinite(ratingRaw)
+    ? Math.max(0, Math.min(5, ratingRaw))
+    : 5;
 
   return {
     id: product.id,
@@ -720,8 +840,8 @@ function mapProductToCardData(product) {
     price: Number(product.price ?? 0),
     usedPrice: null,
     stock: Number(product.stockQuantity ?? 0),
-    rating: 5,
-    reviews: 0,
+    rating,
+    reviews: reviewCount,
     image: product.imageUrl || "/images/component-placeholder.svg",
     isNew: false,
     isOutOfStock: Boolean(product.isOutOfStock),
@@ -733,12 +853,12 @@ function mapProductToCardData(product) {
 
 function sanitizeSpecs(specifications) {
   if (!specifications || typeof specifications !== "object") {
-    return { thongTin: "San pham linh kien" };
+    return { thongTin: "Sản phẩm linh kiện" };
   }
 
   const entries = Object.entries(specifications).slice(0, 3);
   if (entries.length === 0) {
-    return { thongTin: "San pham linh kien" };
+    return { thongTin: "Sản phẩm linh kiện" };
   }
 
   return Object.fromEntries(entries);
@@ -828,4 +948,35 @@ function clampPrice(value) {
     return 0;
   }
   return Math.max(0, Math.min(50000000, Math.round(num / 500000) * 500000));
+}
+
+function readSearchHistory() {
+  try {
+    const raw = window.localStorage.getItem(SEARCH_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => typeof item === "string" && item.trim()).slice(0, 8)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushSearchHistory(keyword, setHistory) {
+  const normalizedKeyword = String(keyword ?? "").trim();
+  if (!normalizedKeyword) {
+    return;
+  }
+
+  const next = [
+    normalizedKeyword,
+    ...readSearchHistory().filter((item) => item.toLowerCase() !== normalizedKeyword.toLowerCase()),
+  ].slice(0, 8);
+
+  window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+  setHistory(next);
+}
+
+function clearSearchHistory() {
+  window.localStorage.removeItem(SEARCH_HISTORY_KEY);
 }

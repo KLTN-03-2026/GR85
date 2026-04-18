@@ -4,6 +4,7 @@ import {
   normalizeAndValidateFullName,
   normalizeAndValidatePhoneNumber,
 } from "../utils/validation.js";
+import { createWishlistCouponNotifications } from "./notification.service.js";
 
 export async function getAdminDashboard() {
   const [
@@ -12,6 +13,7 @@ export async function getAdminDashboard() {
     totalProducts,
     totalRevenue,
     orderStatuses,
+    userStatuses,
     users,
     products,
     orders,
@@ -23,6 +25,7 @@ export async function getAdminDashboard() {
     chatRooms,
     aiBuilds,
     emailVerifications,
+    lowStockProducts,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.order.count(),
@@ -31,6 +34,10 @@ export async function getAdminDashboard() {
     prisma.order.groupBy({
       by: ["orderStatus"],
       _count: { orderStatus: true },
+    }),
+    prisma.user.groupBy({
+      by: ["status"],
+      _count: { status: true },
     }),
     prisma.user.findMany({
       take: 10,
@@ -79,6 +86,17 @@ export async function getAdminDashboard() {
       take: 10,
       orderBy: { createdAt: "desc" },
     }),
+    prisma.product.findMany({
+      orderBy: [{ stockQuantity: "asc" }, { updatedAt: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        stockQuantity: true,
+        lowStockThreshold: true,
+      },
+    }),
   ]);
 
   return serializeData({
@@ -89,6 +107,7 @@ export async function getAdminDashboard() {
       totalRevenue: totalRevenue._sum.totalAmount ?? 0,
     },
     orderStatuses,
+    userStatuses,
     users,
     products,
     orders,
@@ -120,6 +139,9 @@ export async function getAdminDashboard() {
       createdAt: build.createdAt,
     })),
     emailVerifications,
+    lowStockProducts: lowStockProducts.filter(
+      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+    ),
   });
 }
 
@@ -143,8 +165,45 @@ export async function updateUserByAdmin(userId, input) {
     data.fullName = normalizeAndValidateFullName(input.fullName, "Full name");
   }
 
+  if (input.email !== undefined) {
+    const email = String(input.email ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Invalid email");
+    }
+
+    const duplicate = await prisma.user.findFirst({
+      where: {
+        email,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new Error("Email already in use");
+    }
+
+    data.email = email;
+  }
+
   if (input.phone !== undefined) {
     data.phone = normalizeAndValidatePhoneNumber(input.phone);
+  }
+
+  if (input.address !== undefined) {
+    const address = String(input.address ?? "").trim();
+    data.address = address || null;
+  }
+
+  if (input.avatarUrl !== undefined) {
+    const avatarUrl = String(input.avatarUrl ?? "").trim();
+    if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
+      throw new Error("Avatar URL must start with http:// or https://");
+    }
+    data.avatarUrl = avatarUrl || null;
   }
 
   if (input.roleId !== undefined) {
@@ -174,6 +233,92 @@ export async function updateUserByAdmin(userId, input) {
   });
 
   return serializeData(updated);
+}
+
+export async function getUserDetailByAdmin(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      role: true,
+      addresses: {
+        orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+      },
+      orders: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: {
+          orderItems: true,
+          coupon: true,
+        },
+      },
+      walletTransactions: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: { order: true },
+      },
+      returnRequests: {
+        orderBy: { requestedAt: "desc" },
+        take: 20,
+        include: { order: true },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: { product: true },
+      },
+      chatRooms: {
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const response = {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    phone: user.phone,
+    address: user.address,
+    avatarUrl: user.avatarUrl,
+    walletBalance: user.walletBalance,
+    status: user.status,
+    roleId: user.roleId,
+    role: user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    addresses: user.addresses,
+    orders: user.orders.map((order) => ({
+      ...order,
+      itemCount: order.orderItems.length,
+    })),
+    walletTransactions: user.walletTransactions,
+    returnRequests: user.returnRequests,
+    reviews: user.reviews,
+    chatRooms: user.chatRooms.map((room) => ({
+      id: room.id,
+      status: room.status,
+      updatedAt: room.updatedAt,
+      lastMessage: room.messages[0]?.content ?? null,
+      lastMessageAt: room.messages[0]?.createdAt ?? null,
+    })),
+  };
+
+  return serializeData(response);
 }
 
 export async function listCouponsForAdmin() {
@@ -254,7 +399,369 @@ export async function createCouponByAdmin(input) {
     },
   });
 
+  await notifyWishlistUsersAboutCoupon(created);
+
   return serializeData(mapCoupon(created));
+}
+
+export async function updateCouponByAdmin(couponId, input) {
+  const id = Number(couponId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid coupon id");
+  }
+
+  const current = await prisma.coupon.findUnique({ where: { id } });
+  if (!current) {
+    throw new Error("Coupon not found");
+  }
+
+  const data = {};
+
+  if (input.discountType !== undefined) {
+    const discountType = String(input.discountType ?? "")
+      .trim()
+      .toUpperCase();
+    if (!["PERCENT", "FIXED_AMOUNT"].includes(discountType)) {
+      throw new Error("Invalid discount type");
+    }
+    data.discountType = discountType;
+  }
+
+  if (input.discountValue !== undefined) {
+    const discountValue = Number(input.discountValue);
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      throw new Error("Discount value must be greater than 0");
+    }
+    data.discountValue = discountValue;
+  }
+
+  const finalDiscountType = String(data.discountType ?? current.discountType).toUpperCase();
+  const finalDiscountValue = Number(data.discountValue ?? current.discountValue);
+  if (finalDiscountType === "PERCENT" && finalDiscountValue > 100) {
+    throw new Error("Percent discount cannot exceed 100");
+  }
+
+  if (input.minOrderValue !== undefined) {
+    const minOrderValue = Number(input.minOrderValue);
+    if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+      throw new Error("Min order value must be >= 0");
+    }
+    data.minOrderValue = minOrderValue;
+  }
+
+  if (input.usageLimit !== undefined) {
+    const usageLimit = Number(input.usageLimit);
+    if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+      throw new Error("Usage limit must be greater than 0");
+    }
+    if (usageLimit < Number(current.usedCount ?? 0)) {
+      throw new Error("Usage limit cannot be less than used count");
+    }
+    data.usageLimit = usageLimit;
+  }
+
+  if (input.startDate !== undefined) {
+    const startDate = new Date(input.startDate);
+    if (Number.isNaN(startDate.getTime())) {
+      throw new Error("Invalid start date");
+    }
+    data.startDate = startDate;
+  }
+
+  if (input.endDate !== undefined) {
+    const endDate = new Date(input.endDate);
+    if (Number.isNaN(endDate.getTime())) {
+      throw new Error("Invalid end date");
+    }
+    data.endDate = endDate;
+  }
+
+  const finalStartDate = data.startDate ?? current.startDate;
+  const finalEndDate = data.endDate ?? current.endDate;
+  if (finalEndDate <= finalStartDate) {
+    throw new Error("End date must be later than start date");
+  }
+
+  if (input.status !== undefined) {
+    const status = String(input.status ?? "")
+      .trim()
+      .toUpperCase();
+    if (!["ACTIVE", "EXPIRED", "DISABLED"].includes(status)) {
+      throw new Error("Invalid coupon status");
+    }
+    data.status = status;
+  }
+
+  const updated = await prisma.coupon.update({
+    where: { id },
+    data,
+  });
+
+  if (String(updated.status ?? "").toUpperCase() === "ACTIVE") {
+    await notifyWishlistUsersAboutCoupon(updated);
+  }
+
+  return serializeData(mapCoupon(updated));
+}
+
+export async function deleteCouponByAdmin(couponId) {
+  const id = Number(couponId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid coupon id");
+  }
+
+  const current = await prisma.coupon.findUnique({
+    where: { id },
+    include: {
+      _count: {
+        select: { orders: true },
+      },
+    },
+  });
+
+  if (!current) {
+    throw new Error("Coupon not found");
+  }
+
+  if (Number(current._count?.orders ?? 0) > 0 || Number(current.usedCount ?? 0) > 0) {
+    throw new Error("Coupon has been used. Please disable it instead of deleting");
+  }
+
+  await prisma.coupon.delete({ where: { id } });
+
+  return serializeData({
+    success: true,
+    message: "Coupon deleted successfully",
+  });
+}
+
+export async function getWarehouseOverviewByAdmin() {
+  const [warehouses, recentBatches, suppliers, products] = await Promise.all([
+    prisma.warehouse.findMany({
+      orderBy: [{ id: "desc" }],
+      include: {
+        batches: {
+          orderBy: [{ createdAt: "desc" }],
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                stockQuantity: true,
+              },
+            },
+            supplier: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          take: 20,
+        },
+      },
+    }),
+    prisma.batch.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        warehouse: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      take: 200,
+    }),
+    prisma.supplier.findMany({
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+      },
+    }),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        stockQuantity: true,
+        lowStockThreshold: true,
+      },
+    }),
+  ]);
+
+  return serializeData({
+    summary: {
+      totalWarehouses: warehouses.length,
+      totalBatches: recentBatches.length,
+      totalProducts: products.length,
+      totalStockQuantity: products.reduce(
+        (sum, item) => sum + Number(item.stockQuantity ?? 0),
+        0,
+      ),
+    },
+    warehouses,
+    batches: recentBatches,
+    suppliers,
+    products,
+    lowStockProducts: products.filter(
+      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+    ),
+  });
+}
+
+export async function createWarehouseByAdmin(input) {
+  const name = String(input.name ?? "").trim();
+  const address = String(input.address ?? "").trim();
+  const managerName = String(input.managerName ?? "").trim();
+
+  if (!name) {
+    throw new Error("Warehouse name is required");
+  }
+
+  const created = await prisma.warehouse.create({
+    data: {
+      name,
+      address: address || null,
+      managerName: managerName || null,
+    },
+  });
+
+  return serializeData(created);
+}
+
+export async function updateWarehouseByAdmin(warehouseId, input) {
+  const id = Number(warehouseId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid warehouse id");
+  }
+
+  const existing = await prisma.warehouse.findUnique({ where: { id } });
+  if (!existing) {
+    throw new Error("Warehouse not found");
+  }
+
+  const data = {};
+  if (input.name !== undefined) {
+    const name = String(input.name ?? "").trim();
+    if (!name) {
+      throw new Error("Warehouse name is required");
+    }
+    data.name = name;
+  }
+
+  if (input.address !== undefined) {
+    data.address = String(input.address ?? "").trim() || null;
+  }
+
+  if (input.managerName !== undefined) {
+    data.managerName = String(input.managerName ?? "").trim() || null;
+  }
+
+  const updated = await prisma.warehouse.update({
+    where: { id },
+    data,
+  });
+
+  return serializeData(updated);
+}
+
+export async function createBatchImportByAdmin(input) {
+  const warehouseId = Number(input.warehouseId);
+  const productId = Number(input.productId);
+  const supplierId = Number(input.supplierId);
+  const quantity = Number(input.quantity);
+  const importPrice = Number(input.importPrice);
+  const customBatchCode = String(input.batchCode ?? "").trim();
+
+  if (!Number.isFinite(warehouseId) || warehouseId <= 0) {
+    throw new Error("Invalid warehouse id");
+  }
+  if (!Number.isFinite(productId) || productId <= 0) {
+    throw new Error("Invalid product id");
+  }
+  if (!Number.isFinite(supplierId) || supplierId <= 0) {
+    throw new Error("Invalid supplier id");
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error("Quantity must be greater than 0");
+  }
+  if (!Number.isFinite(importPrice) || importPrice <= 0) {
+    throw new Error("Import price must be greater than 0");
+  }
+
+  const [warehouse, product, supplier] = await Promise.all([
+    prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { id: true } }),
+    prisma.product.findUnique({ where: { id: productId }, select: { id: true } }),
+    prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } }),
+  ]);
+
+  if (!warehouse) {
+    throw new Error("Warehouse not found");
+  }
+  if (!product) {
+    throw new Error("Product not found");
+  }
+  if (!supplier) {
+    throw new Error("Supplier not found");
+  }
+
+  const batchCode = customBatchCode || buildBatchCode(productId, warehouseId);
+
+  const existingBatch = await prisma.batch.findUnique({ where: { batchCode } });
+  if (existingBatch) {
+    throw new Error("Batch code already exists");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const batch = await tx.batch.create({
+      data: {
+        batchCode,
+        productId,
+        warehouseId,
+        supplierId,
+        importPrice,
+        quantity,
+      },
+      include: {
+        warehouse: true,
+        product: true,
+        supplier: true,
+      },
+    });
+
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        stockQuantity: {
+          increment: quantity,
+        },
+      },
+    });
+
+    return batch;
+  });
+
+  return serializeData(created);
+}
+
+function buildBatchCode(productId, warehouseId) {
+  const dateText = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const randomPart = Math.floor(1000 + Math.random() * 9000);
+  return `B${dateText}-P${productId}-W${warehouseId}-${randomPart}`;
 }
 
 function mapCoupon(coupon) {
@@ -271,4 +778,26 @@ function mapCoupon(coupon) {
     endDate: coupon.endDate,
     createdAt: coupon.createdAt,
   };
+}
+
+async function notifyWishlistUsersAboutCoupon(coupon) {
+  if (String(coupon?.status ?? "").toUpperCase() !== "ACTIVE") {
+    return;
+  }
+
+  const wishlistProductIds = await prisma.wishlistItem.findMany({
+    distinct: ["productId"],
+    select: {
+      productId: true,
+    },
+  });
+
+  if (wishlistProductIds.length === 0) {
+    return;
+  }
+
+  await createWishlistCouponNotifications(
+    coupon,
+    wishlistProductIds.map((item) => item.productId),
+  );
 }

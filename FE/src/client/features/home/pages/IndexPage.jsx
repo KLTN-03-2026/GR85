@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AOS from "aos";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { ComponentCard } from "@/components/ComponentCard";
@@ -20,6 +21,17 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  useEffect(() => {
+    AOS.init({
+      duration: 720,
+      easing: "ease-out-cubic",
+      offset: 60,
+      once: false,
+      mirror: true,
+      disable: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +72,18 @@ const Index = () => {
   }, []);
 
   const featuredComponents = useMemo(() => {
-    return catalog.products.slice(0, 4).map(mapProductToCardData);
+    const prioritized = catalog.products
+      .filter((item) => Boolean(item.isHomepageFeatured))
+      .sort(
+        (a, b) =>
+          Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
+      );
+
+    const fallback = catalog.products.filter(
+      (item) => !Boolean(item.isHomepageFeatured),
+    );
+
+    return [...prioritized, ...fallback].slice(0, 4).map(mapProductToCardData);
   }, [catalog.products]);
 
   const categoryCards = useMemo(() => {
@@ -97,6 +120,10 @@ const Index = () => {
       .slice(0, 5);
   }, [catalog.products, searchInput]);
 
+  useEffect(() => {
+    AOS.refresh();
+  }, [categoryCards.length, featuredComponents.length, isLoading]);
+
   const submitHomepageSearch = (value = searchInput) => {
     const keyword = String(value ?? "").trim();
     if (!keyword) {
@@ -115,7 +142,11 @@ const Index = () => {
 
       <section className="relative z-20 mt-4 pb-2 sm:mt-6">
         <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-4xl rounded-2xl border border-border/60 bg-background/95 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur">
+          <div
+            className="mx-auto max-w-4xl rounded-2xl border border-border/60 bg-background/95 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur"
+            data-aos="fade-up"
+            data-aos-delay="80"
+          >
             <div className="relative flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -162,9 +193,9 @@ const Index = () => {
       </section>
 
       {/* Categories Section */}
-      <section className="pt-14 pb-20 relative">
+      <section className="relative py-12 bg-emerald-50/60">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="text-center mb-8" data-aos="fade-up">
             <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">
               Danh mục <span className="text-gradient-primary">linh kiện</span>
             </h2>
@@ -174,13 +205,18 @@ const Index = () => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {categoryCards.map((category) => (
+            {categoryCards.map((category, index) => (
               <Link
                 key={category.id}
                 to={`/components?category=${category.id}`}
                 className="group"
               >
-                <div className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]">
+                <div
+                  className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]"
+                  data-aos="fade-up"
+                  data-aos-delay={Math.min(index * 90, 360)}
+                  data-aos-duration="1200"
+                >
                   <div
                     className="w-16 h-16 rounded-xl mx-auto mb-4 flex items-center justify-center transition-transform group-hover:scale-110"
                     style={{
@@ -206,10 +242,10 @@ const Index = () => {
       </section>
 
       {/* Featured Products */}
-      <section className="py-20 bg-gradient-to-b from-background to-secondary/20">
+      <section className="py-12 bg-background">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-12">
-            <div>
+          <div className="flex items-center justify-between mb-8">
+            <div data-aos="fade-right">
               <h2 className="font-display text-3xl md:text-4xl font-bold mb-2">
                 Sản phẩm <span className="text-gradient-accent">nổi bật</span>
               </h2>
@@ -217,7 +253,7 @@ const Index = () => {
                 Tổng kho hiện có {totalProducts} sản phẩm từ MySQL
               </p>
             </div>
-            <Link to="/components">
+            <Link to="/components" data-aos="fade-left" data-aos-delay="80">
               <Button variant="outline" className="gap-2">
                 Xem tất cả
                 <ArrowRight className="w-4 h-4" />
@@ -226,8 +262,14 @@ const Index = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredComponents.map((component) => (
-              <ComponentCard key={component.id} component={component} />
+            {featuredComponents.map((component, index) => (
+              <div
+                key={component.id}
+                data-aos="fade-up"
+                data-aos-delay={Math.min(index * 90, 320)}
+              >
+                <ComponentCard component={component} />
+              </div>
             ))}
             {!isLoading && featuredComponents.length === 0 && (
               <p className="col-span-full text-sm text-muted-foreground">
@@ -239,29 +281,33 @@ const Index = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20">
+      <section className="py-12 bg-emerald-50/60">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-6">
             <FeatureItem
               icon={Sparkles}
+              delay={0}
               title="AI Gợi ý thông minh"
               description="Nhập ngân sách, nhận cấu hình tối ưu"
             />
 
             <FeatureItem
               icon={Shield}
+              delay={90}
               title="Bảo hành chính hãng"
               description="Đến 36 tháng cho tất cả linh kiện"
             />
 
             <FeatureItem
               icon={Truck}
+              delay={180}
               title="Giao hàng nhanh"
               description="Miễn phí ship toàn quốc"
             />
 
             <FeatureItem
               icon={MessageCircle}
+              delay={270}
               title="Hỗ trợ 24/7"
               description="Chat với AI hoặc nhân viên"
             />
@@ -270,10 +316,13 @@ const Index = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 relative overflow-hidden">
+      <section className="py-12 relative overflow-hidden bg-background">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10" />
         <div className="container mx-auto px-4 relative z-10">
-          <div className="glass rounded-2xl p-8 md:p-12 text-center max-w-4xl mx-auto border-primary/30">
+          <div
+            className="glass rounded-2xl p-8 md:p-12 text-center max-w-4xl mx-auto border-primary/30"
+            data-aos="zoom-in-up"
+          >
             <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">
               Chưa biết nên{" "}
               <span className="text-gradient-primary">build gì</span>?
@@ -297,7 +346,7 @@ const Index = () => {
       <footer className="py-12 border-t border-border/50">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" data-aos="fade-right">
               <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
                 <Cpu className="w-4 h-4 text-primary-foreground" />
               </div>
@@ -305,7 +354,7 @@ const Index = () => {
                 PC Builder
               </span>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" data-aos="fade-left" data-aos-delay="80">
               © 2024 PC Builder. Tất cả quyền được bảo lưu.
             </p>
           </div>
@@ -315,9 +364,9 @@ const Index = () => {
   );
 };
 
-function FeatureItem({ icon: Icon, title, description }) {
+function FeatureItem({ icon: Icon, title, description, delay = 0 }) {
   return (
-    <div className="flex items-start gap-4 p-4">
+    <div className="flex items-start gap-4 p-3" data-aos="fade-up" data-aos-delay={delay}>
       <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
         <Icon className="w-6 h-6 text-primary" />
       </div>
@@ -349,6 +398,11 @@ function mapProductToCardData(product) {
     specs: sanitizeSpecs(product.specifications),
     compatibility: {},
     description: product.name,
+    // ProductDetail fields
+    fullDescription: product.detail?.fullDescription ?? null,
+    inTheBox: product.detail?.inTheBox ?? null,
+    warrantyPolicy: product.detail?.warrantyPolicy ?? null,
+    manualUrl: product.detail?.manualUrl ?? null,
   };
 }
 

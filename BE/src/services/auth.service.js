@@ -37,7 +37,7 @@ export async function registerUser(input) {
   });
 
   if (existingUser) {
-    throw new Error("Email already exists");
+    throw new Error("Email đã tồn tại");
   }
 
   const userRole = await prisma.role.findFirst({
@@ -97,11 +97,11 @@ export async function registerUser(input) {
       prisma.user.delete({ where: { id: user.id } }),
     ]);
 
-    throw new Error("Unable to send verification email");
+    throw new Error("Không thể gửi email xác minh. Vui lòng thử lại sau");
   }
 
   return serializeData({
-    message: "Verification code sent to your email",
+    message: "Đăng ký thành công. Vui lòng kiểm tra email để xác minh tài khoản",
     email: user.email,
     verificationRequired: true,
   });
@@ -124,21 +124,21 @@ export async function loginUser(input) {
   });
 
   if (!user) {
-    throw new Error("Invalid email or password");
+    throw new Error("Email hoặc mật khẩu không đúng");
   }
 
   const passwordMatches = await compare(input.password, user.passwordHash);
 
   if (!passwordMatches) {
-    throw new Error("Invalid email or password");
+    throw new Error("Email hoặc mật khẩu không đúng");
   }
 
   if (user.status === UserStatus.UNVERIFIED) {
-    throw new Error("Please verify your email first");
+    throw new Error("Vui lòng xác minh email của bạn trước tiên");
   }
 
   if (user.status === UserStatus.BANNED) {
-    throw new Error("This account has been banned");
+    throw new Error("Tài khoản này đã bị cấm");
   }
 
   return buildAuthPayload(user);
@@ -183,11 +183,11 @@ export async function resendVerificationCode(input) {
   });
 
   if (!user) {
-    throw new Error("Email not found");
+    throw new Error("Email không tồn tại");
   }
 
   if (user.status === UserStatus.BANNED) {
-    throw new Error("This account has been banned");
+    throw new Error("Tài khoản này đã bị cấm");
   }
 
   const verificationCode = await prisma.$transaction(async (tx) => {
@@ -205,7 +205,7 @@ export async function resendVerificationCode(input) {
   });
 
   return serializeData({
-    message: "Verification code resent to your email",
+    message: "Mã xác minh đã được gửi lại đến email của bạn",
     email: user.email,
   });
 }
@@ -216,11 +216,11 @@ export async function requestPasswordReset(input) {
   });
 
   if (!user) {
-    throw new Error("Email not found");
+    throw new Error("Email không tồn tại");
   }
 
   if (user.status === UserStatus.BANNED) {
-    throw new Error("This account has been banned");
+    throw new Error("Tài khoản này đã bị cấm");
   }
 
   const resetCode = await prisma.$transaction(async (tx) => {
@@ -238,7 +238,7 @@ export async function requestPasswordReset(input) {
   });
 
   return serializeData({
-    message: "Password reset code sent to your email",
+    message: "Mã đặt lại mật khẩu đã được gửi đến email của bạn",
     email: user.email,
   });
 }
@@ -265,7 +265,7 @@ export async function resetPassword(input) {
   });
 
   return serializeData({
-    message: "Password updated successfully",
+    message: "Mật khẩu đã được cập nhật thành công",
     email: input.email,
   });
 }
@@ -287,7 +287,7 @@ export async function getCurrentUser(userId) {
   });
 
   if (!user) {
-    throw new Error("User not found");
+    throw new Error("Người dùng không tồn tại");
   }
 
   return serializeData({
@@ -335,7 +335,7 @@ export async function listMyOrders(userId) {
 export async function getMyOrderDetail(userId, orderId) {
   const id = Number(orderId);
   if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("Invalid order id");
+    throw new Error("Mã đơn hàng không hợp lệ");
   }
 
   const order = await prisma.order.findFirst({
@@ -360,7 +360,7 @@ export async function getMyOrderDetail(userId, orderId) {
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Đơn hàng không tồn tại");
   }
 
   return serializeData({
@@ -430,7 +430,7 @@ async function getValidVerification({ email, purpose, otp }) {
   });
 
   if (!verification) {
-    throw new Error("Invalid or expired verification code");
+    throw new Error("Mã xác minh không hợp lệ hoặc đã hết hạn");
   }
 
   return verification;
@@ -439,8 +439,8 @@ async function getValidVerification({ email, purpose, otp }) {
 async function sendOtpEmail({ email, fullName, otp, purpose }) {
   const subject =
     purpose === verificationPurposes.PASSWORD_RESET
-      ? "Mã đặt lại mật khẩu PC Perfect"
-      : "Mã xác minh email PC Perfect";
+      ? "Mã đặt lại mật khẩu TechBuiltAI"
+      : "Mã xác minh email TechBuiltAI";
 
   const label =
     purpose === verificationPurposes.PASSWORD_RESET
@@ -448,7 +448,7 @@ async function sendOtpEmail({ email, fullName, otp, purpose }) {
       : "xác minh email";
 
   await mailTransport.sendMail({
-    from: `PC Perfect <${env.EMAIL}>`,
+    from: `TechBuiltAI <${env.EMAIL}>`,
     to: email,
     subject,
     text: [
@@ -486,7 +486,7 @@ export async function updateUserProfile(userId, input) {
   });
 
   if (!user) {
-    throw new Error("User not found");
+    throw new Error("Người dùng không tồn tại");
   }
 
   const normalizedFullName =
@@ -497,16 +497,25 @@ export async function updateUserProfile(userId, input) {
     input.phone !== undefined
       ? normalizeAndValidatePhoneNumber(input.phone)
       : user.phone;
+  let normalizedAddress = user.address;
+
+  if (input.address !== undefined) {
+    const address = String(input.address ?? "").trim();
+    if (!address) {
+      throw new Error("Địa chỉ không được để trống");
+    }
+    if (address.length < 5) {
+      throw new Error("Địa chỉ phải có ít nhất 5 ký tự");
+    }
+    normalizedAddress = address;
+  }
 
   const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
       fullName: normalizedFullName,
       phone: normalizedPhone,
-      address:
-        input.address !== undefined
-          ? String(input.address ?? "").trim() || null
-          : user.address,
+      address: normalizedAddress,
     },
     include: {
       role: {
@@ -614,7 +623,7 @@ export async function updateUserAddress(userId, addressId, input) {
 export async function deleteUserAddress(userId, addressId) {
   const id = Number(addressId);
   if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("Invalid address id");
+    throw new Error("Mã địa chỉ không hợp lệ");
   }
 
   const existing = await prisma.userAddress.findFirst({
@@ -622,7 +631,7 @@ export async function deleteUserAddress(userId, addressId) {
   });
 
   if (!existing) {
-    throw new Error("Address not found");
+    throw new Error("Địa chỉ không tồn tại");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -643,7 +652,7 @@ export async function deleteUserAddress(userId, addressId) {
     }
   });
 
-  return serializeData({ message: "Address deleted" });
+  return serializeData({ message: "Địa chỉ đã được xóa" });
 }
 
 export async function changePassword(userId, input) {
@@ -652,7 +661,7 @@ export async function changePassword(userId, input) {
   });
 
   if (!user) {
-    throw new Error("User not found");
+    throw new Error("Người dùng không tồn tại");
   }
 
   const isPasswordValid = await compare(
@@ -661,7 +670,7 @@ export async function changePassword(userId, input) {
   );
 
   if (!isPasswordValid) {
-    throw new Error("Current password is incorrect");
+    throw new Error("Mật khẩu hiện tại không đúng");
   }
 
   const newPasswordHash = await hash(input.newPassword, 10);
@@ -672,7 +681,7 @@ export async function changePassword(userId, input) {
   });
 
   return serializeData({
-    message: "Password changed successfully",
+    message: "Mật khẩu đã được thay đổi thành công",
   });
 }
 
@@ -719,7 +728,7 @@ function normalizeAddressInput(input) {
   const label = String(input.label ?? "").trim();
 
   if (!addressLine || addressLine.length < 5) {
-    throw new Error("Address line is required");
+    throw new Error("Địa chỉ không hợp lệ (ít nhất 5 ký tự)");
   }
 
   return {

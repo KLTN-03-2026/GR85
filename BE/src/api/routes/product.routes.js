@@ -6,10 +6,19 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { getCatalogOverview } from "../../services/product.service.js";
 import {
+  addProductToWishlistBySlug,
+  batchUpdateProductDisplayOrder,
+  createProductReviewBySlug,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
+  getProductReviewEligibilityBySlug,
+  getWishlistStatusBySlug,
+  listMyWishlistProducts,
+  listProductReviewsBySlug,
+  listProductDisplayOrderItems,
   listProducts,
+  removeProductFromWishlistBySlug,
   updateProductById,
 } from "../../services/product.service.js";
 
@@ -33,7 +42,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpg", "image/jpeg", "image/png"];
     if (!allowed.includes(file.mimetype)) {
-      cb(new Error("Only jpg, jpeg, png images are allowed"));
+      cb(new Error("Chỉ chấp nhận file ảnh JPG, JPEG hoặc PNG"));
       return;
     }
 
@@ -47,13 +56,39 @@ const productSchema = z.object({
   categorySlug: z.string().min(1),
   supplierId: z.number().int().positive().optional().nullable(),
   price: z.number().positive(),
+  salePrice: z.number().positive().optional().nullable(),
+  saleStartAt: z.coerce.date().optional().nullable(),
+  saleEndAt: z.coerce.date().optional().nullable(),
   stockQuantity: z.number().int().min(0),
+  lowStockThreshold: z.number().int().min(0).optional(),
   warrantyMonths: z.number().int().min(0).optional(),
+  isHomepageFeatured: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).optional(),
   imageUrl: z.string().optional(),
   specifications: z.record(z.any()).optional(),
+  detail: z.object({
+    fullDescription: z.string().optional(),
+    inTheBox: z.string().optional(),
+    manualUrl: z.string().optional().nullable(),
+    warrantyPolicy: z.string().optional(),
+  }).optional(),
 });
 
 const updateProductSchema = productSchema.partial();
+
+const updateDisplayOrderSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      displayOrder: z.number().int().min(0),
+    }),
+  ).min(1),
+});
+
+const reviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
 
 router.get("/overview", async (_req, res) => {
   try {
@@ -64,13 +99,22 @@ router.get("/overview", async (_req, res) => {
       return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({ message: "Unexpected server error" });
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
 
 router.get("/", async (req, res) => {
   try {
     const data = await listProducts(req.query);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/display-order", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const data = await listProductDisplayOrderItems();
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
@@ -86,9 +130,72 @@ router.get("/:slug", async (req, res) => {
   }
 });
 
+router.get("/:slug/reviews", async (req, res) => {
+  try {
+    const data = await listProductReviewsBySlug(req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/wishlist/me", requireAuth, async (req, res) => {
+  try {
+    const data = await listMyWishlistProducts(Number(req.auth?.sub));
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/:slug/wishlist-status", requireAuth, async (req, res) => {
+  try {
+    const data = await getWishlistStatusBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:slug/wishlist", requireAuth, async (req, res) => {
+  try {
+    const data = await addProductToWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.delete("/:slug/wishlist", requireAuth, async (req, res) => {
+  try {
+    const data = await removeProductFromWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/:slug/review-eligibility", requireAuth, async (req, res) => {
+  try {
+    const data = await getProductReviewEligibilityBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+router.post("/:slug/reviews", requireAuth, async (req, res) => {
+  try {
+    const parsed = reviewSchema.parse(req.body ?? {});
+    const data = await createProductReviewBySlug(Number(req.auth?.sub), req.params.slug, parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
 router.post("/upload-image", requireAuth, requireAdmin, upload.single("image"), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ message: "Image file is required" });
+    return res.status(400).json({ message: "File ảnh là bắt buộc" });
   }
 
   const imagePath = `/uploads/products/${req.file.filename}`;
@@ -115,6 +222,16 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.patch("/display-order", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parsed = updateDisplayOrderSchema.parse(req.body ?? {});
+    const data = await batchUpdateProductDisplayOrder(parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
 router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const data = await deleteProductById(req.params.id);
@@ -126,7 +243,7 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 
 function requireAdmin(req, res, next) {
   if (req.auth?.role !== "Admin") {
-    return res.status(403).json({ message: "Admin only" });
+    return res.status(403).json({ message: "Chỉ admin mới được phép thực hiện thao tác này" });
   }
 
   return next();
@@ -134,7 +251,7 @@ function requireAdmin(req, res, next) {
 
 function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
-    return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+    return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
   }
 
   if (error instanceof Error) {
@@ -147,7 +264,7 @@ function handleRouteError(error, res) {
     return res.status(status).json({ message: error.message });
   }
 
-  return res.status(500).json({ message: "Unexpected server error" });
+  return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
 }
 
 export { router as productRouter };

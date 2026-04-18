@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -68,11 +70,38 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: "Times New Roman", Times, serif;
+    font-family: "Roboto", sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: "Times New Roman", Times, serif;
+  html {
+    scroll-behavior: smooth;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Roboto", sans-serif;
+  }
+
+  [data-aos] {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    [data-aos] {
+      opacity: 1 !important;
+      transform: none !important;
+      transition-duration: 0ms !important;
+      animation: none !important;
+    }
   }
 }
 
@@ -227,13 +256,27 @@
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
 }
 
 @keyframes pulseGlow {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -241,6 +284,7 @@
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -248,11 +292,13 @@
 }
 
 @keyframes orbitBob {
+
   0%,
   100% {
     transform: translateY(0) scale(1);
     opacity: 0.88;
   }
+
   50% {
     transform: translateY(-6px) scale(1.06);
     opacity: 1;
@@ -260,21 +306,25 @@
 }
 
 @keyframes authBob {
+
   0%,
   100% {
     transform: translateX(-50%) translateY(0px);
   }
+
   50% {
     transform: translateX(-50%) translateY(-8px);
   }
 }
 
 @keyframes scanLight {
+
   0%,
   100% {
     opacity: 0.45;
     box-shadow: 0 0 6px hsl(161 100% 50% / 0.2);
   }
+
   50% {
     opacity: 1;
     box-shadow: 0 0 14px hsl(191 100% 60% / 0.45);
@@ -285,6 +335,7 @@
   0% {
     background-position: 0% 50%;
   }
+
   100% {
     background-position: 200% 50%;
   }
