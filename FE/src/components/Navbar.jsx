@@ -153,7 +153,11 @@ export function Navbar() {
             {isHydrated && isAuthenticated && isAdmin ? (
               <Link to="/admin">
                 <Button
-                  variant={location.pathname.startsWith("/admin") ? "default" : "outline"}
+                  variant={
+                    location.pathname.startsWith("/admin")
+                      ? "default"
+                      : "outline"
+                  }
                   size="sm"
                   className="hidden gap-2 md:flex"
                 >
@@ -295,10 +299,11 @@ export function Navbar() {
                     className="w-full justify-start gap-2"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    Trang quản trị
+                    Admin
                   </Button>
                 </Link>
               ) : null}
+
               {isHydrated && isAuthenticated ? (
                 <Button
                   variant="outline"

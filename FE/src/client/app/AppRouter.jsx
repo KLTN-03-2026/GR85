@@ -92,5 +92,7 @@ function isAdminRole(role) {
     .trim()
     .toLowerCase();
 
-  return normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  return (
+    normalizedRole.includes("admin") || normalizedRole.includes("quan tri")
+  );
 }
