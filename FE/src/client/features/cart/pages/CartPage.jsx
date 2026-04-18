@@ -17,11 +17,13 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { profileApi } from "@/client/features/profile/data/profile.api";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CartPage() {
   const [shippingAddress, setShippingAddress] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [paymentMethod] = useState("VNPAY");
+  const [paymentMethod, setPaymentMethod] = useState("SEPAY");
   const [addresses, setAddresses] = useState([]);
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState("");
@@ -47,6 +49,8 @@ export default function CartPage() {
   const hasInitializedSelectionRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
   const checkoutProductIds = useMemo(() => {
     const stateProductIds = location.state?.checkoutProductIds;
     if (!Array.isArray(stateProductIds)) {
@@ -130,6 +134,15 @@ export default function CartPage() {
   );
 
   const loadAddresses = useCallback(async () => {
+    if (!isAuthenticated) {
+      setAddresses([]);
+      setSelectedAddressId("");
+      setShippingAddress("");
+      setPhoneNumber("");
+      setAddressesLoading(false);
+      return;
+    }
+
     try {
       setAddressesLoading(true);
       const [addressesResult, profileResult] = await Promise.allSettled([
@@ -163,7 +176,7 @@ export default function CartPage() {
     } finally {
       setAddressesLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     loadAddresses();
@@ -825,9 +838,15 @@ export default function CartPage() {
 
                   <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
                     <p className="mb-1 text-sm font-semibold text-emerald-900">Phương thức thanh toán</p>
-                    <p className="text-sm text-emerald-800">
-                      Hệ thống chỉ hỗ trợ chuyển khoản online qua VNPAY để xác nhận giao dịch thực tế.
-                    </p>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={paymentMethod}
+                      onChange={(event) => setPaymentMethod(event.target.value)}
+                    >
+                      <option value="SEPAY">SePay QR (chuyển khoản)</option>
+                      <option value="VNPAY">VNPAY QR</option>
+                      <option value="COD">Thanh toán khi nhận hàng (COD)</option>
+                    </select>
                   </div>
 
                   <Button
@@ -839,6 +858,16 @@ export default function CartPage() {
                       setCheckoutError("");
 
                       try {
+                        if (!isAuthenticated) {
+                          toast({
+                            title: "Cần đăng nhập để mua hàng",
+                            description: "Bạn vẫn có thể thêm giỏ, nhưng cần đăng nhập khi đặt hàng.",
+                            variant: "destructive",
+                          });
+                          navigate("/login", { replace: false });
+                          return;
+                        }
+
                         const checkoutPhoneError = validateVietnamPhone(phoneNumber, true);
                         if (checkoutPhoneError) {
                           throw new Error(checkoutPhoneError);
@@ -872,7 +901,7 @@ export default function CartPage() {
                           return;
                         }
 
-                        if (paymentMethod === "VNPAY" && result?.isMockPayment) {
+                        if ((paymentMethod === "VNPAY" || paymentMethod === "SEPAY") && result?.isMockPayment) {
                           navigate("/payment-qr", {
                             state: {
                               paymentData: result,
@@ -892,7 +921,7 @@ export default function CartPage() {
                       }
                     }}
                   >
-                    Thanh toán chuyển khoản VNPAY
+                    {paymentMethod === "COD" ? "Đặt hàng COD" : "Thanh toán"}
                     <ArrowRight className="w-4 h-4" />
                   </Button>
 

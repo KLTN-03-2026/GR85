@@ -386,6 +386,133 @@ export async function createCouponByAdmin(input) {
   return serializeData(mapCoupon(created));
 }
 
+export async function updateCouponByAdmin(couponId, input) {
+  const id = Number(couponId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid coupon id");
+  }
+
+  const current = await prisma.coupon.findUnique({ where: { id } });
+  if (!current) {
+    throw new Error("Coupon not found");
+  }
+
+  const data = {};
+
+  if (input.discountType !== undefined) {
+    const discountType = String(input.discountType ?? "")
+      .trim()
+      .toUpperCase();
+    if (!["PERCENT", "FIXED_AMOUNT"].includes(discountType)) {
+      throw new Error("Invalid discount type");
+    }
+    data.discountType = discountType;
+  }
+
+  if (input.discountValue !== undefined) {
+    const discountValue = Number(input.discountValue);
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      throw new Error("Discount value must be greater than 0");
+    }
+    data.discountValue = discountValue;
+  }
+
+  const finalDiscountType = String(data.discountType ?? current.discountType).toUpperCase();
+  const finalDiscountValue = Number(data.discountValue ?? current.discountValue);
+  if (finalDiscountType === "PERCENT" && finalDiscountValue > 100) {
+    throw new Error("Percent discount cannot exceed 100");
+  }
+
+  if (input.minOrderValue !== undefined) {
+    const minOrderValue = Number(input.minOrderValue);
+    if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+      throw new Error("Min order value must be >= 0");
+    }
+    data.minOrderValue = minOrderValue;
+  }
+
+  if (input.usageLimit !== undefined) {
+    const usageLimit = Number(input.usageLimit);
+    if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+      throw new Error("Usage limit must be greater than 0");
+    }
+    if (usageLimit < Number(current.usedCount ?? 0)) {
+      throw new Error("Usage limit cannot be less than used count");
+    }
+    data.usageLimit = usageLimit;
+  }
+
+  if (input.startDate !== undefined) {
+    const startDate = new Date(input.startDate);
+    if (Number.isNaN(startDate.getTime())) {
+      throw new Error("Invalid start date");
+    }
+    data.startDate = startDate;
+  }
+
+  if (input.endDate !== undefined) {
+    const endDate = new Date(input.endDate);
+    if (Number.isNaN(endDate.getTime())) {
+      throw new Error("Invalid end date");
+    }
+    data.endDate = endDate;
+  }
+
+  const finalStartDate = data.startDate ?? current.startDate;
+  const finalEndDate = data.endDate ?? current.endDate;
+  if (finalEndDate <= finalStartDate) {
+    throw new Error("End date must be later than start date");
+  }
+
+  if (input.status !== undefined) {
+    const status = String(input.status ?? "")
+      .trim()
+      .toUpperCase();
+    if (!["ACTIVE", "EXPIRED", "DISABLED"].includes(status)) {
+      throw new Error("Invalid coupon status");
+    }
+    data.status = status;
+  }
+
+  const updated = await prisma.coupon.update({
+    where: { id },
+    data,
+  });
+
+  return serializeData(mapCoupon(updated));
+}
+
+export async function deleteCouponByAdmin(couponId) {
+  const id = Number(couponId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Invalid coupon id");
+  }
+
+  const current = await prisma.coupon.findUnique({
+    where: { id },
+    include: {
+      _count: {
+        select: { orders: true },
+      },
+    },
+  });
+
+  if (!current) {
+    throw new Error("Coupon not found");
+  }
+
+  if (Number(current._count?.orders ?? 0) > 0 || Number(current.usedCount ?? 0) > 0) {
+    throw new Error("Coupon has been used. Please disable it instead of deleting");
+  }
+
+  await prisma.coupon.delete({ where: { id } });
+
+  return serializeData({
+    success: true,
+    message: "Coupon deleted successfully",
+  });
+}
+
 export async function getWarehouseOverviewByAdmin() {
   const [warehouses, recentBatches, suppliers, products] = await Promise.all([
     prisma.warehouse.findMany({

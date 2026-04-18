@@ -31,7 +31,7 @@ const checkoutSchema = z.object({
   couponCode: z.string().max(50).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
   useWalletBalance: z.boolean().optional().default(true),
-  paymentMethod: z.enum(["VNPAY"]).default("VNPAY"),
+  paymentMethod: z.enum(["VNPAY", "COD", "SEPAY"]).default("SEPAY"),
   bankCode: z.string().optional(),
 });
 

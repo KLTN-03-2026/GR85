@@ -3,19 +3,21 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const CartContext = createContext(undefined);
 const CART_BUNDLE_STORAGE_PREFIX = "techbuiltai-cart-bundles";
+const GUEST_CART_STORAGE_KEY = "techbuiltai-cart-guest-items";
 
 export function CartProvider({ children }) {
   const { token, user, isAuthenticated, isHydrated } = useAuth();
   const [cart, setCart] = useState({ items: [], totalItems: 0, totalPrice: 0 });
   const [bundles, setBundles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+
   const bundleStorageKey = useMemo(() => {
-    if (!isHydrated || !isAuthenticated) {
+    if (!isHydrated) {
       return null;
     }
 
     return `${CART_BUNDLE_STORAGE_PREFIX}-${user?.id ?? "guest"}`;
-  }, [isAuthenticated, isHydrated, user?.id]);
+  }, [isHydrated, user?.id]);
 
   const callCartApi = useCallback(
     async (path, options = {}) => {
@@ -23,7 +25,7 @@ export function CartProvider({ children }) {
         ...options,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(options.headers ?? {}),
         },
       });
@@ -38,9 +40,36 @@ export function CartProvider({ children }) {
     [token],
   );
 
+  const readGuestCart = useCallback(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    try {
+      const raw = window.localStorage.getItem(GUEST_CART_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const writeGuestCart = useCallback((items) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(GUEST_CART_STORAGE_KEY, JSON.stringify(Array.isArray(items) ? items : []));
+  }, []);
+
   const refreshCart = useCallback(async () => {
+    if (!isHydrated) {
+      return;
+    }
+
     if (!isAuthenticated || !token) {
-      setCart({ items: [], totalItems: 0, totalPrice: 0 });
+      const guestItems = readGuestCart();
+      setCart(normalizeGuestCartPayload(guestItems));
       return;
     }
 
@@ -51,7 +80,7 @@ export function CartProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [callCartApi, isAuthenticated, token]);
+  }, [callCartApi, isAuthenticated, isHydrated, readGuestCart, token]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -64,12 +93,7 @@ export function CartProvider({ children }) {
   }, [isHydrated, refreshCart]);
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    if (!bundleStorageKey || typeof window === "undefined") {
-      setBundles([]);
+    if (!isHydrated || !bundleStorageKey || typeof window === "undefined") {
       return;
     }
 
@@ -89,10 +113,78 @@ export function CartProvider({ children }) {
     window.localStorage.setItem(bundleStorageKey, JSON.stringify(bundles));
   }, [bundleStorageKey, bundles, isHydrated]);
 
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || typeof window === "undefined") {
+      return;
+    }
+
+    const guestItems = readGuestCart();
+    if (guestItems.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const mergeGuestCartToAccount = async () => {
+      try {
+        for (const item of guestItems) {
+          if (!Number.isFinite(Number(item?.productId)) || Number(item?.quantity) <= 0) {
+            continue;
+          }
+
+          await callCartApi("/items", {
+            method: "POST",
+            body: JSON.stringify({
+              productId: Number(item.productId),
+              quantity: Number(item.quantity),
+            }),
+          });
+        }
+
+        if (!cancelled) {
+          writeGuestCart([]);
+          await refreshCart();
+        }
+      } catch {
+        // Keep guest cart untouched if merge fails; user can retry later.
+      }
+    };
+
+    mergeGuestCartToAccount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [callCartApi, isAuthenticated, isHydrated, readGuestCart, refreshCart, token, writeGuestCart]);
+
   const addToCart = useCallback(
     async (component) => {
       if (!isAuthenticated || !token) {
-        throw new Error("Vui lòng đăng nhập để thêm vào giỏ hàng");
+        const normalized = normalizeGuestComponent(component);
+        if (!normalized) {
+          throw new Error("Không thể thêm sản phẩm vào giỏ");
+        }
+
+        const current = readGuestCart();
+        const existing = current.find((item) => Number(item.productId) === Number(normalized.productId));
+
+        let nextItems = [];
+        if (existing) {
+          nextItems = current.map((item) =>
+            Number(item.productId) === Number(normalized.productId)
+              ? {
+                ...item,
+                quantity: Math.min(Number(item.stock ?? 0) || 9999, Number(item.quantity ?? 0) + 1),
+              }
+              : item,
+          );
+        } else {
+          nextItems = [...current, { ...normalized, quantity: 1 }];
+        }
+
+        writeGuestCart(nextItems);
+        setCart(normalizeGuestCartPayload(nextItems));
+        return;
       }
 
       const payload = await callCartApi("/items", {
@@ -101,15 +193,11 @@ export function CartProvider({ children }) {
       });
       setCart(normalizeCartPayload(payload));
     },
-    [callCartApi, isAuthenticated, token],
+    [callCartApi, isAuthenticated, readGuestCart, token, writeGuestCart],
   );
 
   const addBuildToCart = useCallback(
     async ({ name, components, totalPrice, useUsedPrices }) => {
-      if (!isAuthenticated || !token) {
-        throw new Error("Vui lòng đăng nhập để thêm combo vào giỏ hàng");
-      }
-
       const selectedComponents = Array.isArray(components)
         ? components.filter(Boolean)
         : [];
@@ -118,14 +206,39 @@ export function CartProvider({ children }) {
         throw new Error("Combo không có linh kiện nào");
       }
 
-      for (const component of selectedComponents) {
-        await callCartApi("/items", {
-          method: "POST",
-          body: JSON.stringify({ productId: Number(component.id), quantity: 1 }),
-        });
-      }
+      if (!isAuthenticated || !token) {
+        const current = readGuestCart();
+        const mergedByProductId = new Map(
+          current.map((item) => [Number(item.productId), { ...item }]),
+        );
 
-      await refreshCart();
+        for (const component of selectedComponents) {
+          const normalized = normalizeGuestComponent(component);
+          if (!normalized) {
+            continue;
+          }
+
+          const existing = mergedByProductId.get(Number(normalized.productId));
+          if (existing) {
+            existing.quantity = Math.min(Number(existing.stock ?? 0) || 9999, Number(existing.quantity ?? 0) + 1);
+          } else {
+            mergedByProductId.set(Number(normalized.productId), { ...normalized, quantity: 1 });
+          }
+        }
+
+        const nextItems = Array.from(mergedByProductId.values());
+        writeGuestCart(nextItems);
+        setCart(normalizeGuestCartPayload(nextItems));
+      } else {
+        for (const component of selectedComponents) {
+          await callCartApi("/items", {
+            method: "POST",
+            body: JSON.stringify({ productId: Number(component.id), quantity: 1 }),
+          });
+        }
+
+        await refreshCart();
+      }
 
       const bundleRecord = {
         id: crypto.randomUUID(),
@@ -148,12 +261,15 @@ export function CartProvider({ children }) {
       setBundles((prev) => [...prev, bundleRecord]);
       return bundleRecord;
     },
-    [callCartApi, isAuthenticated, refreshCart, token],
+    [callCartApi, isAuthenticated, readGuestCart, refreshCart, token, writeGuestCart],
   );
 
   const removeFromCart = useCallback(
     async (cartItemId) => {
       if (!isAuthenticated || !token) {
+        const next = readGuestCart().filter((item) => Number(item.id) !== Number(cartItemId));
+        writeGuestCart(next);
+        setCart(normalizeGuestCartPayload(next));
         return;
       }
 
@@ -162,12 +278,33 @@ export function CartProvider({ children }) {
       });
       setCart(normalizeCartPayload(payload));
     },
-    [callCartApi, isAuthenticated, token],
+    [callCartApi, isAuthenticated, readGuestCart, token, writeGuestCart],
   );
 
   const updateQuantity = useCallback(
     async (cartItemId, quantity) => {
       if (!isAuthenticated || !token) {
+        if (Number(quantity) <= 0) {
+          const filtered = readGuestCart().filter((item) => Number(item.id) !== Number(cartItemId));
+          writeGuestCart(filtered);
+          setCart(normalizeGuestCartPayload(filtered));
+          return;
+        }
+
+        const next = readGuestCart().map((item) => {
+          if (Number(item.id) !== Number(cartItemId)) {
+            return item;
+          }
+
+          const stock = Number(item.stock ?? 0);
+          return {
+            ...item,
+            quantity: Math.max(1, Math.min(stock > 0 ? stock : 9999, Number(quantity))),
+          };
+        });
+
+        writeGuestCart(next);
+        setCart(normalizeGuestCartPayload(next));
         return;
       }
 
@@ -177,16 +314,23 @@ export function CartProvider({ children }) {
       });
       setCart(normalizeCartPayload(payload));
     },
-    [callCartApi, isAuthenticated, token],
+    [callCartApi, isAuthenticated, readGuestCart, token, writeGuestCart],
   );
 
   const clearCart = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      writeGuestCart([]);
+      setCart({ items: [], totalItems: 0, totalPrice: 0 });
+      setBundles([]);
+      return;
+    }
+
     const ids = cart.items.map((item) => item.id);
     for (const id of ids) {
       await removeFromCart(id);
     }
     setBundles([]);
-  }, [cart.items, removeFromCart]);
+  }, [cart.items, isAuthenticated, removeFromCart, token, writeGuestCart]);
 
   const clearBundleMetadata = useCallback(() => {
     setBundles([]);
@@ -194,10 +338,6 @@ export function CartProvider({ children }) {
 
   const removeCartItemsByIds = useCallback(
     async (cartItemIds) => {
-      if (!isAuthenticated || !token) {
-        return;
-      }
-
       const ids = Array.from(
         new Set(
           (Array.isArray(cartItemIds) ? cartItemIds : [])
@@ -207,6 +347,13 @@ export function CartProvider({ children }) {
       );
 
       if (ids.length === 0) {
+        return;
+      }
+
+      if (!isAuthenticated || !token) {
+        const next = readGuestCart().filter((item) => !ids.includes(Number(item.id)));
+        writeGuestCart(next);
+        setCart(normalizeGuestCartPayload(next));
         return;
       }
 
@@ -233,7 +380,7 @@ export function CartProvider({ children }) {
 
       await refreshCart();
     },
-    [callCartApi, cart.items, isAuthenticated, refreshCart, token],
+    [callCartApi, cart.items, isAuthenticated, readGuestCart, refreshCart, token, writeGuestCart],
   );
 
   const removeBundle = useCallback(
@@ -254,6 +401,29 @@ export function CartProvider({ children }) {
           productId,
           (removeCountByProductId.get(productId) ?? 0) + 1,
         );
+      }
+
+      if (!isAuthenticated || !token) {
+        let next = [...readGuestCart()];
+        for (const [productId, removeCount] of removeCountByProductId.entries()) {
+          next = next
+            .map((item) => {
+              if (Number(item.productId) !== Number(productId)) {
+                return item;
+              }
+
+              return {
+                ...item,
+                quantity: Number(item.quantity ?? 0) - removeCount,
+              };
+            })
+            .filter((item) => Number(item.quantity) > 0);
+        }
+
+        writeGuestCart(next);
+        setCart(normalizeGuestCartPayload(next));
+        setBundles((prev) => prev.filter((bundle) => String(bundle.id) !== String(bundleId)));
+        return;
       }
 
       for (const [productId, removeCount] of removeCountByProductId.entries()) {
@@ -281,7 +451,7 @@ export function CartProvider({ children }) {
       setBundles((prev) => prev.filter((bundle) => String(bundle.id) !== String(bundleId)));
       await refreshCart();
     },
-    [bundles, cart.items, callCartApi, refreshCart],
+    [bundles, cart.items, callCartApi, isAuthenticated, readGuestCart, refreshCart, token, writeGuestCart],
   );
 
   const checkout = useCallback(
@@ -342,7 +512,28 @@ export function CartProvider({ children }) {
   const previewPricing = useCallback(
     async ({ couponCode, selectedCartItemIds }) => {
       if (!isAuthenticated || !token) {
-        throw new Error("Vui lòng đăng nhập để xem ưu đãi");
+        const normalizedIds = new Set(
+          (Array.isArray(selectedCartItemIds) ? selectedCartItemIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id)),
+        );
+
+        const selectedItems = cart.items.filter((item) => normalizedIds.has(Number(item.id)));
+        const subtotal = selectedItems.reduce(
+          (sum, item) => sum + Number(item.component?.price ?? 0) * Number(item.quantity ?? 0),
+          0,
+        );
+
+        if (couponCode) {
+          throw new Error("Vui lòng đăng nhập để sử dụng voucher");
+        }
+
+        return {
+          subtotal,
+          discountAmount: 0,
+          totalAmount: subtotal,
+          appliedCoupon: null,
+        };
       }
 
       return callCartApi("/preview-pricing", {
@@ -350,7 +541,7 @@ export function CartProvider({ children }) {
         body: JSON.stringify({ couponCode, selectedCartItemIds }),
       });
     },
-    [callCartApi, isAuthenticated, token],
+    [callCartApi, cart.items, isAuthenticated, token],
   );
 
   const value = useMemo(
@@ -426,5 +617,51 @@ function normalizeCartPayload(payload) {
     items,
     totalItems: Number(payload.totalItems ?? 0),
     totalPrice: Number(payload.totalPrice ?? 0),
+  };
+}
+
+function normalizeGuestComponent(component) {
+  const productId = Number(component?.id ?? component?.productId);
+  if (!Number.isFinite(productId) || productId <= 0) {
+    return null;
+  }
+
+  const price = Number(component?.price ?? 0);
+  const stock = Number(component?.stock ?? component?.stockQuantity ?? 9999);
+
+  return {
+    id: productId,
+    productId,
+    name: String(component?.name ?? "Sản phẩm"),
+    slug: String(component?.slug ?? ""),
+    brand: String(component?.brand ?? component?.specifications?.brand ?? "PC Perfect"),
+    image: String(component?.image ?? component?.imageUrl ?? "/images/component-placeholder.svg"),
+    price: Number.isFinite(price) ? price : 0,
+    stock: Number.isFinite(stock) ? stock : 9999,
+  };
+}
+
+function normalizeGuestCartPayload(guestItems) {
+  const items = (Array.isArray(guestItems) ? guestItems : []).map((item) => ({
+    id: Number(item.id ?? item.productId),
+    quantity: Math.max(1, Number(item.quantity ?? 1)),
+    component: {
+      id: Number(item.productId),
+      slug: String(item.slug ?? ""),
+      name: String(item.name ?? "Sản phẩm"),
+      brand: String(item.brand ?? "PC Perfect"),
+      image: String(item.image ?? "/images/component-placeholder.svg"),
+      price: Number(item.price ?? 0),
+      stock: Number(item.stock ?? 9999),
+    },
+  }));
+
+  return {
+    items,
+    totalItems: items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0),
+    totalPrice: items.reduce(
+      (sum, item) => sum + Number(item.component?.price ?? 0) * Number(item.quantity ?? 0),
+      0,
+    ),
   };
 }
