@@ -4,6 +4,7 @@ import {
   normalizeAndValidateFullName,
   normalizeAndValidatePhoneNumber,
 } from "../utils/validation.js";
+import { createWishlistCouponNotifications } from "./notification.service.js";
 
 export async function getAdminDashboard() {
   const [
@@ -24,6 +25,7 @@ export async function getAdminDashboard() {
     chatRooms,
     aiBuilds,
     emailVerifications,
+    lowStockProducts,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.order.count(),
@@ -84,6 +86,17 @@ export async function getAdminDashboard() {
       take: 10,
       orderBy: { createdAt: "desc" },
     }),
+    prisma.product.findMany({
+      orderBy: [{ stockQuantity: "asc" }, { updatedAt: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        stockQuantity: true,
+        lowStockThreshold: true,
+      },
+    }),
   ]);
 
   return serializeData({
@@ -126,6 +139,9 @@ export async function getAdminDashboard() {
       createdAt: build.createdAt,
     })),
     emailVerifications,
+    lowStockProducts: lowStockProducts.filter(
+      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+    ),
   });
 }
 
@@ -383,6 +399,8 @@ export async function createCouponByAdmin(input) {
     },
   });
 
+  await notifyWishlistUsersAboutCoupon(created);
+
   return serializeData(mapCoupon(created));
 }
 
@@ -478,6 +496,10 @@ export async function updateCouponByAdmin(couponId, input) {
     where: { id },
     data,
   });
+
+  if (String(updated.status ?? "").toUpperCase() === "ACTIVE") {
+    await notifyWishlistUsersAboutCoupon(updated);
+  }
 
   return serializeData(mapCoupon(updated));
 }
@@ -576,6 +598,7 @@ export async function getWarehouseOverviewByAdmin() {
         id: true,
         name: true,
         stockQuantity: true,
+        lowStockThreshold: true,
       },
     }),
   ]);
@@ -594,6 +617,9 @@ export async function getWarehouseOverviewByAdmin() {
     batches: recentBatches,
     suppliers,
     products,
+    lowStockProducts: products.filter(
+      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+    ),
   });
 }
 
@@ -752,4 +778,26 @@ function mapCoupon(coupon) {
     endDate: coupon.endDate,
     createdAt: coupon.createdAt,
   };
+}
+
+async function notifyWishlistUsersAboutCoupon(coupon) {
+  if (String(coupon?.status ?? "").toUpperCase() !== "ACTIVE") {
+    return;
+  }
+
+  const wishlistProductIds = await prisma.wishlistItem.findMany({
+    distinct: ["productId"],
+    select: {
+      productId: true,
+    },
+  });
+
+  if (wishlistProductIds.length === 0) {
+    return;
+  }
+
+  await createWishlistCouponNotifications(
+    coupon,
+    wishlistProductIds.map((item) => item.productId),
+  );
 }

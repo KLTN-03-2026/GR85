@@ -544,6 +544,31 @@ export function CartProvider({ children }) {
     [callCartApi, cart.items, isAuthenticated, token],
   );
 
+  const estimateShipping = useCallback(
+    async ({ addressId, shippingAddress, selectedCartItemIds, provider, paymentMethod }) => {
+      if (!isAuthenticated || !token) {
+        return {
+          provider: provider || "GHN",
+          estimatedFee: 0,
+          estimatedDeliveryText: "2-4 ngày",
+          totalWeightGrams: 0,
+        };
+      }
+
+      return callCartApi("/shipping-estimate", {
+        method: "POST",
+        body: JSON.stringify({
+          addressId,
+          shippingAddress,
+          selectedCartItemIds,
+          provider,
+          paymentMethod,
+        }),
+      });
+    },
+    [callCartApi, isAuthenticated, token],
+  );
+
   const value = useMemo(
     () => ({
       items: cart.items,
@@ -562,6 +587,7 @@ export function CartProvider({ children }) {
       checkout,
       confirmMockPayment,
       previewPricing,
+      estimateShipping,
       refreshCart,
     }),
     [
@@ -581,6 +607,7 @@ export function CartProvider({ children }) {
       checkout,
       confirmMockPayment,
       previewPricing,
+      estimateShipping,
       refreshCart,
     ],
   );

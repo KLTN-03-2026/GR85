@@ -15,6 +15,7 @@ import {
 } from "./vnpay.service.js";
 import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
+import { estimateShippingFromCartItems } from "./shipping.service.js";
 
 export async function previewCartPricing(userId, input = {}) {
   const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
@@ -25,7 +26,7 @@ export async function previewCartPricing(userId, input = {}) {
   });
 
   const subtotal = cartItems.reduce(
-    (sum, item) => sum + Number(item.product.price) * item.quantity,
+    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
     0,
   );
 
@@ -261,7 +262,7 @@ export async function checkoutCart(userId, input) {
   }
 
   const subtotal = cartItems.reduce(
-    (sum, item) => sum + Number(item.product.price) * item.quantity,
+    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
     0,
   );
 
@@ -299,7 +300,7 @@ export async function checkoutCart(userId, input) {
           create: cartItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
-            priceAtTime: item.product.price,
+            priceAtTime: resolveEffectiveItemPrice(item),
           })),
         },
       },
@@ -567,6 +568,61 @@ export async function confirmMockVnpayPayment(userId, input) {
   });
 }
 
+export async function estimateCartShipping(userId, input = {}) {
+  const selectedAddressId = Number(input.addressId);
+  const provider = String(input.provider ?? "GHN").trim().toUpperCase();
+  let shippingAddress = String(input.shippingAddress ?? "").trim();
+
+  if (Number.isFinite(selectedAddressId) && selectedAddressId > 0) {
+    const savedAddress = await prisma.userAddress.findFirst({
+      where: {
+        id: selectedAddressId,
+        userId,
+      },
+    });
+
+    if (!savedAddress) {
+      throw new Error("Address not found");
+    }
+
+    shippingAddress = savedAddress.addressLine;
+  }
+
+  const cart = await ensureCart(userId);
+  const cartItems = await prisma.cartItem.findMany({
+    where: {
+      cartId: cart.id,
+      ...(Array.isArray(input.selectedCartItemIds) && input.selectedCartItemIds.length > 0
+        ? {
+          id: {
+            in: input.selectedCartItemIds
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value) && value > 0),
+          },
+        }
+        : {}),
+    },
+    include: {
+      product: {
+        include: {
+          category: true,
+        },
+      },
+    },
+  });
+
+  if (cartItems.length === 0) {
+    throw new Error("Cannot estimate shipping for empty cart");
+  }
+
+  return estimateShippingFromCartItems({
+    provider,
+    addressText: shippingAddress,
+    cartItems,
+    isCodOrder: String(input.paymentMethod ?? "").trim().toUpperCase() === "COD",
+  });
+}
+
 async function finalizeVnpayPayment({
   orderId,
   responseCode,
@@ -585,10 +641,10 @@ async function finalizeVnpayPayment({
     throw new Error("Order not found");
   }
 
-  if (order.paymentMethod !== PaymentMethod.VNPAY) {
+  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
     return {
       isSuccess: false,
-      message: "Order is not VNPAY payment",
+      message: "Order is not transfer payment",
     };
   }
 
@@ -617,7 +673,7 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: OrderStatus.CANCELLED,
           changedBy: order.userId,
-          note: `VNPAY payment failed via ${source}`,
+          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} payment failed via ${source}`,
         },
       });
 
@@ -670,7 +726,7 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: order.orderStatus,
           changedBy: order.userId,
-          note: `VNPAY confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
+          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
         },
       });
 
@@ -853,13 +909,17 @@ function mapCartPayload(cart) {
       name: item.product.name,
       slug: item.product.slug,
       productCode: item.product.slug,
-      price: item.product.price,
+      price: resolveEffectiveItemPrice(item),
+      basePrice: Number(item.product.price ?? 0),
+      salePrice: item.product.salePrice,
+      saleStartAt: item.product.saleStartAt,
+      saleEndAt: item.product.saleEndAt,
       stockQuantity: item.product.stockQuantity,
       imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
       category: item.product.category,
       specifications: item.product.specifications,
     },
-    lineTotal: Number(item.product.price) * item.quantity,
+    lineTotal: resolveEffectiveItemPrice(item) * item.quantity,
   }));
 
   return {
@@ -868,6 +928,25 @@ function mapCartPayload(cart) {
     totalItems: items.reduce((sum, item) => sum + item.quantity, 0),
     totalPrice: items.reduce((sum, item) => sum + item.lineTotal, 0),
   };
+}
+
+function resolveEffectiveItemPrice(item, now = new Date()) {
+  const basePrice = Number(item?.product?.price ?? 0);
+  const salePrice =
+    item?.product?.salePrice === null || item?.product?.salePrice === undefined
+      ? null
+      : Number(item.product.salePrice);
+  const saleStartAt = item?.product?.saleStartAt ? new Date(item.product.saleStartAt) : null;
+  const saleEndAt = item?.product?.saleEndAt ? new Date(item.product.saleEndAt) : null;
+
+  const hasSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
+  const inSaleWindow = (!saleStartAt || now >= saleStartAt) && (!saleEndAt || now <= saleEndAt);
+
+  if (hasSalePrice && inSaleWindow) {
+    return salePrice;
+  }
+
+  return basePrice;
 }
 
 async function resolveCouponOrThrow(code, orderSubtotal) {

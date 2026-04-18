@@ -6,14 +6,19 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { getCatalogOverview } from "../../services/product.service.js";
 import {
+  addProductToWishlistBySlug,
   batchUpdateProductDisplayOrder,
   createProductReviewBySlug,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
+  getProductReviewEligibilityBySlug,
+  getWishlistStatusBySlug,
+  listMyWishlistProducts,
   listProductReviewsBySlug,
   listProductDisplayOrderItems,
   listProducts,
+  removeProductFromWishlistBySlug,
   updateProductById,
 } from "../../services/product.service.js";
 
@@ -51,7 +56,11 @@ const productSchema = z.object({
   categorySlug: z.string().min(1),
   supplierId: z.number().int().positive().optional().nullable(),
   price: z.number().positive(),
+  salePrice: z.number().positive().optional().nullable(),
+  saleStartAt: z.coerce.date().optional().nullable(),
+  saleEndAt: z.coerce.date().optional().nullable(),
   stockQuantity: z.number().int().min(0),
+  lowStockThreshold: z.number().int().min(0).optional(),
   warrantyMonths: z.number().int().min(0).optional(),
   isHomepageFeatured: z.boolean().optional(),
   displayOrder: z.number().int().min(0).optional(),
@@ -130,6 +139,50 @@ router.get("/:slug/reviews", async (req, res) => {
   }
 });
 
+router.get("/wishlist/me", requireAuth, async (req, res) => {
+  try {
+    const data = await listMyWishlistProducts(Number(req.auth?.sub));
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/:slug/wishlist-status", requireAuth, async (req, res) => {
+  try {
+    const data = await getWishlistStatusBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:slug/wishlist", requireAuth, async (req, res) => {
+  try {
+    const data = await addProductToWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.delete("/:slug/wishlist", requireAuth, async (req, res) => {
+  try {
+    const data = await removeProductFromWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/:slug/review-eligibility", requireAuth, async (req, res) => {
+  try {
+    const data = await getProductReviewEligibilityBySlug(Number(req.auth?.sub), req.params.slug);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
 router.post("/:slug/reviews", requireAuth, async (req, res) => {
   try {
     const parsed = reviewSchema.parse(req.body ?? {});

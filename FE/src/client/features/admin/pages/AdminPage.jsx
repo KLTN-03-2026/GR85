@@ -234,8 +234,6 @@ const SPELL_CHECK_DICTIONARY = {
   "seagate": "Seagate",
   "wd": "Western Digital",
   "sandisk": "SanDisk",
-  "samsung": "Samsung",
-  "crucial": "Crucial",
   "kioxia": "Kioxia",
   
   // Motherboard brands

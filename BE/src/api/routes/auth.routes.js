@@ -23,6 +23,11 @@ import {
   requestOrderReturn,
   topUpWallet,
 } from "../../services/wallet.service.js";
+import {
+  listNotificationsForUser,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "../../services/notification.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 const router = Router();
@@ -291,6 +296,37 @@ router.post("/change-password", requireAuth, async (req, res) => {
   try {
     const parsed = changePasswordSchema.parse(req.body);
     const result = await changePassword(Number(req.auth?.sub), parsed);
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/notifications", requireAuth, async (req, res) => {
+  try {
+    const limit = req.query?.limit;
+    const result = await listNotificationsForUser(Number(req.auth?.sub), { limit });
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.patch("/notifications/:notificationId/read", requireAuth, async (req, res) => {
+  try {
+    const result = await markNotificationAsRead(
+      Number(req.auth?.sub),
+      Number(req.params.notificationId),
+    );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/notifications/mark-all-read", requireAuth, async (req, res) => {
+  try {
+    const result = await markAllNotificationsAsRead(Number(req.auth?.sub));
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);

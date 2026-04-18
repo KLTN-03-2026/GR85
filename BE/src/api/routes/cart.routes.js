@@ -5,6 +5,7 @@ import {
   addItemToCart,
   confirmMockVnpayPayment,
   checkoutCart,
+  estimateCartShipping,
   getMyCart,
   handleVnpayIpn,
   handleVnpayReturn,
@@ -38,6 +39,14 @@ const checkoutSchema = z.object({
 const previewPricingSchema = z.object({
   couponCode: z.string().max(50).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
+});
+
+const shippingEstimateSchema = z.object({
+  addressId: z.number().int().positive().optional(),
+  shippingAddress: z.string().max(500).optional(),
+  selectedCartItemIds: z.array(z.number().int().positive()).optional(),
+  provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
+  paymentMethod: z.enum(["COD", "VNPAY", "SEPAY"]).optional(),
 });
 
 const confirmMockPaymentSchema = z.object({
@@ -131,6 +140,16 @@ router.post("/preview-pricing", requireAuth, async (req, res) => {
   try {
     const parsed = previewPricingSchema.parse(req.body ?? {});
     const data = await previewCartPricing(Number(req.auth?.sub), parsed);
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/shipping-estimate", requireAuth, async (req, res) => {
+  try {
+    const parsed = shippingEstimateSchema.parse(req.body ?? {});
+    const data = await estimateCartShipping(Number(req.auth?.sub), parsed);
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
