@@ -8,6 +8,39 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Bot, User, Sparkles, Loader2 } from "lucide-react";
 import { requestAiBuildChatReply } from "@/client/features/recommend/data/aiChat.api.js";
 
+// Further enhanced classifyInput function with additional specialized keywords
+const classifyInput = (input) => {
+  const relatedKeywords = [
+    "PC", "linh kiện", "tư vấn", "build", "máy tính", "cấu hình", "phần cứng", "nâng cấp", "mua PC", "mua máy tính"
+  ];
+  const studyKeywords = [
+    "học", "văn phòng", "làm việc", "sinh viên", "giá rẻ", "đại học", "học online", "laptop học tập", "máy tính cho sinh viên", "máy tính văn phòng"
+  ];
+  const gamingKeywords = [
+    "gaming", "chơi game", "game AAA", "FPS", "đồ họa", "card màn hình", "máy chơi game", "game thủ", "máy tính chơi game"
+  ];
+  const streamingKeywords = [
+    "streaming", "livestream", "phát trực tiếp", "máy quay", "stream game", "stream video", "máy tính stream"
+  ];
+  const renderingKeywords = [
+    "render", "dựng phim", "3D", "AI/ML", "video editing", "thiết kế đồ họa", "máy render", "máy dựng phim"
+  ];
+
+  if (relatedKeywords.some((keyword) => input.toLowerCase().includes(keyword.toLowerCase()))) {
+    return "related";
+  } else if (studyKeywords.some((keyword) => input.toLowerCase().includes(keyword.toLowerCase()))) {
+    return "study";
+  } else if (gamingKeywords.some((keyword) => input.toLowerCase().includes(keyword.toLowerCase()))) {
+    return "gaming";
+  } else if (streamingKeywords.some((keyword) => input.toLowerCase().includes(keyword.toLowerCase()))) {
+    return "streaming";
+  } else if (renderingKeywords.some((keyword) => input.toLowerCase().includes(keyword.toLowerCase()))) {
+    return "rendering";
+  } else {
+    return "unrelated";
+  }
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState([
     {
