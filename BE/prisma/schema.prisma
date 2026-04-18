@@ -82,6 +82,7 @@ enum ReturnRequestStatus {
 enum NotificationType {
     WISHLIST_PRICE_DROP
     WISHLIST_NEW_COUPON
+    ORDER_STATUS_CHANGED
     SYSTEM
 }
 
