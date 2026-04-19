@@ -57,6 +57,7 @@ router.get(
 
 const createCouponSchema = z.object({
   code: z.string().min(2).max(50),
+  couponScope: z.enum(["PRODUCT", "SHIPPING"]).default("PRODUCT"),
   discountType: z.enum(["PERCENT", "FIXED_AMOUNT"]),
   discountValue: z.number().positive(),
   minOrderValue: z.number().min(0).default(0),
@@ -64,9 +65,11 @@ const createCouponSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).default("ACTIVE"),
+  assignedUserIds: z.array(z.number().int().positive()).optional().default([]),
 });
 
 const updateCouponSchema = z.object({
+  couponScope: z.enum(["PRODUCT", "SHIPPING"]).optional(),
   discountType: z.enum(["PERCENT", "FIXED_AMOUNT"]).optional(),
   discountValue: z.number().positive().optional(),
   minOrderValue: z.number().min(0).optional(),
@@ -74,6 +77,7 @@ const updateCouponSchema = z.object({
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
   status: z.enum(["ACTIVE", "EXPIRED", "DISABLED"]).optional(),
+  assignedUserIds: z.array(z.number().int().positive()).optional(),
 });
 
 const reviewReturnSchema = z.object({

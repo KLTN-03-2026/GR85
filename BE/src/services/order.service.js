@@ -5,12 +5,15 @@ import { createOrderStatusChangeNotification } from "./notification.service.js";
 
 const ALLOWED_STATUS_TRANSITIONS = new Set([
   OrderStatus.PENDING,
+  OrderStatus.PROCESSING,
   OrderStatus.SHIPPING,
   OrderStatus.DELIVERED,
   OrderStatus.CANCELLED,
 ]);
 
 export async function listOrdersForAdmin() {
+  await syncPaidPendingOrdersToProcessing();
+
   const orders = await prisma.order.findMany({
     orderBy: { createdAt: "desc" },
     include: {
@@ -45,6 +48,8 @@ export async function listOrdersForAdmin() {
 }
 
 export async function getOrderDetailForAdmin(orderId) {
+  await syncPaidPendingOrdersToProcessing();
+
   const id = Number(orderId);
   if (!Number.isFinite(id)) {
     throw new Error("Invalid order id");
@@ -133,6 +138,8 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
     throw new Error("Completed order cannot be modified");
   }
 
+  assertOrderTransitionAllowed(current.orderStatus, nextStatus);
+
   if (current.orderStatus === nextStatus) {
     return getOrderDetailForAdmin(id);
   }
@@ -175,4 +182,68 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
   await createOrderStatusChangeNotification(id, current.userId, nextStatus);
 
   return getOrderDetailForAdmin(id);
+}
+
+function assertOrderTransitionAllowed(currentStatus, nextStatus) {
+  const current = String(currentStatus ?? "").toUpperCase();
+  const next = String(nextStatus ?? "").toUpperCase();
+
+  if (current === next) {
+    return;
+  }
+
+  const allowedByCurrent = {
+    PENDING: ["PROCESSING", "CANCELLED"],
+    PROCESSING: ["SHIPPING", "CANCELLED"],
+    SHIPPING: ["DELIVERED", "CANCELLED"],
+    DELIVERED: [],
+    CANCELLED: [],
+  };
+
+  if (!(allowedByCurrent[current] ?? []).includes(next)) {
+    throw new Error("Invalid status flow. Vui lòng thao tác theo thứ tự xử lý đơn hàng");
+  }
+}
+
+async function syncPaidPendingOrdersToProcessing() {
+  const staleOrders = await prisma.order.findMany({
+    where: {
+      paymentStatus: PaymentStatus.PAID,
+      orderStatus: OrderStatus.PENDING,
+    },
+    select: {
+      id: true,
+      userId: true,
+    },
+    take: 200,
+  });
+
+  if (staleOrders.length === 0) {
+    return;
+  }
+
+  for (const order of staleOrders) {
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: { orderStatus: OrderStatus.PROCESSING },
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.PROCESSING,
+          changedBy: order.userId,
+          note: "Đơn đã thanh toán, chuyển sang trạng thái chuẩn bị hàng",
+        },
+      });
+    });
+
+    await createOrderStatusChangeNotification(
+      order.id,
+      order.userId,
+      OrderStatus.PROCESSING,
+    );
+  }
 }

@@ -21,7 +21,7 @@ function isAdminRole(role) {
 }
 
 const updateStatusSchema = z.object({
-  status: z.enum(["PENDING", "SHIPPING", "DELIVERED", "CANCELLED"]),
+  status: z.enum(["PENDING", "PROCESSING", "SHIPPING", "DELIVERED", "CANCELLED"]),
   note: z.string().optional(),
 });
 

@@ -26,6 +26,11 @@ enum CouponStatus {
     DISABLED
 }
 
+enum CouponScope {
+    PRODUCT
+    SHIPPING
+}
+
 enum ProductStatus {
     ACTIVE
     INACTIVE
@@ -114,6 +119,7 @@ model User {
     returnRequests ReturnRequest[]
     wishlistItems  WishlistItem[]
     notifications  Notification[]
+    couponAccesses CouponUser[]
 
     @@map("Users")
 }
@@ -182,6 +188,7 @@ model Supplier {
 model Coupon {
     id            Int          @id @default(autoincrement())
     code          String       @unique
+    couponScope   CouponScope  @default(PRODUCT) @map("coupon_scope")
     discountType  DiscountType @map("discount_type")
     discountValue Decimal      @map("discount_value") @db.Decimal(15, 2)
     minOrderValue Decimal      @default(0) @map("min_order_value") @db.Decimal(15, 2)
@@ -192,9 +199,24 @@ model Coupon {
     status        CouponStatus @default(ACTIVE)
     createdAt     DateTime     @default(now()) @map("created_at")
 
-    orders Order[]
+    orders         Order[]      @relation("ProductCouponOrders")
+    shippingOrders Order[]      @relation("ShippingCouponOrders")
+    couponUsers    CouponUser[]
 
     @@map("Coupons")
+}
+
+model CouponUser {
+    couponId  Int      @map("coupon_id")
+    userId    Int      @map("user_id")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@id([couponId, userId])
+    @@index([userId])
+    @@map("Coupon_Users")
 }
 
 // ================= 3. SẢN PHẨM =================
@@ -341,8 +363,11 @@ model Order {
     id              Int           @id @default(autoincrement())
     userId          Int           @map("user_id")
     couponId        Int?          @map("coupon_id")
+    shippingCouponId Int?         @map("shipping_coupon_id")
     totalAmount     Decimal       @map("total_amount") @db.Decimal(15, 2)
     discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(15, 2)
+    shippingFee     Decimal       @default(0) @map("shipping_fee") @db.Decimal(15, 2)
+    shippingDiscountAmount Decimal @default(0) @map("shipping_discount_amount") @db.Decimal(15, 2)
     shippingAddress String        @map("shipping_address") @db.Text
     phoneNumber     String        @map("phone_number")
     paymentMethod   PaymentMethod @map("payment_method")
@@ -352,7 +377,8 @@ model Order {
     updatedAt       DateTime      @updatedAt @map("updated_at")
 
     user       User        @relation(fields: [userId], references: [id])
-    coupon     Coupon?     @relation(fields: [couponId], references: [id])
+    coupon     Coupon?     @relation("ProductCouponOrders", fields: [couponId], references: [id])
+    shippingCoupon Coupon? @relation("ShippingCouponOrders", fields: [shippingCouponId], references: [id])
     orderItems OrderItem[]
     statusHistories OrderStatusHistory[]
     walletTransactions WalletTransaction[]
