@@ -54,7 +54,23 @@ export async function getAdminDashboard() {
       orderBy: { createdAt: "desc" },
       include: { user: true, coupon: true },
     }),
-    prisma.coupon.findMany({ take: 10, orderBy: { createdAt: "desc" } }),
+    prisma.coupon.findMany({
+      take: 10,
+      orderBy: { createdAt: "desc" },
+      include: {
+        couponUsers: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
     prisma.role.findMany({
       include: { permissions: { include: { permission: true } }, users: true },
     }),
@@ -111,7 +127,7 @@ export async function getAdminDashboard() {
     users,
     products,
     orders,
-    coupons,
+    coupons: coupons.map(mapCoupon),
     roles: roles.map((role) => ({
       id: role.id,
       name: role.name,
@@ -324,12 +340,28 @@ export async function getUserDetailByAdmin(userId) {
 export async function listCouponsForAdmin() {
   const coupons = await prisma.coupon.findMany({
     orderBy: [{ createdAt: "desc" }],
+    include: {
+      couponUsers: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   return serializeData(coupons.map(mapCoupon));
 }
 
 export async function createCouponByAdmin(input) {
+    const couponScope = String(input.couponScope ?? "PRODUCT")
+      .trim()
+      .toUpperCase();
   const code = String(input.code ?? "")
     .trim()
     .toUpperCase();
@@ -344,6 +376,17 @@ export async function createCouponByAdmin(input) {
   const status = String(input.status ?? "ACTIVE")
     .trim()
     .toUpperCase();
+  const assignedUserIds = Array.from(
+    new Set(
+      (Array.isArray(input.assignedUserIds) ? input.assignedUserIds : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0),
+    ),
+  );
+  if (!["PRODUCT", "SHIPPING"].includes(couponScope)) {
+    throw new Error("Invalid coupon scope");
+  }
+
 
   if (!code) {
     throw new Error("Coupon code is required");
@@ -386,9 +429,23 @@ export async function createCouponByAdmin(input) {
     throw new Error("Coupon code already exists");
   }
 
+  if (assignedUserIds.length > 0) {
+    const countUsers = await prisma.user.count({
+      where: {
+        id: {
+          in: assignedUserIds,
+        },
+      },
+    });
+    if (countUsers !== assignedUserIds.length) {
+      throw new Error("One or more assigned users do not exist");
+    }
+  }
+
   const created = await prisma.coupon.create({
     data: {
       code,
+      couponScope,
       discountType,
       discountValue,
       minOrderValue,
@@ -396,6 +453,26 @@ export async function createCouponByAdmin(input) {
       startDate,
       endDate,
       status,
+      ...(assignedUserIds.length > 0
+        ? {
+          couponUsers: {
+            create: assignedUserIds.map((userId) => ({ userId })),
+          },
+        }
+        : {}),
+    },
+    include: {
+      couponUsers: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -416,6 +493,16 @@ export async function updateCouponByAdmin(couponId, input) {
   }
 
   const data = {};
+
+  if (input.couponScope !== undefined) {
+    const couponScope = String(input.couponScope ?? "")
+      .trim()
+      .toUpperCase();
+    if (!["PRODUCT", "SHIPPING"].includes(couponScope)) {
+      throw new Error("Invalid coupon scope");
+    }
+    data.couponScope = couponScope;
+  }
 
   if (input.discountType !== undefined) {
     const discountType = String(input.discountType ?? "")
@@ -492,9 +579,54 @@ export async function updateCouponByAdmin(couponId, input) {
     data.status = status;
   }
 
+  if (input.assignedUserIds !== undefined) {
+    const assignedUserIds = Array.from(
+      new Set(
+        (Array.isArray(input.assignedUserIds) ? input.assignedUserIds : [])
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0),
+      ),
+    );
+
+    if (assignedUserIds.length > 0) {
+      const countUsers = await prisma.user.count({
+        where: {
+          id: {
+            in: assignedUserIds,
+          },
+        },
+      });
+      if (countUsers !== assignedUserIds.length) {
+        throw new Error("One or more assigned users do not exist");
+      }
+    }
+
+    data.couponUsers = {
+      deleteMany: {},
+      ...(assignedUserIds.length > 0
+        ? {
+          create: assignedUserIds.map((userId) => ({ userId })),
+        }
+        : {}),
+    };
+  }
+
   const updated = await prisma.coupon.update({
     where: { id },
     data,
+    include: {
+      couponUsers: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (String(updated.status ?? "").toUpperCase() === "ACTIVE") {
@@ -514,7 +646,7 @@ export async function deleteCouponByAdmin(couponId) {
     where: { id },
     include: {
       _count: {
-        select: { orders: true },
+        select: { orders: true, shippingOrders: true },
       },
     },
   });
@@ -523,7 +655,11 @@ export async function deleteCouponByAdmin(couponId) {
     throw new Error("Coupon not found");
   }
 
-  if (Number(current._count?.orders ?? 0) > 0 || Number(current.usedCount ?? 0) > 0) {
+  if (
+    Number(current._count?.orders ?? 0) > 0 ||
+    Number(current._count?.shippingOrders ?? 0) > 0 ||
+    Number(current.usedCount ?? 0) > 0
+  ) {
     throw new Error("Coupon has been used. Please disable it instead of deleting");
   }
 
@@ -768,6 +904,7 @@ function mapCoupon(coupon) {
   return {
     id: coupon.id,
     code: coupon.code,
+    couponScope: coupon.couponScope,
     discountType: coupon.discountType,
     discountValue: coupon.discountValue,
     minOrderValue: coupon.minOrderValue,
@@ -777,6 +914,12 @@ function mapCoupon(coupon) {
     startDate: coupon.startDate,
     endDate: coupon.endDate,
     createdAt: coupon.createdAt,
+    assignedUsers: (coupon.couponUsers ?? []).map((item) => ({
+      id: item.user?.id ?? item.userId,
+      fullName: item.user?.fullName ?? null,
+      email: item.user?.email ?? null,
+    })),
+    assignedUserIds: (coupon.couponUsers ?? []).map((item) => item.user?.id ?? item.userId),
   };
 }
 

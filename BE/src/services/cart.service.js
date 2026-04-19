@@ -16,51 +16,46 @@ import {
 import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
 import { estimateShippingFromCartItems } from "./shipping.service.js";
+import { payos } from "../config/payos.config.js";
+
+function resolveFrontendBaseUrl() {
+  const candidate = String(env.FE_DOMAIN ?? env.FRONTEND_URL ?? "").trim();
+  if (!candidate) {
+    throw new Error("Missing FE_DOMAIN for PayOS redirect");
+  }
+
+  return candidate.replace(/\/+$/, "");
+}
+
+function toPayosAmount(value) {
+  const amount = Math.round(Number(value));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Invalid payable amount for PayOS");
+  }
+
+  return amount;
+}
 
 export async function previewCartPricing(userId, input = {}) {
-  const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
   const cart = await ensureCart(userId);
   const cartItems = await resolveSelectedCartItems({
     cartId: cart.id,
     selectedCartItemIds: input.selectedCartItemIds,
   });
-
-  const subtotal = cartItems.reduce(
-    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
-    0,
-  );
-
-  if (cartItems.length === 0) {
-    return serializeData({
-      subtotal,
-      discountAmount: 0,
-      totalAmount: subtotal,
-      appliedCoupon: null,
-    });
-  }
-
-  if (!couponCode) {
-    return serializeData({
-      subtotal,
-      discountAmount: 0,
-      totalAmount: subtotal,
-      appliedCoupon: null,
-    });
-  }
-
-  const applied = await resolveCouponOrThrow(couponCode, subtotal);
-
-  return serializeData({
-    subtotal,
-    discountAmount: applied.discountAmount,
-    totalAmount: Math.max(0, subtotal - applied.discountAmount),
-    appliedCoupon: {
-      id: applied.coupon.id,
-      code: applied.coupon.code,
-      discountType: applied.coupon.discountType,
-      discountValue: applied.coupon.discountValue,
-    },
+  const pricing = await buildPricingBreakdown({
+    userId,
+    cartItems,
+    productCouponCode:
+      String(input.productCouponCode ?? input.couponCode ?? "").trim().toUpperCase() || null,
+    shippingCouponCode:
+      String(input.shippingCouponCode ?? "").trim().toUpperCase() || null,
+    shippingAddress: input.shippingAddress,
+    selectedAddressId: input.addressId,
+    provider: input.provider,
+    paymentMethod: input.paymentMethod,
   });
+
+  return serializeData(pricing);
 }
 
 export async function getMyCart(userId) {
@@ -85,6 +80,92 @@ export async function getMyCart(userId) {
   });
 
   return serializeData(mapCartPayload(hydrated));
+}
+
+export async function listAvailableCoupons(userId, input = {}) {
+  const scope = String(input.scope ?? "PRODUCT").trim().toUpperCase();
+  if (!["PRODUCT", "SHIPPING"].includes(scope)) {
+    throw new Error("Invalid coupon scope");
+  }
+
+  const cart = await ensureCart(userId);
+  const cartItems = await resolveSelectedCartItems({
+    cartId: cart.id,
+    selectedCartItemIds: input.selectedCartItemIds,
+  });
+
+  if (cartItems.length === 0) {
+    return serializeData([]);
+  }
+
+  const pricing = await buildPricingBreakdown({
+    userId,
+    cartItems,
+    shippingAddress: input.shippingAddress,
+    selectedAddressId: input.addressId,
+    provider: input.provider,
+    paymentMethod: input.paymentMethod,
+  });
+
+  const baseAmount = scope === "PRODUCT"
+    ? Number(pricing.subtotal ?? 0)
+    : Number(pricing.shippingFee ?? 0);
+
+  if (!Number.isFinite(baseAmount) || baseAmount <= 0) {
+    return serializeData([]);
+  }
+
+  const now = new Date();
+  const coupons = await prisma.coupon.findMany({
+    where: {
+      couponScope: scope,
+      status: "ACTIVE",
+      startDate: { lte: now },
+      endDate: { gte: now },
+      OR: [
+        { couponUsers: { none: {} } },
+        { couponUsers: { some: { userId } } },
+      ],
+    },
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  const available = coupons
+    .map((coupon) => {
+      if (Number(coupon.usedCount ?? 0) >= Number(coupon.usageLimit ?? 0)) {
+        return null;
+      }
+
+      const minimumOrder = Number(coupon.minOrderValue ?? 0);
+      if (baseAmount < minimumOrder) {
+        return null;
+      }
+
+      const rawDiscount =
+        coupon.discountType === "PERCENT"
+          ? (baseAmount * Number(coupon.discountValue)) / 100
+          : Number(coupon.discountValue);
+
+      const discountAmount = Math.min(baseAmount, Math.max(0, rawDiscount));
+      if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+        return null;
+      }
+
+      return {
+        id: coupon.id,
+        code: coupon.code,
+        couponScope: coupon.couponScope,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        minOrderValue: coupon.minOrderValue,
+        estimatedDiscountAmount: discountAmount,
+        startDate: coupon.startDate,
+        endDate: coupon.endDate,
+      };
+    })
+    .filter(Boolean);
+
+  return serializeData(available);
 }
 
 export async function addItemToCart(userId, input) {
@@ -194,15 +275,26 @@ export async function checkoutCart(userId, input) {
   let shippingAddress = String(input.shippingAddress ?? "").trim();
   let phoneNumber = String(input.phoneNumber ?? "").trim();
   const useWalletBalance = input.useWalletBalance !== false;
-  const paymentMethodInput = String(input.paymentMethod ?? "SEPAY")
+  const paymentMethodInput = String(input.paymentMethod ?? "PAYOS")
     .trim()
     .toUpperCase();
-  const paymentMethod =
-    paymentMethodInput === "SEPAY" ? PaymentMethod.BANK_TRANSFER : paymentMethodInput;
-  const couponCode = String(input.couponCode ?? "").trim().toUpperCase();
+  const isPayosCheckout = paymentMethodInput === "PAYOS";
+  const paymentMethod = isPayosCheckout ? PaymentMethod.VNPAY : paymentMethodInput;
+  const productCouponCode = String(input.productCouponCode ?? input.couponCode ?? "")
+    .trim()
+    .toUpperCase();
+  const shippingCouponCode = String(input.shippingCouponCode ?? "")
+    .trim()
+    .toUpperCase();
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { address: true, phone: true, email: true, walletBalance: true },
+    select: {
+      address: true,
+      phone: true,
+      email: true,
+      walletBalance: true,
+      fullName: true,
+    },
   });
 
   if (!user) {
@@ -245,9 +337,24 @@ export async function checkoutCart(userId, input) {
     fieldLabel: "Phone number",
   });
 
-  if (
-    ![PaymentMethod.VNPAY, PaymentMethod.COD, PaymentMethod.BANK_TRANSFER].includes(paymentMethod)
-  ) {
+  if (!Number.isFinite(selectedAddressId) || selectedAddressId <= 0) {
+    await ensureCheckoutAddressBookEntry({
+      userId,
+      shippingAddress,
+      phoneNumber,
+      receiverName: user.fullName,
+    });
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      address: shippingAddress,
+      phone: phoneNumber,
+    },
+  });
+
+  if (![PaymentMethod.VNPAY, PaymentMethod.COD].includes(paymentMethod)) {
     throw new Error("Unsupported payment method");
   }
 
@@ -261,22 +368,29 @@ export async function checkoutCart(userId, input) {
     throw new Error("Cannot checkout an empty cart");
   }
 
-  const subtotal = cartItems.reduce(
-    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
-    0,
-  );
+  const pricing = await buildPricingBreakdown({
+    userId,
+    cartItems,
+    productCouponCode: productCouponCode || null,
+    shippingCouponCode: shippingCouponCode || null,
+    shippingAddress,
+    selectedAddressId,
+    provider: input.provider,
+    paymentMethod,
+  });
 
-  const couponResolved = couponCode
-    ? await resolveCouponOrThrow(couponCode, subtotal)
-    : null;
-  const discountAmount = couponResolved?.discountAmount ?? 0;
-  const totalAmount = Math.max(0, subtotal - discountAmount);
+  const subtotal = Number(pricing.subtotal ?? 0);
+  const discountAmount = Number(pricing.discountAmount ?? 0);
+  const shippingFee = Number(pricing.shippingFee ?? 0);
+  const shippingDiscountAmount = Number(pricing.shippingDiscountAmount ?? 0);
+  const totalAmount = Number(pricing.totalAmount ?? 0);
   const walletBalance = Number(user.walletBalance ?? 0);
   const walletUsedAmount = useWalletBalance ? Math.min(walletBalance, totalAmount) : 0;
   const remainingPayableAmount = Math.max(0, totalAmount - walletUsedAmount);
   const isFullyPaidByWallet = remainingPayableAmount === 0;
   const shouldReserveStockImmediately =
     isFullyPaidByWallet || paymentMethod === PaymentMethod.COD;
+  const initialOrderStatus = isFullyPaidByWallet ? OrderStatus.PROCESSING : OrderStatus.PENDING;
 
   const result = await prisma.$transaction(async (tx) => {
     for (const item of cartItems) {
@@ -288,14 +402,17 @@ export async function checkoutCart(userId, input) {
     const createdOrder = await tx.order.create({
       data: {
         userId,
-        couponId: couponResolved?.coupon.id ?? null,
+        couponId: pricing.appliedCoupon?.id ?? null,
+        shippingCouponId: pricing.appliedShippingCoupon?.id ?? null,
         totalAmount,
         discountAmount,
+        shippingFee,
+        shippingDiscountAmount,
         shippingAddress,
         phoneNumber,
         paymentMethod,
         paymentStatus: isFullyPaidByWallet ? PaymentStatus.PAID : PaymentStatus.PENDING,
-        orderStatus: OrderStatus.PENDING,
+        orderStatus: initialOrderStatus,
         orderItems: {
           create: cartItems.map((item) => ({
             productId: item.productId,
@@ -313,14 +430,14 @@ export async function checkoutCart(userId, input) {
       data: {
         orderId: createdOrder.id,
         fromStatus: OrderStatus.PENDING,
-        toStatus: OrderStatus.PENDING,
+        toStatus: initialOrderStatus,
         changedBy: userId,
         note: isFullyPaidByWallet
-          ? "Order paid fully by wallet balance"
+          ? "Order paid fully by wallet balance and moved to processing"
           : paymentMethod === PaymentMethod.COD
             ? "Order placed with COD and waiting for delivery"
-            : paymentMethod === PaymentMethod.BANK_TRANSFER
-              ? "Order created and waiting for SePay transfer"
+            : isPayosCheckout
+              ? "Order created and waiting for PayOS payment"
               : "Order created and waiting for VNPAY payment",
       },
     });
@@ -358,9 +475,14 @@ export async function checkoutCart(userId, input) {
         });
       }
 
-      if (couponResolved?.coupon.id) {
+      const couponIdsToIncrease = [
+        pricing.appliedCoupon?.id,
+        pricing.appliedShippingCoupon?.id,
+      ].filter((value, index, arr) => value && arr.indexOf(value) === index);
+
+      for (const couponId of couponIdsToIncrease) {
         await tx.coupon.update({
-          where: { id: couponResolved.coupon.id },
+          where: { id: couponId },
           data: { usedCount: { increment: 1 } },
         });
       }
@@ -378,6 +500,8 @@ export async function checkoutCart(userId, input) {
       orderId: result.id,
       subtotal,
       discountAmount,
+      shippingFee,
+      shippingDiscountAmount,
       totalAmount: result.totalAmount,
       walletUsedAmount,
       remainingPayableAmount: 0,
@@ -392,6 +516,8 @@ export async function checkoutCart(userId, input) {
       orderId: result.id,
       subtotal,
       discountAmount,
+      shippingFee,
+      shippingDiscountAmount,
       totalAmount: result.totalAmount,
       walletUsedAmount,
       remainingPayableAmount,
@@ -399,8 +525,39 @@ export async function checkoutCart(userId, input) {
     });
   }
 
-  if (paymentMethod === PaymentMethod.VNPAY || paymentMethod === PaymentMethod.BANK_TRANSFER) {
-    const paymentProvider = paymentMethod === PaymentMethod.BANK_TRANSFER ? "SEPAY" : "VNPAY";
+  if (isPayosCheckout) {
+    const frontendBaseUrl = resolveFrontendBaseUrl();
+    const payosPayment = await payos.paymentRequests.create({
+      orderCode: Number(result.id),
+      amount: toPayosAmount(remainingPayableAmount),
+      description: `TT don #${result.id}`.slice(0, 25),
+      returnUrl: `${frontendBaseUrl}/payment/success?orderId=${result.id}`,
+      cancelUrl: `${frontendBaseUrl}/payment/cancel?orderId=${result.id}`,
+    });
+
+    return serializeData({
+      message: "PayOS payment initialized",
+      paymentMethod,
+      paymentProvider: "PAYOS",
+      orderId: result.id,
+      subtotal,
+      discountAmount,
+      shippingFee,
+      shippingDiscountAmount,
+      totalAmount: result.totalAmount,
+      walletUsedAmount,
+      remainingPayableAmount,
+      checkoutUrl: payosPayment?.checkoutUrl,
+      paymentUrl: payosPayment?.checkoutUrl,
+      qrCode: payosPayment?.qrCode ?? null,
+      paymentLinkId: payosPayment?.paymentLinkId ?? null,
+      payosStatus: payosPayment?.status ?? null,
+      payosOrderCode: Number(result.id),
+      isPayosPayment: true,
+    });
+  }
+
+  if (paymentMethod === PaymentMethod.VNPAY) {
     // Generate payment code and QR (VietQR-compatible) for transfer methods.
     const paymentCode = generateMockVnpayPaymentCode();
     const transferContent = `TT DON ${result.id} ${paymentCode}`;
@@ -436,12 +593,14 @@ export async function checkoutCart(userId, input) {
     }
 
     return serializeData({
-      message: paymentProvider === "SEPAY" ? "SePay QR payment initialized" : "Mock VNPAY payment initialized",
+      message: "Mock VNPAY payment initialized",
       paymentMethod,
-      paymentProvider,
+      paymentProvider: "VNPAY",
       orderId: result.id,
       subtotal,
       discountAmount,
+      shippingFee,
+      shippingDiscountAmount,
       totalAmount: result.totalAmount,
       walletUsedAmount,
       remainingPayableAmount,
@@ -450,7 +609,6 @@ export async function checkoutCart(userId, input) {
       expiresAt: mockQrData.expiresAt,
       bankTransfer: mockQrData.bankTransfer,
       isMockPayment: true,
-      isSepay: paymentProvider === "SEPAY",
     });
   }
 }
@@ -539,7 +697,7 @@ export async function confirmMockVnpayPayment(userId, input) {
     throw new Error("Order not found");
   }
 
-  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
+  if (order.paymentMethod !== PaymentMethod.VNPAY) {
     throw new Error("Order is not transfer payment");
   }
 
@@ -641,7 +799,7 @@ async function finalizeVnpayPayment({
     throw new Error("Order not found");
   }
 
-  if (![PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER].includes(order.paymentMethod)) {
+  if (order.paymentMethod !== PaymentMethod.VNPAY) {
     return {
       isSuccess: false,
       message: "Order is not transfer payment",
@@ -673,7 +831,7 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: OrderStatus.CANCELLED,
           changedBy: order.userId,
-          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} payment failed via ${source}`,
+          note: `VNPAY payment failed via ${source}`,
         },
       });
 
@@ -706,16 +864,24 @@ async function finalizeVnpayPayment({
         });
       }
 
+      const nextOrderStatus =
+        order.orderStatus === OrderStatus.PENDING ? OrderStatus.PROCESSING : order.orderStatus;
+
       await tx.order.update({
         where: { id: orderId },
         data: {
           paymentStatus: PaymentStatus.PAID,
+          orderStatus: nextOrderStatus,
         },
       });
 
-      if (order.couponId) {
+      const couponIdsToIncrease = [order.couponId, order.shippingCouponId].filter(
+        (value, index, arr) => value && arr.indexOf(value) === index,
+      );
+
+      for (const couponId of couponIdsToIncrease) {
         await tx.coupon.update({
-          where: { id: order.couponId },
+          where: { id: couponId },
           data: { usedCount: { increment: 1 } },
         });
       }
@@ -724,9 +890,9 @@ async function finalizeVnpayPayment({
         data: {
           orderId,
           fromStatus: order.orderStatus,
-          toStatus: order.orderStatus,
+          toStatus: nextOrderStatus,
           changedBy: order.userId,
-          note: `${order.paymentMethod === PaymentMethod.BANK_TRANSFER ? "SePay" : "VNPAY"} confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
+          note: `VNPAY confirmed via ${source}. TxnNo=${transactionNo ?? ""} PayDate=${payDate ?? ""}`,
         },
       });
 
@@ -884,6 +1050,56 @@ async function resolveSelectedCartItems({ cartId, selectedCartItemIds }) {
   });
 }
 
+async function ensureCheckoutAddressBookEntry({
+  userId,
+  shippingAddress,
+  phoneNumber,
+  receiverName,
+}) {
+  const normalizedAddress = String(shippingAddress ?? "").trim();
+  const normalizedPhone = String(phoneNumber ?? "").trim();
+
+  if (!normalizedAddress || !normalizedPhone) {
+    return null;
+  }
+
+  const existed = await prisma.userAddress.findFirst({
+    where: {
+      userId,
+      phoneNumber: normalizedPhone,
+      addressLine: normalizedAddress,
+    },
+  });
+
+  if (existed) {
+    return existed;
+  }
+
+  const hasAddress = await prisma.userAddress.count({
+    where: { userId },
+  });
+
+  return prisma.userAddress.create({
+    data: {
+      userId,
+      label: "Checkout",
+      receiverName: normalizeReceiverNameForAddress(receiverName),
+      phoneNumber: normalizedPhone,
+      addressLine: normalizedAddress,
+      isDefault: hasAddress === 0,
+    },
+  });
+}
+
+function normalizeReceiverNameForAddress(value) {
+  const normalized = String(value ?? "").trim();
+  if (normalized.length >= 2) {
+    return normalized;
+  }
+
+  return "Khach hang";
+}
+
 async function removePurchasedCartItems(tx, cartId, purchasedCartItems) {
   if (!Array.isArray(purchasedCartItems) || purchasedCartItems.length === 0) {
     return;
@@ -949,13 +1165,121 @@ function resolveEffectiveItemPrice(item, now = new Date()) {
   return basePrice;
 }
 
-async function resolveCouponOrThrow(code, orderSubtotal) {
+async function buildPricingBreakdown({
+  userId,
+  cartItems,
+  productCouponCode = null,
+  shippingCouponCode = null,
+  shippingAddress = "",
+  selectedAddressId,
+  provider,
+  paymentMethod,
+}) {
+  const subtotal = (Array.isArray(cartItems) ? cartItems : []).reduce(
+    (sum, item) => sum + resolveEffectiveItemPrice(item) * item.quantity,
+    0,
+  );
+
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    return {
+      subtotal,
+      discountAmount: 0,
+      shippingFee: 0,
+      shippingDiscountAmount: 0,
+      totalAmount: subtotal,
+      appliedCoupon: null,
+      appliedShippingCoupon: null,
+    };
+  }
+
+  let resolvedShippingAddress = String(shippingAddress ?? "").trim();
+
+  if (!resolvedShippingAddress && Number.isFinite(Number(selectedAddressId)) && Number(selectedAddressId) > 0) {
+    const savedAddress = await prisma.userAddress.findFirst({
+      where: {
+        id: Number(selectedAddressId),
+        userId,
+      },
+    });
+
+    if (savedAddress) {
+      resolvedShippingAddress = String(savedAddress.addressLine ?? "").trim();
+    }
+  }
+
+  const shippingEstimate = estimateShippingFromCartItems({
+    provider,
+    addressText: resolvedShippingAddress,
+    cartItems,
+    isCodOrder: String(paymentMethod ?? "").trim().toUpperCase() === "COD",
+  });
+
+  const shippingFee = Number(shippingEstimate?.estimatedFee ?? 0);
+  const productCouponResolved = productCouponCode
+    ? await resolveCouponOrThrow({
+      code: productCouponCode,
+      scope: "PRODUCT",
+      userId,
+      baseAmount: subtotal,
+    })
+    : null;
+
+  const shippingCouponResolved = shippingCouponCode
+    ? await resolveCouponOrThrow({
+      code: shippingCouponCode,
+      scope: "SHIPPING",
+      userId,
+      baseAmount: shippingFee,
+    })
+    : null;
+
+  const discountAmount = Number(productCouponResolved?.discountAmount ?? 0);
+  const shippingDiscountAmount = Number(shippingCouponResolved?.discountAmount ?? 0);
+  const totalAmount = Math.max(0, subtotal - discountAmount + Math.max(0, shippingFee - shippingDiscountAmount));
+
+  return {
+    subtotal,
+    discountAmount,
+    shippingFee,
+    shippingDiscountAmount,
+    totalAmount,
+    appliedCoupon: productCouponResolved
+      ? {
+        id: productCouponResolved.coupon.id,
+        code: productCouponResolved.coupon.code,
+        discountType: productCouponResolved.coupon.discountType,
+        discountValue: productCouponResolved.coupon.discountValue,
+      }
+      : null,
+    appliedShippingCoupon: shippingCouponResolved
+      ? {
+        id: shippingCouponResolved.coupon.id,
+        code: shippingCouponResolved.coupon.code,
+        discountType: shippingCouponResolved.coupon.discountType,
+        discountValue: shippingCouponResolved.coupon.discountValue,
+      }
+      : null,
+  };
+}
+
+async function resolveCouponOrThrow({ code, scope, userId, baseAmount }) {
   const coupon = await prisma.coupon.findUnique({
-    where: { code },
+    where: { code: String(code ?? "").trim().toUpperCase() },
+    include: {
+      couponUsers: {
+        select: {
+          userId: true,
+        },
+      },
+    },
   });
 
   if (!coupon) {
     throw new Error("Voucher not found");
+  }
+
+  if (String(coupon.couponScope ?? "PRODUCT").toUpperCase() !== String(scope ?? "PRODUCT")) {
+    throw new Error("Voucher scope mismatch");
   }
 
   const now = new Date();
@@ -971,16 +1295,24 @@ async function resolveCouponOrThrow(code, orderSubtotal) {
     throw new Error("Voucher usage limit reached");
   }
 
+  if (
+    Array.isArray(coupon.couponUsers) &&
+    coupon.couponUsers.length > 0 &&
+    !coupon.couponUsers.some((item) => Number(item.userId) === Number(userId))
+  ) {
+    throw new Error("Bạn không được phép sử dụng voucher này");
+  }
+
   const minimumOrder = Number(coupon.minOrderValue ?? 0);
-  if (orderSubtotal < minimumOrder) {
+  if (baseAmount < minimumOrder) {
     throw new Error(`Order must be at least ${minimumOrder} to use this voucher`);
   }
 
   const rawDiscount =
     coupon.discountType === "PERCENT"
-      ? (orderSubtotal * Number(coupon.discountValue)) / 100
+      ? (baseAmount * Number(coupon.discountValue)) / 100
       : Number(coupon.discountValue);
-  const discountAmount = Math.min(orderSubtotal, Math.max(0, rawDiscount));
+  const discountAmount = Math.min(baseAmount, Math.max(0, rawDiscount));
 
   return {
     coupon,

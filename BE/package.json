@@ -15,6 +15,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@payos/node": "^2.0.5",
     "@prisma/client": "^6.7.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",

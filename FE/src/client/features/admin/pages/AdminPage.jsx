@@ -459,7 +459,6 @@ export default function AdminPage() {
   const [selectedOrderUserFilter, setSelectedOrderUserFilter] = useState(null);
   const [selectedOrderUserOrders, setSelectedOrderUserOrders] = useState([]);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
-  const [statusDraftByOrder, setStatusDraftByOrder] = useState({});
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [catalogBrands, setCatalogBrands] = useState([]);
@@ -495,6 +494,7 @@ export default function AdminPage() {
   const [userDetailError, setUserDetailError] = useState("");
   const [voucherForm, setVoucherForm] = useState({
     code: "",
+    couponScope: "PRODUCT",
     discountType: "PERCENT",
     discountValue: "",
     minOrderValue: "0",
@@ -502,6 +502,7 @@ export default function AdminPage() {
     startDate: "",
     endDate: "",
     status: "ACTIVE",
+    assignedUserIds: [],
   });
   const [productForm, setProductForm] = useState({
     name: "",
@@ -841,14 +842,6 @@ export default function AdminPage() {
         const payload = await response.json();
         if (!cancelled) {
           setAdminOrders(Array.isArray(payload) ? payload : []);
-          setStatusDraftByOrder(
-            Object.fromEntries(
-              (Array.isArray(payload) ? payload : []).map((order) => [
-                order.id,
-                order.orderStatus,
-              ]),
-            ),
-          );
         }
       } catch (error) {
         if (!cancelled) {
@@ -920,13 +913,18 @@ export default function AdminPage() {
     loadWarehouseOverview();
   }, [activeTab, isAuthenticated, isHydrated, token, loadWarehouseOverview]);
 
-  async function updateOrderStatus(orderId) {
+  async function updateOrderStatus(orderId, nextStatusOverride) {
     if (!token) {
       return;
     }
 
-    const nextStatus = statusDraftByOrder[orderId];
+    const targetOrder = adminOrders.find((order) => Number(order.id) === Number(orderId));
+    const nextStatus = String(nextStatusOverride ?? "").trim().toUpperCase();
     if (!nextStatus) {
+      return;
+    }
+
+    if (!targetOrder) {
       return;
     }
 
@@ -959,6 +957,10 @@ export default function AdminPage() {
       );
 
       toast({ title: "Đã cập nhật trạng thái đơn hàng" });
+
+      if (selectedOrderDetail?.id === orderId) {
+        await loadOrderDetail(orderId);
+      }
     } catch (error) {
       toast({
         title: "Không thể cập nhật",
@@ -968,6 +970,87 @@ export default function AdminPage() {
     } finally {
       setUpdatingOrderId(null);
     }
+  }
+
+  function renderOrderActionCell(item) {
+    const orderStatus = String(item.orderStatus ?? "").toUpperCase();
+    const paymentStatus = String(item.paymentStatus ?? "").toUpperCase();
+
+    if (orderStatus === "CANCELLED") {
+      return <span className="text-xs text-destructive">Đã hủy</span>;
+    }
+
+    if (orderStatus === "DELIVERED") {
+      return <span className="text-xs text-emerald-600">Đã hoàn thành</span>;
+    }
+
+    if (orderStatus === "PENDING" && paymentStatus === "PAID") {
+      return (
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-emerald-600">Đã thanh toán, yêu cầu chuẩn bị hàng</span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={updatingOrderId === item.id}
+              onClick={() => updateOrderStatus(item.id, "PROCESSING")}
+            >
+              Chuẩn bị xong
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={updatingOrderId === item.id}
+              onClick={() => updateOrderStatus(item.id, "CANCELLED")}
+            >
+              Hủy đơn
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (orderStatus === "PENDING") {
+      return <span className="text-xs text-muted-foreground">Chờ thanh toán</span>;
+    }
+
+    if (orderStatus === "PROCESSING") {
+      return (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={updatingOrderId === item.id}
+            onClick={() => updateOrderStatus(item.id, "SHIPPING")}
+          >
+            Đã giao hàng
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={updatingOrderId === item.id}
+            onClick={() => updateOrderStatus(item.id, "CANCELLED")}
+          >
+            Hủy đơn
+          </Button>
+        </div>
+      );
+    }
+
+    if (orderStatus === "SHIPPING") {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={updatingOrderId === item.id}
+          onClick={() => updateOrderStatus(item.id, "DELIVERED")}
+        >
+          Giao thành công
+        </Button>
+      );
+    }
+
+    return <span className="text-xs text-muted-foreground">-</span>;
   }
 
   async function loadOrderDetail(orderId) {
@@ -1952,15 +2035,48 @@ export default function AdminPage() {
 
     setIsSavingVoucher(true);
     try {
+      const normalizedCode = voucherForm.code.trim().toUpperCase();
+      const discountValue = Number(voucherForm.discountValue);
+      const minOrderValue = Number(voucherForm.minOrderValue || 0);
+      const usageLimit = Number(voucherForm.usageLimit || 100);
+      const startDate = voucherForm.startDate
+        ? new Date(voucherForm.startDate)
+        : null;
+      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+
+      if (!normalizedCode) {
+        throw new Error("Mã giảm giá không được để trống");
+      }
+      if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        throw new Error("Giá trị giảm phải lớn hơn 0");
+      }
+      if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+        throw new Error("Đơn tối thiểu phải >= 0");
+      }
+      if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+        throw new Error("Số lượt dùng phải lớn hơn 0");
+      }
+      if (!startDate || Number.isNaN(startDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian bắt đầu hợp lệ");
+      }
+      if (!endDate || Number.isNaN(endDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian kết thúc hợp lệ");
+      }
+      if (endDate <= startDate) {
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
+      }
+
       const payload = {
-        code: voucherForm.code.trim().toUpperCase(),
+        code: normalizedCode,
+        couponScope: voucherForm.couponScope,
         discountType: voucherForm.discountType,
-        discountValue: Number(voucherForm.discountValue),
-        minOrderValue: Number(voucherForm.minOrderValue || 0),
-        usageLimit: Number(voucherForm.usageLimit || 100),
-        startDate: new Date(voucherForm.startDate).toISOString(),
-        endDate: new Date(voucherForm.endDate).toISOString(),
+        discountValue,
+        minOrderValue,
+        usageLimit,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
         status: voucherForm.status,
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
       };
 
       const response = await fetch("/api/admin/coupons", {
@@ -1974,11 +2090,13 @@ export default function AdminPage() {
 
       const result = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(result?.message ?? "Tạo voucher thất bại");
+        const fieldMessage = extractIssueMessage(result?.issues);
+        throw new Error(fieldMessage || result?.message || "Tạo voucher thất bại");
       }
 
       setVoucherForm({
         code: "",
+        couponScope: "PRODUCT",
         discountType: "PERCENT",
         discountValue: "",
         minOrderValue: "0",
@@ -1986,6 +2104,7 @@ export default function AdminPage() {
         startDate: "",
         endDate: "",
         status: "ACTIVE",
+        assignedUserIds: [],
       });
 
       await refreshDashboardSummary();
@@ -1999,6 +2118,28 @@ export default function AdminPage() {
     } finally {
       setIsSavingVoucher(false);
     }
+  }
+
+  function extractIssueMessage(issues) {
+    if (!issues || typeof issues !== "object") {
+      return "";
+    }
+
+    const fieldErrors = issues?.fieldErrors;
+    if (fieldErrors && typeof fieldErrors === "object") {
+      for (const value of Object.values(fieldErrors)) {
+        if (Array.isArray(value) && value.length > 0 && value[0]) {
+          return String(value[0]);
+        }
+      }
+    }
+
+    const formErrors = issues?.formErrors;
+    if (Array.isArray(formErrors) && formErrors.length > 0 && formErrors[0]) {
+      return String(formErrors[0]);
+    }
+
+    return "";
   }
 
   async function editVoucher(item) {
@@ -4021,6 +4162,23 @@ export default function AdminPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-2">
+                        <label className="text-sm font-medium">Phạm vi mã</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.couponScope}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              couponScope: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="PRODUCT">Giảm giá sản phẩm</option>
+                          <option value="SHIPPING">Giảm phí vận chuyển</option>
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2">
                         <label className="text-sm font-medium">Loại giảm</label>
                         <select
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -4090,6 +4248,78 @@ export default function AdminPage() {
                             }))
                           }
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">
+                        Chỉ định user được dùng (không chọn = tất cả)
+                      </label>
+                      <div className="rounded-md border bg-background p-3 space-y-2">
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                assignedUserIds: (dashboard?.users ?? []).map((user) => user.id),
+                              }))
+                            }
+                          >
+                            Chọn tất cả
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                assignedUserIds: [],
+                              }))
+                            }
+                          >
+                            Bỏ chọn tất cả
+                          </Button>
+                        </div>
+
+                        <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                          {(dashboard?.users ?? []).map((user) => {
+                            const checked = (voucherForm.assignedUserIds ?? []).includes(user.id);
+                            return (
+                              <label
+                                key={`voucher-user-${user.id}`}
+                                className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    const isChecked = event.target.checked;
+                                    setVoucherForm((prev) => {
+                                      const current = new Set(prev.assignedUserIds ?? []);
+                                      if (isChecked) {
+                                        current.add(user.id);
+                                      } else {
+                                        current.delete(user.id);
+                                      }
+                                      return {
+                                        ...prev,
+                                        assignedUserIds: Array.from(current),
+                                      };
+                                    });
+                                  }}
+                                />
+                                <span className="text-sm">
+                                  <span className="font-medium">{user.fullName}</span>
+                                  <span className="text-muted-foreground"> ({user.email})</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
 
@@ -4196,9 +4426,11 @@ export default function AdminPage() {
                   <DataTable
                     columns={[
                       "Mã",
+                      "Phạm vi",
                       "Loại",
                       "Giá trị",
                       "Đơn tối thiểu",
+                      "User được dùng",
                       "Đã dùng / Giới hạn",
                       "Thời gian",
                       "Trạng thái",
@@ -4206,11 +4438,17 @@ export default function AdminPage() {
                     ]}
                     rows={(filteredCoupons ?? []).map((item) => [
                       item.code,
+                      item.couponScope === "SHIPPING" ? "Vận chuyển" : "Sản phẩm",
                       formatEnum(item.discountType),
                       item.discountType === "PERCENT"
                         ? `${Number(item.discountValue)}%`
                         : formatMoney(item.discountValue),
                       formatMoney(item.minOrderValue),
+                      Array.isArray(item.assignedUsers) && item.assignedUsers.length > 0
+                        ? item.assignedUsers
+                          .map((user) => user.fullName || user.email || `#${user.id}`)
+                          .join(", ")
+                        : "Tất cả",
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
                       statusBadge(formatEnum(item.status)),
@@ -4301,6 +4539,7 @@ export default function AdminPage() {
                   >
                     <option value="all">Tất cả</option>
                     <option value="PENDING">Chờ xác nhận</option>
+                    <option value="PROCESSING">Chuẩn bị hàng</option>
                     <option value="SHIPPING">Đang giao</option>
                     <option value="DELIVERED">Hoàn thành</option>
                     <option value="CANCELLED">Đã hủy</option>
@@ -4334,37 +4573,7 @@ export default function AdminPage() {
                   formatMoney(item.totalAmount),
                   statusBadge(formatEnum(item.paymentStatus)),
                   statusBadge(formatEnum(item.orderStatus)),
-                  item.orderStatus === "DELIVERED" ? (
-                    <span className="text-xs text-muted-foreground">
-                      Đã hoàn thành
-                    </span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="rounded-md border bg-background px-2 py-1 text-xs"
-                        value={statusDraftByOrder[item.id] ?? item.orderStatus}
-                        onChange={(event) =>
-                          setStatusDraftByOrder((prev) => ({
-                            ...prev,
-                            [item.id]: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="PENDING">Chờ xác nhận</option>
-                        <option value="SHIPPING">Đang giao</option>
-                        <option value="DELIVERED">Hoàn thành</option>
-                        <option value="CANCELLED">Đã hủy</option>
-                      </select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={updatingOrderId === item.id}
-                        onClick={() => updateOrderStatus(item.id)}
-                      >
-                        Lưu
-                      </Button>
-                    </div>
-                  ),
+                  renderOrderActionCell(item),
                 ])}
               />
               {displayedOrders.length === 0 && (

@@ -24,7 +24,7 @@ export default function PaymentResultPage() {
 
           <p className="mt-3 text-sm text-muted-foreground">
             {isSuccess
-              ? "Đơn hàng của bạn đã được ghi nhận và thanh toán thành công qua VNPAY."
+              ? "Đơn hàng của bạn đã được ghi nhận và thanh toán thành công."
               : "Giao dịch chưa hoàn tất. Bạn có thể thử lại hoặc chọn phương thức thanh toán khác."}
           </p>
 
@@ -33,7 +33,7 @@ export default function PaymentResultPage() {
               Mã đơn: <span className="font-semibold">{orderId || "-"}</span>
             </p>
             <p>
-              Mã giao dịch VNPAY: <span className="font-semibold">{txnNo || "-"}</span>
+              Mã giao dịch: <span className="font-semibold">{txnNo || "-"}</span>
             </p>
             <p>
               Trạng thái: <span className="font-semibold">{status}</span>

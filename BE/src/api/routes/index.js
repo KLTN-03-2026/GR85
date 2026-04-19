@@ -5,6 +5,7 @@ import { cartRouter } from "./cart.routes.js";
 import { orderRouter } from "./order.routes.js";
 import { productRouter } from "./product.routes.js";
 import { aiRouter } from "./ai.routes.js";
+import { paymentRouter } from "./payment.route.js";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/cart", cartRouter);
 router.use("/orders", orderRouter);
 router.use("/products", productRouter);
 router.use("/ai", aiRouter);
+router.use("/payments", paymentRouter);
 
 export { router as apiRouter };

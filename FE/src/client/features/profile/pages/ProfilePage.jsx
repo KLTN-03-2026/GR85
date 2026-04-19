@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,11 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  MapPin,
+  Plus,
+  Pencil,
+  Trash2,
+  Navigation,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileApi } from "@/client/features/profile/data/profile.api";
@@ -63,7 +68,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showPendingOrders, setShowPendingOrders] = useState(false);
+  const [orderCategoryFilter, setOrderCategoryFilter] = useState("ALL");
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
   const [errors, setErrors] = useState({});
@@ -90,6 +95,18 @@ export default function ProfilePage() {
 
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [addresses, setAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addressEditingId, setAddressEditingId] = useState(null);
+  const [addressForm, setAddressForm] = useState({
+    label: "",
+    receiverName: "",
+    phoneNumber: "",
+    addressLine: "",
+    isDefault: false,
+  });
+  const [addressFeedback, setAddressFeedback] = useState(null);
+  const [isLocatingAddress, setIsLocatingAddress] = useState(false);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -103,8 +120,12 @@ export default function ProfilePage() {
   async function loadProfile() {
     try {
       setLoading(true);
-      const data = await profileApi.getProfile();
+      const [data, addressList] = await Promise.all([
+        profileApi.getProfile(),
+        profileApi.getAddresses(),
+      ]);
       setProfileData(data);
+      setAddresses(Array.isArray(addressList) ? addressList : []);
       setFormData({
         fullName: data.fullName || "",
         phone: data.phone || "",
@@ -187,15 +208,84 @@ export default function ProfilePage() {
     }
   }
 
-  const visibleOrders = showPendingOrders
-    ? orders
-    : orders.filter(
-        (order) =>
-          !(
-            String(order?.paymentStatus ?? "").toUpperCase() === "PENDING" &&
-            String(order?.orderStatus ?? "").toUpperCase() === "PENDING"
-          ),
-      );
+  const orderFilterItems = useMemo(
+    () => [
+      { value: "ALL", label: "Tất cả" },
+      { value: "PENDING_PAYMENT", label: "Chờ thanh toán" },
+      { value: "PAID", label: "Đã thanh toán" },
+      { value: "PROCESSING", label: "Chuẩn bị hàng" },
+      { value: "SHIPPING", label: "Đang giao" },
+      { value: "DELIVERED", label: "Hoàn thành" },
+      { value: "CANCELLED", label: "Đã hủy" },
+    ],
+    [],
+  );
+
+  const orderCategoryCounts = useMemo(() => {
+    const counts = {
+      ALL: orders.length,
+      PENDING_PAYMENT: 0,
+      PAID: 0,
+      PROCESSING: 0,
+      SHIPPING: 0,
+      DELIVERED: 0,
+      CANCELLED: 0,
+    };
+
+    for (const order of orders) {
+      const paymentStatus = String(order?.paymentStatus ?? "").toUpperCase();
+      const orderStatus = String(order?.orderStatus ?? "").toUpperCase();
+
+      if (paymentStatus === "PENDING") {
+        counts.PENDING_PAYMENT += 1;
+      }
+      if (paymentStatus === "PAID") {
+        counts.PAID += 1;
+      }
+      if (orderStatus === "PROCESSING") {
+        counts.PROCESSING += 1;
+      }
+      if (orderStatus === "SHIPPING") {
+        counts.SHIPPING += 1;
+      }
+      if (orderStatus === "DELIVERED") {
+        counts.DELIVERED += 1;
+      }
+      if (orderStatus === "CANCELLED") {
+        counts.CANCELLED += 1;
+      }
+    }
+
+    return counts;
+  }, [orders]);
+
+  const visibleOrders = useMemo(() => {
+    if (orderCategoryFilter === "ALL") {
+      return orders;
+    }
+
+    return orders.filter((order) => {
+      const paymentStatus = String(order?.paymentStatus ?? "").toUpperCase();
+      const orderStatus = String(order?.orderStatus ?? "").toUpperCase();
+
+      switch (orderCategoryFilter) {
+        case "PENDING_PAYMENT":
+          return paymentStatus === "PENDING";
+        case "PAID":
+          return paymentStatus === "PAID";
+        case "PROCESSING":
+          return orderStatus === "PROCESSING";
+        case "SHIPPING":
+          return orderStatus === "SHIPPING";
+        case "DELIVERED":
+          return orderStatus === "DELIVERED";
+        case "CANCELLED":
+          return orderStatus === "CANCELLED";
+        default:
+          return true;
+      }
+    });
+  }, [orderCategoryFilter, orders]);
 
   async function loadOrderDetail(orderId) {
     try {
@@ -268,6 +358,128 @@ export default function ProfilePage() {
       });
     } finally {
       setChangingPassword(false);
+    }
+  }
+
+  function resetAddressForm(next = {}) {
+    setAddressForm({
+      label: next.label || "",
+      receiverName: next.receiverName || formData.fullName || "",
+      phoneNumber: next.phoneNumber || formData.phone || "",
+      addressLine: next.addressLine || "",
+      isDefault: Boolean(next.isDefault),
+    });
+  }
+
+  async function reloadAddresses() {
+    try {
+      setAddressesLoading(true);
+      const list = await profileApi.getAddresses();
+      setAddresses(Array.isArray(list) ? list : []);
+    } finally {
+      setAddressesLoading(false);
+    }
+  }
+
+  function beginCreateAddress() {
+    setAddressEditingId(null);
+    resetAddressForm({ isDefault: addresses.length === 0 });
+    setAddressFeedback(null);
+  }
+
+  function beginEditAddress(item) {
+    setAddressEditingId(item.id);
+    resetAddressForm(item);
+    setAddressFeedback(null);
+  }
+
+  async function submitAddressForm(e) {
+    e.preventDefault();
+
+    try {
+      const receiverNameError = profileValidation.fullName(addressForm.receiverName);
+      if (receiverNameError) {
+        throw new Error(receiverNameError);
+      }
+
+      const phoneError = profileValidation.phone(addressForm.phoneNumber) ||
+        (!addressForm.phoneNumber ? "Số điện thoại không được trống" : "");
+      if (phoneError) {
+        throw new Error(phoneError);
+      }
+
+      const addressError = profileValidation.address(addressForm.addressLine);
+      if (addressError) {
+        throw new Error(addressError);
+      }
+
+      const payload = {
+        label: String(addressForm.label ?? "").trim(),
+        receiverName: String(addressForm.receiverName ?? "").trim(),
+        phoneNumber: String(addressForm.phoneNumber ?? "").trim(),
+        addressLine: String(addressForm.addressLine ?? "").trim(),
+        isDefault: Boolean(addressForm.isDefault),
+      };
+
+      if (addressEditingId) {
+        await profileApi.updateAddress(addressEditingId, payload);
+      } else {
+        await profileApi.createAddress(payload);
+      }
+
+      setAddressFeedback({
+        type: "success",
+        text: addressEditingId ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ mới",
+      });
+      setAddressEditingId(null);
+      setAddressForm({
+        label: "",
+        receiverName: "",
+        phoneNumber: "",
+        addressLine: "",
+        isDefault: false,
+      });
+      await reloadAddresses();
+    } catch (error) {
+      setAddressFeedback({
+        type: "error",
+        text: error.message || "Không thể lưu địa chỉ",
+      });
+    }
+  }
+
+  async function removeAddress(addressId) {
+    try {
+      await profileApi.deleteAddress(addressId);
+      setAddressFeedback({
+        type: "success",
+        text: "Đã xóa địa chỉ",
+      });
+      if (addressEditingId === addressId) {
+        setAddressEditingId(null);
+      }
+      await reloadAddresses();
+    } catch (error) {
+      setAddressFeedback({
+        type: "error",
+        text: error.message || "Không thể xóa địa chỉ",
+      });
+    }
+  }
+
+  async function fillAddressFromGps() {
+    try {
+      setIsLocatingAddress(true);
+      const { latitude, longitude } = await getBrowserCoordinates();
+      const resolvedAddress = await reverseGeocodeByCoordinates(latitude, longitude);
+      setAddressForm((prev) => ({ ...prev, addressLine: resolvedAddress }));
+    } catch (error) {
+      setAddressFeedback({
+        type: "error",
+        text: error.message || "Không thể lấy địa chỉ từ GPS",
+      });
+    } finally {
+      setIsLocatingAddress(false);
     }
   }
 
@@ -398,6 +610,13 @@ export default function ProfilePage() {
                 className="rounded-b-none"
               >
                 Đơn hàng của tôi
+              </Button>
+              <Button
+                variant={activeTab === "addresses" ? "default" : "ghost"}
+                onClick={() => setActiveTab("addresses")}
+                className="rounded-b-none"
+              >
+                Sổ địa chỉ
               </Button>
             </div>
 
@@ -771,19 +990,30 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold">Danh sách đơn hàng</h3>
-                    <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={showPendingOrders}
-                          onChange={(event) => setShowPendingOrders(event.target.checked)}
-                        />
-                        Hiển thị đơn chờ thanh toán
-                      </label>
-                      <Button variant="outline" onClick={loadMyOrders}>
-                        Tải lại
-                      </Button>
-                    </div>
+                    <Button variant="outline" onClick={loadMyOrders}>
+                      Tải lại
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {orderFilterItems.map((item) => {
+                      const isActive = orderCategoryFilter === item.value;
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          size="sm"
+                          variant={isActive ? "default" : "outline"}
+                          onClick={() => setOrderCategoryFilter(item.value)}
+                          className="gap-2"
+                        >
+                          <span>{item.label}</span>
+                          <Badge variant={isActive ? "secondary" : "outline"}>
+                            {orderCategoryCounts[item.value] ?? 0}
+                          </Badge>
+                        </Button>
+                      );
+                    })}
                   </div>
 
                   {ordersLoading ? (
@@ -813,9 +1043,27 @@ export default function ProfilePage() {
                               <td className="px-3 py-3">#{order.id}</td>
                               <td className="px-3 py-3">{formatDate(order.createdAt)}</td>
                               <td className="px-3 py-3">{formatMoney(order.totalAmount)}</td>
-                              <td className="px-3 py-3">{formatEnum(order.paymentStatus)}</td>
                               <td className="px-3 py-3">
-                                <Badge variant="outline">{formatEnum(order.orderStatus)}</Badge>
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      String(order.paymentStatus ?? "").toUpperCase() === "PAID"
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : ""
+                                    }
+                                  >
+                                    {formatPaymentStatus(order.paymentStatus)}
+                                  </Badge>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="space-y-1">
+                                  <Badge variant="outline">{formatOrderStatus(order.orderStatus)}</Badge>
+                                  <p className="text-xs text-muted-foreground">
+                                    {getOrderStatusDescription(order)}
+                                  </p>
+                                </div>
                               </td>
                               <td className="px-3 py-3">
                                 <Button
@@ -872,12 +1120,27 @@ export default function ProfilePage() {
                         </div>
 
                         <div>
+                          <h5 className="mb-2 text-sm font-semibold">Tình trạng đơn hàng</h5>
+                          <div className="mb-3 rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                            <p className="font-medium">
+                              {getOrderStatusDescription(selectedOrderDetail)}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge variant="outline">
+                                Thanh toán: {formatPaymentStatus(selectedOrderDetail.paymentStatus)}
+                              </Badge>
+                              <Badge variant="outline">
+                                Đơn hàng: {formatOrderStatus(selectedOrderDetail.orderStatus)}
+                              </Badge>
+                            </div>
+                          </div>
+
                           <h5 className="mb-2 text-sm font-semibold">Lịch sử trạng thái</h5>
                           <div className="space-y-2">
                             {(selectedOrderDetail.statusHistory ?? []).map((entry) => (
                               <div key={entry.id} className="rounded-lg border p-2 text-sm">
                                 <p className="font-medium">
-                                  {formatEnum(entry.fromStatus)} → {formatEnum(entry.toStatus)}
+                                  {formatOrderStatus(entry.fromStatus)} → {formatOrderStatus(entry.toStatus)}
                                 </p>
                                 <p className="text-muted-foreground">{formatDate(entry.createdAt)}</p>
                                 {entry.note ? <p className="text-xs">{entry.note}</p> : null}
@@ -887,6 +1150,155 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {activeTab === "addresses" && (
+              <Card className="p-6">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-semibold">Sổ địa chỉ giao hàng</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Lưu nhiều địa chỉ để chọn nhanh khi đặt hàng
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={beginCreateAddress} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Thêm địa chỉ
+                  </Button>
+                </div>
+
+                {addressFeedback && (
+                  <Alert
+                    className={`mb-4 ${
+                      addressFeedback.type === "success"
+                        ? "border-green-500 bg-green-500/10"
+                        : "border-red-500 bg-red-500/10"
+                    }`}
+                  >
+                    <AlertDescription
+                      className={
+                        addressFeedback.type === "success"
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }
+                    >
+                      {addressFeedback.text}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <form onSubmit={submitAddressForm} className="space-y-3 rounded-lg border border-border/70 p-4">
+                  <Input
+                    placeholder="Nhãn địa chỉ (Nhà, Công ty...)"
+                    value={addressForm.label}
+                    onChange={(event) =>
+                      setAddressForm((prev) => ({ ...prev, label: event.target.value }))
+                    }
+                  />
+                  <Input
+                    placeholder="Tên người nhận"
+                    value={addressForm.receiverName}
+                    onChange={(event) =>
+                      setAddressForm((prev) => ({ ...prev, receiverName: event.target.value }))
+                    }
+                  />
+                  <Input
+                    placeholder="Số điện thoại"
+                    value={addressForm.phoneNumber}
+                    onChange={(event) =>
+                      setAddressForm((prev) => ({
+                        ...prev,
+                        phoneNumber: event.target.value.replace(/\D/g, "").slice(0, 10),
+                      }))
+                    }
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Địa chỉ đầy đủ"
+                      value={addressForm.addressLine}
+                      onChange={(event) =>
+                        setAddressForm((prev) => ({ ...prev, addressLine: event.target.value }))
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={fillAddressFromGps}
+                      disabled={isLocatingAddress}
+                      className="gap-2"
+                    >
+                      {isLocatingAddress ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Navigation className="h-4 w-4" />
+                      )}
+                      GPS
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={addressForm.isDefault}
+                      onChange={(event) =>
+                        setAddressForm((prev) => ({ ...prev, isDefault: event.target.checked }))
+                      }
+                    />
+                    Đặt làm địa chỉ mặc định
+                  </label>
+                  <div className="flex gap-2">
+                    <Button type="submit" className="gap-2">
+                      <MapPin className="h-4 w-4" />
+                      {addressEditingId ? "Lưu địa chỉ" : "Thêm địa chỉ"}
+                    </Button>
+                    {addressEditingId ? (
+                      <Button type="button" variant="outline" onClick={beginCreateAddress}>
+                        Hủy chỉnh sửa
+                      </Button>
+                    ) : null}
+                  </div>
+                </form>
+
+                <div className="mt-4 space-y-3">
+                  {addressesLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang tải địa chỉ...
+                    </div>
+                  ) : addresses.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Bạn chưa có địa chỉ nào.</p>
+                  ) : (
+                    addresses.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border/70 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">
+                              {item.label ? `${item.label} - ` : ""}
+                              {item.receiverName}
+                              {item.isDefault ? " (Mặc định)" : ""}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{item.phoneNumber}</p>
+                            <p className="text-sm">{item.addressLine}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => beginEditAddress(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => removeAddress(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </Card>
@@ -923,6 +1335,126 @@ function formatEnum(value) {
     .join(" ");
 }
 
+function formatPaymentStatus(value) {
+  const status = String(value ?? "").toUpperCase();
+  const map = {
+    PENDING: "Chờ thanh toán",
+    PAID: "Đã thanh toán",
+    FAILED: "Thanh toán thất bại",
+    REFUNDED: "Đã hoàn tiền",
+  };
+  return map[status] || formatEnum(value);
+}
+
+function formatOrderStatus(value) {
+  const status = String(value ?? "").toUpperCase();
+  const map = {
+    PENDING: "Chờ xác nhận",
+    PROCESSING: "Đang chuẩn bị hàng",
+    SHIPPING: "Đang giao hàng",
+    DELIVERED: "Đã giao thành công",
+    CANCELLED: "Đã hủy",
+  };
+  return map[status] || formatEnum(value);
+}
+
+function getOrderStatusDescription(order) {
+  const paymentStatus = String(order?.paymentStatus ?? "").toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "").toUpperCase();
+
+  if (orderStatus === "CANCELLED") {
+    return paymentStatus === "REFUNDED"
+      ? "Đơn hàng đã bị hủy và số tiền đã được hoàn trả."
+      : "Đơn hàng đã bị hủy.";
+  }
+
+  if (paymentStatus === "PENDING") {
+    return "Đơn hàng đang chờ thanh toán. Vui lòng hoàn tất thanh toán để hệ thống xử lý.";
+  }
+
+  if (paymentStatus === "FAILED") {
+    return "Thanh toán thất bại. Bạn có thể thử thanh toán lại hoặc tạo đơn mới.";
+  }
+
+  if (orderStatus === "PENDING") {
+    return "Đơn hàng đã thanh toán, hệ thống đang chờ xác nhận tự động.";
+  }
+
+  if (orderStatus === "PROCESSING") {
+    return "Đơn hàng đã được xác nhận thanh toán và đang trong quá trình chuẩn bị hàng.";
+  }
+
+  if (orderStatus === "SHIPPING") {
+    return "Đơn hàng đã bàn giao cho đơn vị vận chuyển và đang trên đường giao tới bạn.";
+  }
+
+  if (orderStatus === "DELIVERED") {
+    return "Đơn hàng đã giao thành công. Bạn có thể gửi yêu cầu trả hàng nếu cần.";
+  }
+
+  return "Đơn hàng đang được xử lý.";
+}
+
+function formatPaymentStatus(value) {
+  const status = String(value ?? "").toUpperCase();
+  const map = {
+    PENDING: "Chờ thanh toán",
+    PAID: "Đã thanh toán",
+    FAILED: "Thanh toán thất bại",
+    REFUNDED: "Đã hoàn tiền",
+  };
+  return map[status] || formatEnum(value);
+}
+
+function formatOrderStatus(value) {
+  const status = String(value ?? "").toUpperCase();
+  const map = {
+    PENDING: "Chờ xác nhận",
+    PROCESSING: "Đang chuẩn bị hàng",
+    SHIPPING: "Đang giao hàng",
+    DELIVERED: "Đã giao thành công",
+    CANCELLED: "Đã hủy",
+  };
+  return map[status] || formatEnum(value);
+}
+
+function getOrderStatusDescription(order) {
+  const paymentStatus = String(order?.paymentStatus ?? "").toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "").toUpperCase();
+
+  if (orderStatus === "CANCELLED") {
+    return paymentStatus === "REFUNDED"
+      ? "Đơn hàng đã bị hủy và số tiền đã được hoàn trả."
+      : "Đơn hàng đã bị hủy.";
+  }
+
+  if (paymentStatus === "PENDING") {
+    return "Đơn hàng đang chờ thanh toán. Vui lòng hoàn tất thanh toán để hệ thống xử lý.";
+  }
+
+  if (paymentStatus === "FAILED") {
+    return "Thanh toán thất bại. Bạn có thể thử thanh toán lại hoặc tạo đơn mới.";
+  }
+
+  if (orderStatus === "PENDING") {
+    return "Đơn hàng đã thanh toán, hệ thống đang chờ xác nhận tự động.";
+  }
+
+  if (orderStatus === "PROCESSING") {
+    return "Đơn hàng đã được xác nhận thanh toán và đang trong quá trình chuẩn bị hàng.";
+  }
+
+  if (orderStatus === "SHIPPING") {
+    return "Đơn hàng đã bàn giao cho đơn vị vận chuyển và đang trên đường giao tới bạn.";
+  }
+
+  if (orderStatus === "DELIVERED") {
+    return "Đơn hàng đã giao thành công. Bạn có thể gửi yêu cầu trả hàng nếu cần.";
+  }
+
+  return "Đơn hàng đang được xử lý.";
+}
+
 function canRequestReturn(order) {
   return (
     String(order?.orderStatus ?? "").toUpperCase() === "DELIVERED" &&
@@ -944,4 +1476,58 @@ function formatDate(value) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function getBrowserCoordinates() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.navigator?.geolocation) {
+      reject(new Error("Trình duyệt không hỗ trợ GPS"));
+      return;
+    }
+
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      (error) => {
+        if (error?.code === 1) {
+          reject(new Error("Bạn cần cấp quyền vị trí để dùng GPS"));
+          return;
+        }
+
+        reject(new Error("Không lấy được vị trí hiện tại"));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      },
+    );
+  });
+}
+
+async function reverseGeocodeByCoordinates(latitude, longitude) {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Dịch vụ định vị đang bận, vui lòng thử lại");
+  }
+
+  const payload = await response.json();
+  const address = String(payload?.display_name ?? "").trim();
+
+  if (!address) {
+    throw new Error("Không thể chuyển GPS thành địa chỉ");
+  }
+
+  return address;
 }

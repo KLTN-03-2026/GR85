@@ -461,9 +461,11 @@ export function CartProvider({ children }) {
       paymentMethod,
       bankCode,
       addressId,
-      couponCode,
+      productCouponCode,
+      shippingCouponCode,
       useWalletBalance,
       selectedCartItemIds,
+      provider,
     }) => {
       if (!isAuthenticated || !token) {
         throw new Error("Vui lòng đăng nhập để thanh toán");
@@ -477,9 +479,11 @@ export function CartProvider({ children }) {
           paymentMethod,
           bankCode,
           addressId,
-          couponCode,
+          productCouponCode,
+          shippingCouponCode,
           useWalletBalance,
           selectedCartItemIds,
+          provider,
         }),
       });
 
@@ -510,7 +514,15 @@ export function CartProvider({ children }) {
   );
 
   const previewPricing = useCallback(
-    async ({ couponCode, selectedCartItemIds }) => {
+    async ({
+      productCouponCode,
+      shippingCouponCode,
+      selectedCartItemIds,
+      addressId,
+      shippingAddress,
+      provider,
+      paymentMethod,
+    }) => {
       if (!isAuthenticated || !token) {
         const normalizedIds = new Set(
           (Array.isArray(selectedCartItemIds) ? selectedCartItemIds : [])
@@ -524,24 +536,56 @@ export function CartProvider({ children }) {
           0,
         );
 
-        if (couponCode) {
+        if (productCouponCode || shippingCouponCode) {
           throw new Error("Vui lòng đăng nhập để sử dụng voucher");
         }
 
         return {
           subtotal,
           discountAmount: 0,
+          shippingFee: 0,
+          shippingDiscountAmount: 0,
           totalAmount: subtotal,
           appliedCoupon: null,
+          appliedShippingCoupon: null,
         };
       }
 
       return callCartApi("/preview-pricing", {
         method: "POST",
-        body: JSON.stringify({ couponCode, selectedCartItemIds }),
+        body: JSON.stringify({
+          productCouponCode,
+          shippingCouponCode,
+          selectedCartItemIds,
+          addressId,
+          shippingAddress,
+          provider,
+          paymentMethod,
+        }),
       });
     },
     [callCartApi, cart.items, isAuthenticated, token],
+  );
+
+  const listAvailableCoupons = useCallback(
+    async ({ scope, selectedCartItemIds, addressId, shippingAddress, provider, paymentMethod }) => {
+      if (!isAuthenticated || !token) {
+        return [];
+      }
+
+      return callCartApi("/available-coupons", {
+        method: "POST",
+        body: JSON.stringify({
+          scope,
+          selectedCartItemIds,
+          addressId,
+          shippingAddress,
+          provider,
+          paymentMethod,
+        }),
+      });
+    },
+    [callCartApi, isAuthenticated, token],
   );
 
   const estimateShipping = useCallback(
@@ -587,6 +631,7 @@ export function CartProvider({ children }) {
       checkout,
       confirmMockPayment,
       previewPricing,
+      listAvailableCoupons,
       estimateShipping,
       refreshCart,
     }),
@@ -607,6 +652,7 @@ export function CartProvider({ children }) {
       checkout,
       confirmMockPayment,
       previewPricing,
+      listAvailableCoupons,
       estimateShipping,
       refreshCart,
     ],

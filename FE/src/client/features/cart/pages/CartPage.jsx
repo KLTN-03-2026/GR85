@@ -8,12 +8,16 @@ import { useCart } from "@/contexts/CartContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AOS from "aos";
 import {
+  AlertCircle,
+  CheckCircle2,
   Minus,
   Plus,
   Trash2,
   ShoppingBag,
   ArrowRight,
   Package,
+  Navigation,
+  Loader2,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { profileApi } from "@/client/features/profile/data/profile.api";
@@ -23,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function CartPage() {
   const [shippingAddress, setShippingAddress] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("SEPAY");
+  const [paymentMethod, setPaymentMethod] = useState("PAYOS");
   const [addresses, setAddresses] = useState([]);
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState("");
@@ -38,13 +42,19 @@ export default function CartPage() {
   });
   const [addressError, setAddressError] = useState("");
   const [addressMessage, setAddressMessage] = useState("");
-  const [voucherCode, setVoucherCode] = useState("");
+  const [isLocatingAddress, setIsLocatingAddress] = useState(false);
+  const [productVoucherCode, setProductVoucherCode] = useState("");
+  const [shippingVoucherCode, setShippingVoucherCode] = useState("");
   const [pricingPreview, setPricingPreview] = useState(null);
   const [shippingEstimate, setShippingEstimate] = useState(null);
   const [shippingEstimateError, setShippingEstimateError] = useState("");
   const [shippingProvider, setShippingProvider] = useState("GHN");
-  const [voucherFeedback, setVoucherFeedback] = useState("");
-  const [voucherError, setVoucherError] = useState("");
+  const [productVoucherFeedback, setProductVoucherFeedback] = useState("");
+  const [productVoucherError, setProductVoucherError] = useState("");
+  const [shippingVoucherFeedback, setShippingVoucherFeedback] = useState("");
+  const [shippingVoucherError, setShippingVoucherError] = useState("");
+  const [availableProductCoupons, setAvailableProductCoupons] = useState([]);
+  const [availableShippingCoupons, setAvailableShippingCoupons] = useState([]);
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
   const [removingBundleId, setRemovingBundleId] = useState("");
@@ -75,6 +85,7 @@ export default function CartPage() {
     removeBundle,
     checkout,
     previewPricing,
+    listAvailableCoupons,
     estimateShipping,
     bundles,
   } = useCart();
@@ -202,8 +213,10 @@ export default function CartPage() {
     setPricingPreview(null);
     setShippingEstimate(null);
     setShippingEstimateError("");
-    setVoucherFeedback("");
-    setVoucherError("");
+    setProductVoucherFeedback("");
+    setProductVoucherError("");
+    setShippingVoucherFeedback("");
+    setShippingVoucherError("");
   }, [items.length, totalPrice, selectedCartItemSignature]);
 
   useEffect(() => {
@@ -257,6 +270,67 @@ export default function CartPage() {
     shippingAddress,
     shippingProvider,
     paymentMethod,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAvailableCoupons() {
+      if (!isAuthenticated || selectedCartItemIds.length === 0) {
+        setAvailableProductCoupons([]);
+        setAvailableShippingCoupons([]);
+        return;
+      }
+
+      try {
+        const [productList, shippingList] = await Promise.all([
+          listAvailableCoupons({
+            scope: "PRODUCT",
+            selectedCartItemIds,
+            addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+            shippingAddress,
+            provider: shippingProvider,
+            paymentMethod,
+          }),
+          listAvailableCoupons({
+            scope: "SHIPPING",
+            selectedCartItemIds,
+            addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+            shippingAddress,
+            provider: shippingProvider,
+            paymentMethod,
+          }),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setAvailableProductCoupons(Array.isArray(productList) ? productList : []);
+        setAvailableShippingCoupons(Array.isArray(shippingList) ? shippingList : []);
+      } catch (_error) {
+        if (cancelled) {
+          return;
+        }
+        setAvailableProductCoupons([]);
+        setAvailableShippingCoupons([]);
+      }
+    }
+
+    loadAvailableCoupons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAuthenticated,
+    listAvailableCoupons,
+    paymentMethod,
+    selectedAddressId,
+    selectedCartItemIds,
+    selectedCartItemSignature,
+    shippingAddress,
+    shippingProvider,
   ]);
 
   useEffect(() => {
@@ -422,9 +496,40 @@ export default function CartPage() {
     }
   }
 
-  async function applyVoucher() {
-    setVoucherFeedback("");
-    setVoucherError("");
+  async function fillAddressFromGps(target = "checkout") {
+    setAddressError("");
+    setCheckoutError("");
+
+    try {
+      setIsLocatingAddress(true);
+      const { latitude, longitude } = await getBrowserCoordinates();
+      const resolvedAddress = await reverseGeocodeByCoordinates(latitude, longitude);
+
+      if (target === "form") {
+        setAddressForm((prev) => ({ ...prev, addressLine: resolvedAddress }));
+      } else {
+        setSelectedAddressId("");
+        setShippingAddress(resolvedAddress);
+      }
+    } catch (error) {
+      const fallbackMessage =
+        target === "form"
+          ? "Không thể lấy địa chỉ từ GPS"
+          : "Không thể lấy địa chỉ giao hàng từ GPS";
+      const message = error instanceof Error ? error.message : fallbackMessage;
+      if (target === "form") {
+        setAddressError(message);
+      } else {
+        setCheckoutError(message);
+      }
+    } finally {
+      setIsLocatingAddress(false);
+    }
+  }
+
+  async function applyProductVoucher() {
+    setProductVoucherFeedback("");
+    setProductVoucherError("");
 
     try {
       if (selectedCartItemIds.length === 0) {
@@ -432,18 +537,105 @@ export default function CartPage() {
       }
 
       const data = await previewPricing({
-        couponCode: voucherCode.trim() || undefined,
+        productCouponCode: productVoucherCode.trim() || undefined,
+        shippingCouponCode: shippingVoucherCode.trim() || undefined,
         selectedCartItemIds,
+        addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+        shippingAddress,
+        provider: shippingProvider,
+        paymentMethod,
       });
       setPricingPreview(data);
       if (data?.appliedCoupon?.code) {
-        setVoucherFeedback(`Đã áp mã ${data.appliedCoupon.code}`);
+        setProductVoucherFeedback(`Đã áp mã ${data.appliedCoupon.code}`);
       } else {
-        setVoucherFeedback("Không áp dụng voucher");
+        setProductVoucherFeedback("Không áp dụng voucher sản phẩm");
       }
     } catch (error) {
       setPricingPreview(null);
-      setVoucherError(error instanceof Error ? error.message : "Áp voucher thất bại");
+      setProductVoucherError(
+        formatVoucherError(error instanceof Error ? error.message : "Áp voucher thất bại"),
+      );
+    }
+  }
+
+  async function applyShippingVoucher() {
+    setShippingVoucherFeedback("");
+    setShippingVoucherError("");
+
+    try {
+      if (selectedCartItemIds.length === 0) {
+        throw new Error("Hãy chọn ít nhất 1 sản phẩm hoặc combo để áp voucher");
+      }
+
+      const data = await previewPricing({
+        productCouponCode: productVoucherCode.trim() || undefined,
+        shippingCouponCode: shippingVoucherCode.trim() || undefined,
+        selectedCartItemIds,
+        addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+        shippingAddress,
+        provider: shippingProvider,
+        paymentMethod,
+      });
+      setPricingPreview(data);
+      if (data?.appliedShippingCoupon?.code) {
+        setShippingVoucherFeedback(`Đã áp mã ${data.appliedShippingCoupon.code}`);
+      } else {
+        setShippingVoucherFeedback("Không áp dụng voucher vận chuyển");
+      }
+    } catch (error) {
+      setPricingPreview(null);
+      setShippingVoucherError(
+        formatVoucherError(
+          error instanceof Error ? error.message : "Áp voucher vận chuyển thất bại",
+        ),
+      );
+    }
+  }
+
+  async function clearProductVoucher() {
+    setProductVoucherCode("");
+    setProductVoucherFeedback("");
+    setProductVoucherError("");
+
+    try {
+      const data = await previewPricing({
+        productCouponCode: undefined,
+        shippingCouponCode: shippingVoucherCode.trim() || undefined,
+        selectedCartItemIds,
+        addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+        shippingAddress,
+        provider: shippingProvider,
+        paymentMethod,
+      });
+      setPricingPreview(data);
+      setProductVoucherFeedback("Đã bỏ chọn voucher sản phẩm");
+    } catch (_error) {
+      setPricingPreview(null);
+      setProductVoucherFeedback("Đã bỏ chọn voucher sản phẩm");
+    }
+  }
+
+  async function clearShippingVoucher() {
+    setShippingVoucherCode("");
+    setShippingVoucherFeedback("");
+    setShippingVoucherError("");
+
+    try {
+      const data = await previewPricing({
+        productCouponCode: productVoucherCode.trim() || undefined,
+        shippingCouponCode: undefined,
+        selectedCartItemIds,
+        addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
+        shippingAddress,
+        provider: shippingProvider,
+        paymentMethod,
+      });
+      setPricingPreview(data);
+      setShippingVoucherFeedback("Đã bỏ chọn voucher vận chuyển");
+    } catch (_error) {
+      setPricingPreview(null);
+      setShippingVoucherFeedback("Đã bỏ chọn voucher vận chuyển");
     }
   }
 
@@ -731,7 +923,7 @@ export default function CartPage() {
                       <span>{formatPrice(Number(pricingPreview?.subtotal ?? selectedSubtotal))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Giảm giá voucher</span>
+                      <span className="text-muted-foreground">Giảm giá sản phẩm</span>
                       <span className="text-emerald-600">
                         -{formatPrice(Number(pricingPreview?.discountAmount ?? 0))}
                       </span>
@@ -741,9 +933,19 @@ export default function CartPage() {
                         Phí vận chuyển
                       </span>
                       <span className="text-storage">
-                        {shippingEstimate
-                          ? formatPrice(Number(shippingEstimate.estimatedFee ?? 0))
-                          : "Đang ước tính"}
+                        {formatPrice(
+                          Number(
+                            pricingPreview?.shippingFee ??
+                              shippingEstimate?.estimatedFee ??
+                              0,
+                          ),
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Giảm phí vận chuyển</span>
+                      <span className="text-emerald-600">
+                        -{formatPrice(Number(pricingPreview?.shippingDiscountAmount ?? 0))}
                       </span>
                     </div>
                     {shippingEstimate?.estimatedDeliveryText && (
@@ -762,8 +964,10 @@ export default function CartPage() {
                     <span className="font-semibold">Tổng cộng</span>
                     <span className="text-2xl font-bold text-gradient-primary">
                       {formatPrice(
-                        Number(pricingPreview?.totalAmount ?? selectedSubtotal) +
-                          Number(shippingEstimate?.estimatedFee ?? 0),
+                        Number(
+                          pricingPreview?.totalAmount ??
+                            selectedSubtotal + Number(shippingEstimate?.estimatedFee ?? 0),
+                        ),
                       )}
                     </span>
                   </div>
@@ -780,20 +984,100 @@ export default function CartPage() {
                     </select>
                   </div>
 
-                  <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-2">
-                    <p className="text-sm font-medium">Voucher</p>
+                  <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-4">
+                    <p className="text-sm font-medium">Voucher giảm giá sản phẩm</p>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={productVoucherCode}
+                      onChange={(event) => {
+                        setProductVoucherCode(event.target.value.toUpperCase());
+                      }}
+                    >
+                      <option value="">Không chọn voucher sản phẩm</option>
+                      {availableProductCoupons.map((coupon) => (
+                        <option key={`product-coupon-${coupon.id}`} value={coupon.code}>
+                          {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
+                        </option>
+                      ))}
+                    </select>
                     <div className="flex gap-2">
                       <Input
-                        placeholder="Nhập mã voucher"
-                        value={voucherCode}
-                        onChange={(event) => setVoucherCode(event.target.value.toUpperCase())}
+                        placeholder="Nhập mã giảm giá sản phẩm"
+                        value={productVoucherCode}
+                        onChange={(event) => setProductVoucherCode(event.target.value.toUpperCase())}
                       />
-                      <Button type="button" variant="outline" onClick={applyVoucher}>
+                      <Button type="button" variant="outline" onClick={applyProductVoucher}>
                         Áp dụng
                       </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={clearProductVoucher}
+                        disabled={!productVoucherCode && !pricingPreview?.appliedCoupon?.code}
+                      >
+                        Bỏ chọn
+                      </Button>
                     </div>
-                    {voucherFeedback && <p className="text-xs text-emerald-600">{voucherFeedback}</p>}
-                    {voucherError && <p className="text-xs text-destructive">{voucherError}</p>}
+                    {productVoucherFeedback && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{productVoucherFeedback}</span>
+                      </div>
+                    )}
+                    {productVoucherError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{productVoucherError}</span>
+                      </div>
+                    )}
+
+                    <Separator />
+
+                    <p className="text-sm font-medium">Voucher giảm phí vận chuyển</p>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={shippingVoucherCode}
+                      onChange={(event) => {
+                        setShippingVoucherCode(event.target.value.toUpperCase());
+                      }}
+                    >
+                      <option value="">Không chọn voucher vận chuyển</option>
+                      {availableShippingCoupons.map((coupon) => (
+                        <option key={`shipping-coupon-${coupon.id}`} value={coupon.code}>
+                          {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Nhập mã giảm phí vận chuyển"
+                        value={shippingVoucherCode}
+                        onChange={(event) => setShippingVoucherCode(event.target.value.toUpperCase())}
+                      />
+                      <Button type="button" variant="outline" onClick={applyShippingVoucher}>
+                        Áp dụng
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={clearShippingVoucher}
+                        disabled={!shippingVoucherCode && !pricingPreview?.appliedShippingCoupon?.code}
+                      >
+                        Bỏ chọn
+                      </Button>
+                    </div>
+                    {shippingVoucherFeedback && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{shippingVoucherFeedback}</span>
+                      </div>
+                    )}
+                    {shippingVoucherError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{shippingVoucherError}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-3">
@@ -867,6 +1151,21 @@ export default function CartPage() {
                             setAddressForm((prev) => ({ ...prev, addressLine: event.target.value }))
                           }
                         />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isLocatingAddress}
+                          onClick={() => fillAddressFromGps("form")}
+                          className="w-full gap-2"
+                        >
+                          {isLocatingAddress ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Navigation className="w-4 h-4" />
+                          )}
+                          Dùng GPS điền địa chỉ
+                        </Button>
                         <label className="flex items-center gap-2 text-xs">
                           <input
                             type="checkbox"
@@ -911,15 +1210,35 @@ export default function CartPage() {
                     <Input
                       placeholder="Số điện thoại liên hệ"
                       value={phoneNumber}
-                      onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                      onChange={(event) => {
+                        setSelectedAddressId("");
+                        setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, 10));
+                      }}
                     />
                   </div>
                   <div className="flex gap-2 mb-6">
                     <Input
                       placeholder="Địa chỉ giao hàng (khi chưa chọn sổ địa chỉ)"
                       value={shippingAddress}
-                      onChange={(event) => setShippingAddress(event.target.value)}
+                      onChange={(event) => {
+                        setSelectedAddressId("");
+                        setShippingAddress(event.target.value);
+                      }}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isLocatingAddress}
+                      onClick={() => fillAddressFromGps("checkout")}
+                      className="gap-2"
+                    >
+                      {isLocatingAddress ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Navigation className="w-4 h-4" />
+                      )}
+                      GPS
+                    </Button>
                   </div>
 
                   <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
@@ -929,7 +1248,7 @@ export default function CartPage() {
                       value={paymentMethod}
                       onChange={(event) => setPaymentMethod(event.target.value)}
                     >
-                      <option value="SEPAY">SePay QR (chuyển khoản)</option>
+                      <option value="PAYOS">PayOS (thanh toán online)</option>
                       <option value="VNPAY">VNPAY QR</option>
                       <option value="COD">Thanh toán khi nhận hàng (COD)</option>
                     </select>
@@ -976,7 +1295,13 @@ export default function CartPage() {
                           phoneNumber,
                           paymentMethod,
                           addressId: selectedAddressId ? Number(selectedAddressId) : undefined,
-                          couponCode: pricingPreview?.appliedCoupon?.code ?? undefined,
+                          productCouponCode:
+                            pricingPreview?.appliedCoupon?.code ??
+                            (productVoucherCode.trim() || undefined),
+                          shippingCouponCode:
+                            pricingPreview?.appliedShippingCoupon?.code ??
+                            (shippingVoucherCode.trim() || undefined),
+                          provider: shippingProvider,
                           useWalletBalance: false,
                           selectedCartItemIds,
                         });
@@ -987,7 +1312,7 @@ export default function CartPage() {
                           return;
                         }
 
-                        if ((paymentMethod === "VNPAY" || paymentMethod === "SEPAY") && result?.isMockPayment) {
+                        if (paymentMethod === "VNPAY" && result?.isMockPayment) {
                           navigate("/payment-qr", {
                             state: {
                               paymentData: result,
@@ -998,6 +1323,15 @@ export default function CartPage() {
 
                         if (paymentMethod === "VNPAY" && result?.paymentUrl) {
                           window.location.href = result.paymentUrl;
+                          return;
+                        }
+
+                        if (paymentMethod === "PAYOS" && result?.checkoutUrl) {
+                          navigate("/payment-payos", {
+                            state: {
+                              paymentData: result,
+                            },
+                          });
                           return;
                         }
 
@@ -1043,6 +1377,93 @@ function validateDisplayName(value) {
     return "Tên người nhận không được chứa số";
   }
   return "";
+}
+
+function formatVoucherError(message) {
+  const normalized = String(message ?? "").trim().toLowerCase();
+
+  if (!normalized) {
+    return "Áp voucher thất bại. Vui lòng thử lại.";
+  }
+
+  if (normalized.includes("not found")) {
+    return "Mã voucher không tồn tại. Bạn hãy kiểm tra lại mã.";
+  }
+
+  if (normalized.includes("out of date") || normalized.includes("expired")) {
+    return "Mã voucher đã hết hạn hoặc chưa đến thời gian áp dụng.";
+  }
+
+  if (normalized.includes("usage limit")) {
+    return "Mã voucher đã hết lượt sử dụng.";
+  }
+
+  if (normalized.includes("scope mismatch")) {
+    return "Mã voucher không đúng loại (sản phẩm hoặc vận chuyển).";
+  }
+
+  if (normalized.includes("khong duoc phep") || normalized.includes("không được phép")) {
+    return "Tài khoản của bạn không nằm trong danh sách được dùng mã này.";
+  }
+
+  if (normalized.includes("at least")) {
+    return "Đơn hàng chưa đạt giá trị tối thiểu để áp dụng voucher.";
+  }
+
+  return message;
+}
+
+function getBrowserCoordinates() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.navigator?.geolocation) {
+      reject(new Error("Trình duyệt không hỗ trợ GPS"));
+      return;
+    }
+
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      (error) => {
+        if (error?.code === 1) {
+          reject(new Error("Bạn cần cấp quyền vị trí để dùng GPS"));
+          return;
+        }
+        reject(new Error("Không lấy được vị trí hiện tại"));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      },
+    );
+  });
+}
+
+async function reverseGeocodeByCoordinates(latitude, longitude) {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Dịch vụ định vị đang bận, vui lòng thử lại");
+  }
+
+  const payload = await response.json();
+  const address = String(payload?.display_name ?? "").trim();
+
+  if (!address) {
+    throw new Error("Không thể chuyển GPS thành địa chỉ");
+  }
+
+  return address;
 }
 
 function validateVietnamPhone(value, required = false) {
