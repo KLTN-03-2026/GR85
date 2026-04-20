@@ -13,6 +13,7 @@ import {
   requestPasswordReset,
   registerUser,
   resetPassword,
+  validatePasswordResetOtp,
   updateUserAddress,
   updateUserProfile,
   verifyEmail,
@@ -34,16 +35,12 @@ const router = Router();
 
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
-  fullName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
-    message: "Full name cannot contain numbers",
-  }),
-  phone: z.string().regex(/^\d{10}$/).optional(),
+  password: z.string().min(8, "Mật khẩu phải có ít nhất 8 ký tự"),
 });
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(1),
 });
 
 const emailSchema = z.object({
@@ -58,7 +55,7 @@ const verifySchema = z.object({
 const resetPasswordSchema = z.object({
   email: z.string().email(),
   otp: z.string().regex(/^\d{6}$/),
-  password: z.string().min(6),
+  password: z.string().min(8, "Mật khẩu mới phải có ít nhất 8 ký tự"),
 });
 
 const updateProfileSchema = z.object({
@@ -76,7 +73,7 @@ const updateProfileSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(6),
+  newPassword: z.string().min(8, "Mật khẩu mới phải có ít nhất 8 ký tự"),
 });
 
 const addressSchema = z.object({
@@ -105,8 +102,6 @@ router.post("/register", async (req, res) => {
     const payload = {
       email: parsed.email,
       password: parsed.password,
-      fullName: parsed.fullName,
-      phone: parsed.phone,
     };
     const result = await registerUser(payload);
     return res.status(201).json(result);
@@ -153,6 +148,16 @@ router.post("/forgot-password", async (req, res) => {
   try {
     const parsed = emailSchema.parse(req.body);
     const result = await requestPasswordReset(parsed);
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/validate-reset-otp", async (req, res) => {
+  try {
+    const parsed = verifySchema.parse(req.body);
+    const result = await validatePasswordResetOtp(parsed);
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);
@@ -345,12 +350,20 @@ function handleRouteError(error, res) {
       error.message === "Email đã tồn tại"
         ? 409
         : error.message === "Email không tồn tại"
+                ? 502
+                : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
+                  ? 502
+                  : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
           ? 404
           : error.message === "Người dùng không tồn tại"
             ? 404
             : error.message === "Vui lòng xác nhận email trước khi đăng nhập"
               ? 403
               : error.message === "Không thể gửi email xác nhận"
+                ? 502
+                : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
+                  ? 502
+                  : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
                 ? 502
                 : error.message === "Mã xac minh không hợp lệ hoặc đã hết hạn"
                   ? 400
