@@ -53,7 +53,7 @@ function UserRoute({ children }) {
     return null;
   }
 
-  if (isAdminRole(user?.role)) {
+  if (isAuthenticated && canAccessAdmin(user)) {
     return <Navigate to="/admin" replace />;
   }
 
@@ -67,7 +67,7 @@ function HomeRoute() {
     return null;
   }
 
-  if (isAuthenticated && isAdminRole(user?.role)) {
+  if (isAuthenticated && canAccessAdmin(user)) {
     return <Navigate to="/admin" replace />;
   }
 
@@ -85,19 +85,27 @@ function AdminRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!isAdminRole(user?.role)) {
+  if (!canAccessAdmin(user)) {
     return <Navigate to="/" replace />;
   }
 
   return children;
 }
 
-function isAdminRole(role) {
-  const normalizedRole = String(role ?? "")
+function canAccessAdmin(user) {
+  const normalizedRole = String(user?.role ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
 
-  return (
-    normalizedRole.includes("admin") || normalizedRole.includes("quan tri")
+  if (normalizedRole.includes("admin") || normalizedRole.includes("quan tri")) {
+    return true;
+  }
+
+  return (Array.isArray(user?.permissions) ? user.permissions : []).some((item) =>
+    String(item ?? "").toLowerCase().startsWith("admin_"),
   );
 }
+
