@@ -31,10 +31,10 @@ const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error(
-    "Invalid server environment variables",
+    "Biến môi trường máy chủ không hợp lệ",
     parsed.error.flatten().fieldErrors,
   );
-  throw new Error("Server environment validation failed");
+  throw new Error("Xác thực biến môi trường máy chủ thất bại");
 }
 
 export const env = parsed.data;

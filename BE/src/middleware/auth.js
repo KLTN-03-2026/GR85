@@ -9,7 +9,7 @@ export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Missing bearer token" });
+    return res.status(401).json({ message: "Thiếu token Bearer" });
   }
 
   const token = authHeader.slice(7);
@@ -52,14 +52,14 @@ export async function requireAuth(req, res, next) {
 
     return next();
   } catch {
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn" });
   }
 }
 
 export function requirePermission(permission) {
   return (req, res, next) => {
     if (!req.auth) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: "Chưa xác thực" });
     }
 
     if (
@@ -69,7 +69,7 @@ export function requirePermission(permission) {
       return next();
     }
 
-    return res.status(403).json({ message: "Forbidden" });
+    return res.status(403).json({ message: "Không có quyền truy cập" });
   };
 }
 

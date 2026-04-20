@@ -138,11 +138,11 @@ export async function requestOrderReturn(userId, input = {}) {
   const reason = String(input.reason ?? "").trim();
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   if (reason.length < 10) {
-    throw new Error("Return reason must be at least 10 characters");
+    throw new Error("Lý do trả hàng phải có ít nhất 10 ký tự");
   }
 
   const order = await prisma.order.findFirst({
@@ -157,15 +157,15 @@ export async function requestOrderReturn(userId, input = {}) {
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (order.orderStatus !== OrderStatus.DELIVERED) {
-    throw new Error("Only delivered orders can be returned");
+    throw new Error("Chỉ đơn hàng đã giao mới có thể yêu cầu trả hàng");
   }
 
   if (order.paymentStatus !== PaymentStatus.PAID) {
-    throw new Error("Only paid orders can be returned");
+    throw new Error("Chỉ đơn hàng đã thanh toán mới có thể yêu cầu trả hàng");
   }
 
   const deliveredAt = order.statusHistories[0]?.createdAt ?? order.updatedAt;
@@ -173,7 +173,7 @@ export async function requestOrderReturn(userId, input = {}) {
   const limit = RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   if (elapsed > limit) {
-    throw new Error("Return request is only allowed within 15 days after delivery");
+    throw new Error("Chỉ được yêu cầu trả hàng trong vòng 15 ngày sau khi giao");
   }
 
   const existing = await prisma.returnRequest.findFirst({
@@ -186,7 +186,7 @@ export async function requestOrderReturn(userId, input = {}) {
   });
 
   if (existing) {
-    throw new Error("A return request already exists for this order");
+    throw new Error("Đơn hàng này đã có yêu cầu trả hàng");
   }
 
   const created = await prisma.returnRequest.create({
@@ -199,7 +199,7 @@ export async function requestOrderReturn(userId, input = {}) {
   });
 
   return serializeData({
-    message: "Return request submitted and waiting for admin approval",
+    message: "Yêu cầu trả hàng đã được gửi và đang chờ quản trị viên duyệt",
     request: mapReturnRequest(created),
   });
 }
@@ -258,11 +258,11 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   const refundAmountInput = input.refundAmount;
 
   if (!Number.isFinite(requestId) || requestId <= 0) {
-    throw new Error("Invalid return request id");
+    throw new Error("ID yêu cầu trả hàng không hợp lệ");
   }
 
   if (!["APPROVE", "REJECT"].includes(action)) {
-    throw new Error("Action must be APPROVE or REJECT");
+    throw new Error("Hành động phải là APPROVE hoặc REJECT");
   }
 
   const request = await prisma.returnRequest.findUnique({
@@ -271,16 +271,16 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   });
 
   if (!request) {
-    throw new Error("Return request not found");
+    throw new Error("Không tìm thấy yêu cầu trả hàng");
   }
 
   if (request.status !== ReturnRequestStatus.PENDING) {
-    throw new Error("Only pending requests can be reviewed");
+    throw new Error("Chỉ các yêu cầu đang chờ mới có thể được duyệt");
   }
 
   if (action === "REJECT") {
     if (rejectReason.length < 5) {
-      throw new Error("Reject reason must be at least 5 characters");
+      throw new Error("Lý do từ chối phải có ít nhất 5 ký tự");
     }
 
     const updated = await prisma.returnRequest.update({
@@ -294,7 +294,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
     });
 
     return serializeData({
-      message: "Return request rejected",
+      message: "Yêu cầu trả hàng đã bị từ chối",
       request: mapReturnRequest(updated),
     });
   }
@@ -305,11 +305,11 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
       : Number(refundAmountInput);
 
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
-    throw new Error("Refund amount must be greater than 0");
+    throw new Error("Số tiền hoàn trả phải lớn hơn 0");
   }
 
   if (refundAmount > Number(request.order.totalAmount)) {
-    throw new Error("Refund amount cannot exceed order total amount");
+    throw new Error("Số tiền hoàn trả không được vượt quá tổng tiền đơn hàng");
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -319,7 +319,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
     });
 
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("Không tìm thấy người dùng");
     }
 
     const nextBalance = Number(user.walletBalance ?? 0) + refundAmount;
@@ -335,7 +335,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
         orderId: request.orderId,
         amount: refundAmount,
         type: WalletTransactionType.REFUND_CREDIT,
-        note: `Refund for returned order #${request.orderId}`,
+        note: `Hoàn tiền cho đơn hàng trả lại #${request.orderId}`,
       },
     });
 
@@ -363,7 +363,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
         fromStatus: request.order.orderStatus,
         toStatus: OrderStatus.CANCELLED,
         changedBy: adminUserId,
-        note: `Return approved and refunded ${refundAmount.toFixed(2)} to wallet`,
+        note: `Đã duyệt trả hàng và hoàn ${refundAmount.toFixed(2)} vào ví`,
       },
     });
 
@@ -371,7 +371,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   });
 
   return serializeData({
-    message: "Return approved and refunded to user wallet",
+    message: "Đã duyệt trả hàng và hoàn tiền vào ví người dùng",
     request: mapReturnRequest(updated),
   });
 }
@@ -379,7 +379,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
 export async function deleteWalletTransaction(transactionId) {
   const id = Number(transactionId);
   if (!Number.isFinite(id)) {
-    throw new Error("Invalid transaction ID");
+    throw new Error("ID giao dịch không hợp lệ");
   }
 
   const transaction = await prisma.walletTransaction.findUnique({
@@ -388,7 +388,7 @@ export async function deleteWalletTransaction(transactionId) {
   });
 
   if (!transaction) {
-    throw new Error("Wallet transaction not found");
+    throw new Error("Không tìm thấy giao dịch ví");
   }
 
   // If transaction added credits to wallet, subtract them back
@@ -397,7 +397,7 @@ export async function deleteWalletTransaction(transactionId) {
     transaction.type === WalletTransactionType.REFUND_CREDIT
   ) {
     const newBalance = Number(transaction.user.walletBalance ?? 0) - Number(transaction.amount);
-    
+
     await prisma.user.update({
       where: { id: transaction.userId },
       data: { walletBalance: Math.max(0, newBalance) },
@@ -410,7 +410,7 @@ export async function deleteWalletTransaction(transactionId) {
 
   return serializeData({
     success: true,
-    message: "Wallet transaction deleted successfully",
+    message: "Giao dịch ví đã được xóa thành công",
   });
 }
 

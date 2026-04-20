@@ -25,7 +25,7 @@ export function NotificationProvider({ children }) {
       setNotifications(items);
       setUnreadCount(items.filter((n) => !n.isRead).length);
     } catch (error) {
-      console.error("Failed to fetch notifications:", error);
+      console.error("Không thể tải thông báo:", error);
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +53,7 @@ export function NotificationProvider({ children }) {
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
-      console.error("Failed to mark notification as read:", error);
+      console.error("Không thể đánh dấu thông báo là đã đọc:", error);
     }
   };
 
@@ -64,7 +64,7 @@ export function NotificationProvider({ children }) {
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (error) {
-      console.error("Failed to mark all notifications as read:", error);
+      console.error("Không thể đánh dấu tất cả thông báo là đã đọc:", error);
     }
   };
 
@@ -90,7 +90,7 @@ export function NotificationProvider({ children }) {
 export function useNotification() {
   const context = useContext(NotificationContext);
   if (!context) {
-    throw new Error("useNotification must be used within NotificationProvider");
+    throw new Error("useNotification phải được sử dụng bên trong NotificationProvider");
   }
   return context;
 }

@@ -118,10 +118,10 @@ export async function buildAiRecommendation(input) {
 
           const totalScore = Math.round(
             performanceScore * 0.34 +
-              budgetFitScore * 0.3 +
-              stockScore * 0.14 +
-              infoScore * 0.12 +
-              preferredBrandScore * 0.1,
+            budgetFitScore * 0.3 +
+            stockScore * 0.14 +
+            infoScore * 0.12 +
+            preferredBrandScore * 0.1,
           );
 
           return {
@@ -304,7 +304,7 @@ export async function buildAiRecommendation(input) {
     items,
     summary:
       items.length > 0
-        ? `Da goi y ${items.length} linh kien day du danh muc cho nhu cau ${usage}. Tong gia du kien ${new Intl.NumberFormat("vi-VN").format(totalPrice)} VND (khong vuot ngan sach). Diem tong the ${buildScore.overall}/100.`
+        ? `Đã gợi ý ${items.length} linh kiện đầy đủ danh mục cho nhu cầu ${usage}. Tổng giá dự kiến ${new Intl.NumberFormat("vi-VN").format(totalPrice)} VND (không vượt ngân sách). Điểm tổng thể ${buildScore.overall}/100.`
         : "Chua tim thay linh kien phu hop voi bo loc hien tai. Thu bo trong bo loc hang hoac tang ngan sach.",
     usage,
     budget,
@@ -502,16 +502,16 @@ function buildConfigurationScore({ items, categoryAnalysis, budget, expectedCoun
   const avgCategoryFit =
     categoryAnalysis.length > 0
       ? Math.round(
-          categoryAnalysis.reduce((sum, row) => sum + Number(row.budgetFitPercent ?? 0), 0) /
-            categoryAnalysis.length,
-        )
+        categoryAnalysis.reduce((sum, row) => sum + Number(row.budgetFitPercent ?? 0), 0) /
+        categoryAnalysis.length,
+      )
       : 0;
 
   const avgProductScore =
     items.length > 0
       ? Math.round(
-          items.reduce((sum, item) => sum + Number(item.score?.total ?? 0), 0) / items.length,
-        )
+        items.reduce((sum, item) => sum + Number(item.score?.total ?? 0), 0) / items.length,
+      )
       : 0;
 
   const compatibilityScore = Math.round(
@@ -520,10 +520,10 @@ function buildConfigurationScore({ items, categoryAnalysis, budget, expectedCoun
 
   const overall = Math.round(
     coverageScore * 0.25 +
-      budgetScore * 0.2 +
-      avgCategoryFit * 0.18 +
-      avgProductScore * 0.22 +
-      compatibilityScore * 0.15,
+    budgetScore * 0.2 +
+    avgCategoryFit * 0.18 +
+    avgProductScore * 0.22 +
+    compatibilityScore * 0.15,
   );
 
   return {
