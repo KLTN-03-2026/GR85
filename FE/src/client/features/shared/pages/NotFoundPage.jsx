@@ -6,7 +6,7 @@ const NotFound = () => {
 
   useEffect(() => {
     console.error(
-      "Loi 404: Nguoi dung truy cap duong dan khong ton tai:",
+      "Lỗi 404: Người dùng truy cập đường dẫn không tồn tại:",
       location.pathname,
     );
   }, [location.pathname]);

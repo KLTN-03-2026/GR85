@@ -82,7 +82,7 @@ router.get("/vnpay-ipn", async (req, res) => {
       return res.status(400).json({ RspCode: "99", Message: error.message });
     }
 
-    return res.status(500).json({ RspCode: "99", Message: "Unknown error" });
+    return res.status(500).json({ RspCode: "99", Message: "Lỗi không xác định" });
   }
 });
 
@@ -197,7 +197,7 @@ router.post("/mock-vnpay/confirm", requireAuth, async (req, res) => {
 
 function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
-    return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+    return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
   }
 
   if (error instanceof Error) {
@@ -210,7 +210,7 @@ function handleRouteError(error, res) {
     return res.status(status).json({ message: error.message });
   }
 
-  return res.status(500).json({ message: "Unexpected server error" });
+  return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
 }
 
 export { router as cartRouter };

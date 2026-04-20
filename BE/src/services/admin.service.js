@@ -676,9 +676,9 @@ export async function listCouponsForAdmin() {
 }
 
 export async function createCouponByAdmin(input) {
-    const couponScope = String(input.couponScope ?? "PRODUCT")
-      .trim()
-      .toUpperCase();
+  const couponScope = String(input.couponScope ?? "PRODUCT")
+    .trim()
+    .toUpperCase();
   const code = String(input.code ?? "")
     .trim()
     .toUpperCase();
@@ -801,12 +801,12 @@ export async function createCouponByAdmin(input) {
 export async function updateCouponByAdmin(couponId, input) {
   const id = Number(couponId);
   if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("Invalid coupon id");
+    throw new Error("ID mã giảm giá không hợp lệ");
   }
 
   const current = await prisma.coupon.findUnique({ where: { id } });
   if (!current) {
-    throw new Error("Coupon not found");
+    throw new Error("Không tìm thấy mã giảm giá");
   }
 
   const data = {};
@@ -956,7 +956,7 @@ export async function updateCouponByAdmin(couponId, input) {
 export async function deleteCouponByAdmin(couponId) {
   const id = Number(couponId);
   if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("Invalid coupon id");
+    throw new Error("ID mã giảm giá không hợp lệ");
   }
 
   const current = await prisma.coupon.findUnique({
@@ -969,7 +969,7 @@ export async function deleteCouponByAdmin(couponId) {
   });
 
   if (!current) {
-    throw new Error("Coupon not found");
+    throw new Error("Không tìm thấy mã giảm giá");
   }
 
   if (
@@ -977,14 +977,14 @@ export async function deleteCouponByAdmin(couponId) {
     Number(current._count?.shippingOrders ?? 0) > 0 ||
     Number(current.usedCount ?? 0) > 0
   ) {
-    throw new Error("Coupon has been used. Please disable it instead of deleting");
+    throw new Error("Mã giảm giá đã được sử dụng. Hãy tắt thay vì xóa");
   }
 
   await prisma.coupon.delete({ where: { id } });
 
   return serializeData({
     success: true,
-    message: "Coupon deleted successfully",
+    message: "Mã giảm giá đã được xóa thành công",
   });
 }
 

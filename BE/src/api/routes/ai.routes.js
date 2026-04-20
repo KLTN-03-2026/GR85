@@ -35,7 +35,7 @@ router.post("/recommend-build", async (req, res) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        message: "Invalid AI recommend payload",
+        message: "Dữ liệu AI gợi ý build không hợp lệ",
         issues: error.flatten(),
       });
     }
@@ -44,7 +44,7 @@ router.post("/recommend-build", async (req, res) => {
       return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({ message: "Unexpected server error" });
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
 
@@ -56,7 +56,7 @@ router.post("/chat-build", async (req, res) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        message: "Invalid AI chat payload",
+        message: "Dữ liệu AI chat không hợp lệ",
         issues: error.flatten(),
       });
     }
@@ -65,7 +65,7 @@ router.post("/chat-build", async (req, res) => {
       return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({ message: "Unexpected server error" });
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
 
