@@ -1258,17 +1258,17 @@ async function main() {
     imageUpsertCount += imageUrls.length;
   }
 
-  console.log("Seeded admin account and sample catalog successfully.");
-  console.log("Admin login: admin@gmail.com / 123456");
-  console.log(`Total seeded products: ${productSeeds.length}`);
-  console.log(`Total upserted product details: ${detailUpsertCount}`);
-  console.log(`Total upserted product images: ${imageUpsertCount}`);
-  console.log(`User role id: ${userRole.id}`);
+  console.log("Đã seed tài khoản quản trị và danh mục mẫu thành công.");
+  console.log("Thông tin đăng nhập admin: admin@gmail.com / 123456");
+  console.log(`Tổng số sản phẩm đã seed: ${productSeeds.length}`);
+  console.log(`Tổng số chi tiết sản phẩm đã cập nhật: ${detailUpsertCount}`);
+  console.log(`Tổng số ảnh sản phẩm đã cập nhật: ${imageUpsertCount}`);
+  console.log(`ID role user: ${userRole.id}`);
 }
 
 main()
   .catch((error) => {
-    console.error(error);
+    console.error("Lỗi seed dữ liệu:", error);
     process.exit(1);
   })
   .finally(async () => {

@@ -28,7 +28,7 @@ const updateStatusSchema = z.object({
 router.use(requireAuth);
 router.use((req, res, next) => {
   if (!isAdminRole(req.auth?.role)) {
-    return res.status(403).json({ message: "Admin only" });
+    return res.status(403).json({ message: "Chỉ quản trị viên" });
   }
 
   return next();
@@ -69,7 +69,7 @@ router.patch("/:orderId/status", async (req, res) => {
 
 function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
-    return res.status(400).json({ message: "Invalid request data", issues: error.flatten() });
+    return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
   }
 
   if (error instanceof Error) {
@@ -82,7 +82,7 @@ function handleRouteError(error, res) {
     return res.status(status).json({ message: error.message });
   }
 
-  return res.status(500).json({ message: "Unexpected server error" });
+  return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
 }
 
 export { router as orderRouter };

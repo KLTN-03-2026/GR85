@@ -52,7 +52,7 @@ export async function getOrderDetailForAdmin(orderId) {
 
   const id = Number(orderId);
   if (!Number.isFinite(id)) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   const order = await prisma.order.findUnique({
@@ -78,7 +78,7 @@ export async function getOrderDetailForAdmin(orderId) {
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   return serializeData({
@@ -116,12 +116,12 @@ export async function getOrderDetailForAdmin(orderId) {
 export async function updateOrderStatusForAdmin(orderId, nextStatusInput, changedBy, note) {
   const id = Number(orderId);
   if (!Number.isFinite(id)) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   const nextStatus = String(nextStatusInput ?? "").trim().toUpperCase();
   if (!ALLOWED_STATUS_TRANSITIONS.has(nextStatus)) {
-    throw new Error("Invalid order status");
+    throw new Error("Trạng thái đơn hàng không hợp lệ");
   }
 
   const current = await prisma.order.findUnique({
@@ -131,11 +131,11 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
     },
   });
   if (!current) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (current.orderStatus === OrderStatus.DELIVERED) {
-    throw new Error("Completed order cannot be modified");
+    throw new Error("Đơn hàng đã hoàn tất không thể chỉnh sửa");
   }
 
   assertOrderTransitionAllowed(current.orderStatus, nextStatus);
@@ -201,7 +201,7 @@ function assertOrderTransitionAllowed(currentStatus, nextStatus) {
   };
 
   if (!(allowedByCurrent[current] ?? []).includes(next)) {
-    throw new Error("Invalid status flow. Vui lòng thao tác theo thứ tự xử lý đơn hàng");
+    throw new Error("Luồng trạng thái không hợp lệ. Vui lòng thao tác theo thứ tự xử lý đơn hàng");
   }
 }
 

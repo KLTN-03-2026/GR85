@@ -522,11 +522,10 @@ export default function ProfilePage() {
         {/* Message Alert */}
         {message && (
           <Alert
-            className={`mb-6 ${
-              message.type === "success"
-                ? "border-green-500 bg-green-500/10"
-                : "border-red-500 bg-red-500/10"
-            }`}
+            className={`mb-6 ${message.type === "success"
+              ? "border-green-500 bg-green-500/10"
+              : "border-red-500 bg-red-500/10"
+              }`}
           >
             {message.type === "success" ? (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -625,175 +624,175 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 <Card className="p-6">
                   <form onSubmit={handleUpdateProfile} className="space-y-6">
-                  {/* Full Name */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Họ và tên *
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Nhập họ và tên"
-                      value={formData.fullName}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          fullName: e.target.value,
-                        });
-                        if (errors.fullName) {
-                          const error = profileValidation.fullName(
-                            e.target.value
-                          );
-                          setErrors({
-                            ...errors,
-                            fullName: error,
+                    {/* Full Name */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Họ và tên *
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="Nhập họ và tên"
+                        value={formData.fullName}
+                        onChange={(e) => {
+                          setFormData({
+                            ...formData,
+                            fullName: e.target.value,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.fullName) {
-                          const error = profileValidation.fullName(
-                            formData.fullName
-                          );
-                          if (error) {
-                            setErrors({ ...errors, fullName: error });
+                          if (errors.fullName) {
+                            const error = profileValidation.fullName(
+                              e.target.value
+                            );
+                            setErrors({
+                              ...errors,
+                              fullName: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.fullName ? "border-red-500" : ""}
-                    />
-                    {errors.fullName && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.fullName}
-                      </p>
-                    )}
-                  </div>
+                        }}
+                        onBlur={() => {
+                          if (!errors.fullName) {
+                            const error = profileValidation.fullName(
+                              formData.fullName
+                            );
+                            if (error) {
+                              setErrors({ ...errors, fullName: error });
+                            }
+                          }
+                        }}
+                        className={errors.fullName ? "border-red-500" : ""}
+                      />
+                      {errors.fullName && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.fullName}
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Phone */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Số điện thoại
-                    </label>
-                    <Input
-                      type="tel"
-                      placeholder="Nhập số điện thoại (không bắt buộc)"
-                      value={formData.phone}
-                      onChange={(e) => {
-                        const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
-                        setFormData({
-                          ...formData,
-                          phone: nextPhone,
-                        });
-                        if (errors.phone) {
-                          const error = profileValidation.phone(nextPhone);
-                          setErrors({
-                            ...errors,
-                            phone: error,
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Số điện thoại
+                      </label>
+                      <Input
+                        type="tel"
+                        placeholder="Nhập số điện thoại (không bắt buộc)"
+                        value={formData.phone}
+                        onChange={(e) => {
+                          const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          setFormData({
+                            ...formData,
+                            phone: nextPhone,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.phone) {
-                          const error = profileValidation.phone(
-                            formData.phone
-                          );
-                          if (error) {
-                            setErrors({ ...errors, phone: error });
+                          if (errors.phone) {
+                            const error = profileValidation.phone(nextPhone);
+                            setErrors({
+                              ...errors,
+                              phone: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.phone ? "border-red-500" : ""}
-                    />
-                    {errors.phone && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.phone}
-                      </p>
-                    )}
-                  </div>
+                        }}
+                        onBlur={() => {
+                          if (!errors.phone) {
+                            const error = profileValidation.phone(
+                              formData.phone
+                            );
+                            if (error) {
+                              setErrors({ ...errors, phone: error });
+                            }
+                          }
+                        }}
+                        className={errors.phone ? "border-red-500" : ""}
+                      />
+                      {errors.phone && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.phone}
+                        </p>
+                      )}
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Địa chỉ
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Nhập địa chỉ nhận hàng"
-                      value={formData.address}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          address: e.target.value,
-                        });
-                        if (errors.address) {
-                          const error = profileValidation.address(e.target.value);
-                          setErrors({
-                            ...errors,
-                            address: error,
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Địa chỉ
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="Nhập địa chỉ nhận hàng"
+                        value={formData.address}
+                        onChange={(e) => {
+                          setFormData({
+                            ...formData,
+                            address: e.target.value,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.address) {
-                          const error = profileValidation.address(
-                            formData.address,
-                          );
-                          if (error) {
-                            setErrors({ ...errors, address: error });
+                          if (errors.address) {
+                            const error = profileValidation.address(e.target.value);
+                            setErrors({
+                              ...errors,
+                              address: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.address ? "border-red-500" : ""}
-                    />
-                    {errors.address && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.address}
+                        }}
+                        onBlur={() => {
+                          if (!errors.address) {
+                            const error = profileValidation.address(
+                              formData.address,
+                            );
+                            if (error) {
+                              setErrors({ ...errors, address: error });
+                            }
+                          }
+                        }}
+                        className={errors.address ? "border-red-500" : ""}
+                      />
+                      {errors.address && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.address}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Email (Read-only) */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Email
+                      </label>
+                      <Input
+                        type="email"
+                        value={profileData?.email || ""}
+                        disabled
+                        className="bg-muted"
+                      />
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay đổi.
                       </p>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* Email (Read-only) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Email
-                    </label>
-                    <Input
-                      type="email"
-                      value={profileData?.email || ""}
-                      disabled
-                      className="bg-muted"
-                    />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay đổi.
-                    </p>
-                  </div>
+                    {/* Role (Read-only) */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Vai trò
+                      </label>
+                      <Input
+                        type="text"
+                        value={profileData?.role || "User"}
+                        disabled
+                        className="bg-muted"
+                      />
+                    </div>
 
-                  {/* Role (Read-only) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Vai trò
-                    </label>
-                    <Input
-                      type="text"
-                      value={profileData?.role || "User"}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
-
-                  {/* Submit Button */}
-                  <Button
-                    type="submit"
-                    disabled={updatingProfile}
-                    className="w-full"
-                  >
-                    {updatingProfile ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Đang cập nhật...
-                      </>
-                    ) : (
-                      "Lưu thay đổi"
-                    )}
-                  </Button>
+                    {/* Submit Button */}
+                    <Button
+                      type="submit"
+                      disabled={updatingProfile}
+                      className="w-full"
+                    >
+                      {updatingProfile ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang cập nhật...
+                        </>
+                      ) : (
+                        "Lưu thay đổi"
+                      )}
+                    </Button>
                   </form>
                 </Card>
               </div>
@@ -1172,11 +1171,10 @@ export default function ProfilePage() {
 
                 {addressFeedback && (
                   <Alert
-                    className={`mb-4 ${
-                      addressFeedback.type === "success"
-                        ? "border-green-500 bg-green-500/10"
-                        : "border-red-500 bg-red-500/10"
-                    }`}
+                    className={`mb-4 ${addressFeedback.type === "success"
+                      ? "border-green-500 bg-green-500/10"
+                      : "border-red-500 bg-red-500/10"
+                      }`}
                   >
                     <AlertDescription
                       className={
@@ -1395,65 +1393,8 @@ function getOrderStatusDescription(order) {
   return "Đơn hàng đang được xử lý.";
 }
 
-function formatPaymentStatus(value) {
-  const status = String(value ?? "").toUpperCase();
-  const map = {
-    PENDING: "Chờ thanh toán",
-    PAID: "Đã thanh toán",
-    FAILED: "Thanh toán thất bại",
-    REFUNDED: "Đã hoàn tiền",
-  };
-  return map[status] || formatEnum(value);
-}
 
-function formatOrderStatus(value) {
-  const status = String(value ?? "").toUpperCase();
-  const map = {
-    PENDING: "Chờ xác nhận",
-    PROCESSING: "Đang chuẩn bị hàng",
-    SHIPPING: "Đang giao hàng",
-    DELIVERED: "Đã giao thành công",
-    CANCELLED: "Đã hủy",
-  };
-  return map[status] || formatEnum(value);
-}
 
-function getOrderStatusDescription(order) {
-  const paymentStatus = String(order?.paymentStatus ?? "").toUpperCase();
-  const orderStatus = String(order?.orderStatus ?? "").toUpperCase();
-
-  if (orderStatus === "CANCELLED") {
-    return paymentStatus === "REFUNDED"
-      ? "Đơn hàng đã bị hủy và số tiền đã được hoàn trả."
-      : "Đơn hàng đã bị hủy.";
-  }
-
-  if (paymentStatus === "PENDING") {
-    return "Đơn hàng đang chờ thanh toán. Vui lòng hoàn tất thanh toán để hệ thống xử lý.";
-  }
-
-  if (paymentStatus === "FAILED") {
-    return "Thanh toán thất bại. Bạn có thể thử thanh toán lại hoặc tạo đơn mới.";
-  }
-
-  if (orderStatus === "PENDING") {
-    return "Đơn hàng đã thanh toán, hệ thống đang chờ xác nhận tự động.";
-  }
-
-  if (orderStatus === "PROCESSING") {
-    return "Đơn hàng đã được xác nhận thanh toán và đang trong quá trình chuẩn bị hàng.";
-  }
-
-  if (orderStatus === "SHIPPING") {
-    return "Đơn hàng đã bàn giao cho đơn vị vận chuyển và đang trên đường giao tới bạn.";
-  }
-
-  if (orderStatus === "DELIVERED") {
-    return "Đơn hàng đã giao thành công. Bạn có thể gửi yêu cầu trả hàng nếu cần.";
-  }
-
-  return "Đơn hàng đang được xử lý.";
-}
 
 function canRequestReturn(order) {
   return (

@@ -241,8 +241,8 @@ export async function createMockVnpayQrCode({
       },
     };
   } catch (error) {
-    console.error("Error generating QR code:", error);
-    throw new Error(`Failed to generate QR code: ${error.message}`);
+    console.error("Lỗi khi tạo mã QR:", error);
+    throw new Error(`Không thể tạo mã QR: ${error.message}`);
   }
 }
 

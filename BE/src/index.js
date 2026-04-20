@@ -8,10 +8,10 @@ async function bootstrap() {
   try {
     await prisma.$connect();
     app.listen(env.PORT, () => {
-      console.log(`API server is running on http://localhost:${env.PORT}`);
+      console.log(`Máy chủ API đang chạy tại http://localhost:${env.PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start API server", error);
+    console.error("Không thể khởi động máy chủ API", error);
     process.exit(1);
   }
 }
