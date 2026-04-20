@@ -1,5 +1,13 @@
 const API_BASE = "/api/auth";
 
+function getServerErrorMessage(payload, fallbackMessage) {
+  if (payload && typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message.trim();
+  }
+
+  return fallbackMessage;
+}
+
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -21,8 +29,7 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    const statusText = response.statusText ? ` (${response.status} ${response.statusText})` : ` (${response.status})`;
-    throw new Error(data.message ? `${data.message}${statusText}` : `Request failed${statusText}`);
+    throw new Error(getServerErrorMessage(data, "Không thể xử lý yêu cầu"));
   }
 
   return data;
