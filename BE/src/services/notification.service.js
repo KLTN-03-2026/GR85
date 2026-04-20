@@ -195,7 +195,7 @@ export async function createOrderStatusChangeNotification(orderId, userId, newSt
       },
     });
   } catch (error) {
-    console.error("Failed to create order status notification:", error);
+    console.error("Không thể tạo thông báo trạng thái đơn hàng:", error);
   }
 }
 

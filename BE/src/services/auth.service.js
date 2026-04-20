@@ -583,7 +583,7 @@ export async function createUserAddress(userId, input) {
 export async function updateUserAddress(userId, addressId, input) {
   const id = Number(addressId);
   if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("Invalid address id");
+    throw new Error("ID địa chỉ không hợp lệ");
   }
 
   const existing = await prisma.userAddress.findFirst({
@@ -591,7 +591,7 @@ export async function updateUserAddress(userId, addressId, input) {
   });
 
   if (!existing) {
-    throw new Error("Address not found");
+    throw new Error("Không tìm thấy địa chỉ");
   }
 
   const normalized = normalizeAddressInput(input);

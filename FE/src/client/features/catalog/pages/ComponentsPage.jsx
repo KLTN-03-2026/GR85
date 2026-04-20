@@ -80,7 +80,7 @@ export default function ComponentsPage() {
       try {
         const response = await fetch("/api/products/overview");
         if (!response.ok) {
-          throw new Error("Khong tai duoc metadata san pham");
+          throw new Error("Không tải được metadata sản phẩm");
         }
 
         const payload = await response.json();
@@ -182,7 +182,7 @@ export default function ComponentsPage() {
 
         const response = await fetch(`/api/products?${query.toString()}`);
         if (!response.ok) {
-          throw new Error(`Khong tai duoc san pham (${response.status})`);
+          throw new Error(`Không tải được sản phẩm (${response.status})`);
         }
 
         const payload = await response.json();
@@ -202,7 +202,7 @@ export default function ComponentsPage() {
           setItems([]);
           setPagination({ page: 1, totalPages: 1, totalItems: 0 });
           setErrorMessage(
-            error instanceof Error ? error.message : "Khong tai duoc san pham",
+            error instanceof Error ? error.message : "Không tải được sản phẩm",
           );
         }
       } finally {

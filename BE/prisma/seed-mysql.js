@@ -84,9 +84,9 @@ async function main() {
       );
     }
 
-    console.log('Data seeded successfully!');
+    console.log('Đã seed dữ liệu thành công!');
   } catch (error) {
-    console.error('Error seeding data:', error);
+    console.error('Lỗi khi seed dữ liệu:', error);
   } finally {
     await connection.end();
   }
