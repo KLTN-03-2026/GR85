@@ -6,7 +6,60 @@ import {
 } from "../utils/validation.js";
 import { createWishlistCouponNotifications } from "./notification.service.js";
 
+export const adminPermissionCatalog = [
+  {
+    actionName: "admin_dashboard_view",
+    description: "Xem dashboard quản trị",
+  },
+  {
+    actionName: "admin_users_manage",
+    description: "Quản lý người dùng",
+  },
+  {
+    actionName: "admin_products_manage",
+    description: "Quản lý sản phẩm",
+  },
+  {
+    actionName: "admin_orders_manage",
+    description: "Quản lý đơn hàng",
+  },
+  {
+    actionName: "admin_catalog_manage",
+    description: "Quản lý danh mục và nhà cung cấp",
+  },
+  {
+    actionName: "admin_vouchers_manage",
+    description: "Quản lý voucher",
+  },
+  {
+    actionName: "admin_warehouse_manage",
+    description: "Quản lý kho",
+  },
+  {
+    actionName: "admin_reviews_manage",
+    description: "Quản lý đánh giá",
+  },
+  {
+    actionName: "admin_chat_manage",
+    description: "Quản lý chat",
+  },
+  {
+    actionName: "admin_ai_build_manage",
+    description: "Quản lý cấu hình AI",
+  },
+  {
+    actionName: "admin_verification_view",
+    description: "Xem xác thực email",
+  },
+  {
+    actionName: "admin_roles_manage",
+    description: "Quản lý phân quyền",
+  },
+];
+
 export async function getAdminDashboard() {
+  await ensureAdminPermissionCatalogInDb();
+
   const [
     totalUsers,
     totalOrders,
@@ -19,6 +72,7 @@ export async function getAdminDashboard() {
     orders,
     coupons,
     roles,
+    allPermissions,
     suppliers,
     warehouses,
     reviews,
@@ -73,6 +127,14 @@ export async function getAdminDashboard() {
     }),
     prisma.role.findMany({
       include: { permissions: { include: { permission: true } }, users: true },
+    }),
+    prisma.permission.findMany({
+      orderBy: [{ actionName: "asc" }],
+      select: {
+        id: true,
+        actionName: true,
+        description: true,
+      },
     }),
     prisma.supplier.findMany({ take: 10, orderBy: { id: "desc" } }),
     prisma.warehouse.findMany({
@@ -135,6 +197,7 @@ export async function getAdminDashboard() {
       userCount: role.users.length,
       permissions: role.permissions.map((item) => item.permission.actionName),
     })),
+    permissionCatalog: allPermissions,
     suppliers,
     warehouses,
     reviews,
@@ -158,6 +221,260 @@ export async function getAdminDashboard() {
     lowStockProducts: lowStockProducts.filter(
       (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
     ),
+  });
+}
+
+export async function updateRolePermissionsByAdmin(roleIdInput, input = {}) {
+  const roleId = Number(roleIdInput);
+  if (!Number.isFinite(roleId) || roleId <= 0) {
+    throw new Error("Invalid role id");
+  }
+
+  await ensureAdminPermissionCatalogInDb();
+
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    include: {
+      users: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!role) {
+    throw new Error("Role not found");
+  }
+
+  const requestedPermissions = normalizePermissionActionList(input.permissions);
+  const availablePermissions = await prisma.permission.findMany({
+    where: {
+      actionName: {
+        in: requestedPermissions,
+      },
+    },
+    select: {
+      id: true,
+      actionName: true,
+    },
+  });
+
+  if (availablePermissions.length !== requestedPermissions.length) {
+    throw new Error("One or more permissions do not exist");
+  }
+
+  const permissionIds = availablePermissions.map((item) => item.id);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.rolePermission.deleteMany({
+      where: { roleId },
+    });
+
+    if (permissionIds.length > 0) {
+      await tx.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({
+          roleId,
+          permissionId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  });
+
+  const updatedRole = await prisma.role.findUnique({
+    where: { id: roleId },
+    include: {
+      permissions: {
+        include: {
+          permission: true,
+        },
+      },
+      users: {
+        select: { id: true },
+      },
+    },
+  });
+
+  return serializeData({
+    id: updatedRole.id,
+    name: updatedRole.name,
+    description: updatedRole.description,
+    userCount: updatedRole.users.length,
+    permissions: updatedRole.permissions.map((item) => item.permission.actionName),
+  });
+}
+
+export async function listPermissionTargetsForAdmin() {
+  await ensureAdminPermissionCatalogInDb();
+
+  const users = await prisma.user.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    take: 200,
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return serializeData(
+    users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      status: user.status,
+      roleId: user.roleId,
+      role: user.role
+        ? {
+            id: user.role.id,
+            name: user.role.name,
+            description: user.role.description,
+          }
+        : null,
+      permissions: resolveEffectivePermissionsFromUser(user),
+      rolePermissions: user.role?.permissions.map((item) => item.permission.actionName) ?? [],
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    })),
+  );
+}
+
+export async function updateUserPermissionsByAdmin(userIdInput, input = {}) {
+  const userId = Number(userIdInput);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  await ensureAdminPermissionCatalogInDb();
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (String(user.email ?? "").trim().toLowerCase() === "admin@gmail.com") {
+    return serializeData({
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      permissions: adminPermissionCatalog.map((item) => item.actionName),
+      roleId: user.roleId,
+      role: user.role,
+    });
+  }
+
+  const requestedPermissions = normalizePermissionActionList(input.permissions);
+  const availablePermissions = await prisma.permission.findMany({
+    where: {
+      actionName: {
+        in: requestedPermissions,
+      },
+    },
+    select: {
+      id: true,
+      actionName: true,
+    },
+  });
+
+  if (availablePermissions.length !== requestedPermissions.length) {
+    throw new Error("One or more permissions do not exist");
+  }
+
+  const permissionIds = availablePermissions.map((item) => item.id);
+  const personalRoleName = `EMPLOYEE_USER_${user.id}`;
+  const personalRoleDescription = `Quyen rieng cho ${user.fullName}`;
+
+  const updatedUser = await prisma.$transaction(async (tx) => {
+    let personalRole = await tx.role.findUnique({
+      where: { name: personalRoleName },
+    });
+
+    if (!personalRole) {
+      personalRole = await tx.role.create({
+        data: {
+          name: personalRoleName,
+          description: personalRoleDescription,
+        },
+      });
+    } else {
+      await tx.role.update({
+        where: { id: personalRole.id },
+        data: {
+          description: personalRoleDescription,
+        },
+      });
+    }
+
+    await tx.rolePermission.deleteMany({
+      where: { roleId: personalRole.id },
+    });
+
+    if (permissionIds.length > 0) {
+      await tx.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({
+          roleId: personalRole.id,
+          permissionId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        roleId: personalRole.id,
+      },
+    });
+
+    return tx.user.findUnique({
+      where: { id: user.id },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  return serializeData({
+    id: updatedUser.id,
+    email: updatedUser.email,
+    fullName: updatedUser.fullName,
+    roleId: updatedUser.roleId,
+    role: updatedUser.role
+      ? {
+          id: updatedUser.role.id,
+          name: updatedUser.role.name,
+          description: updatedUser.role.description,
+        }
+      : null,
+    permissions: resolveEffectivePermissionsFromUser(updatedUser),
+    rolePermissions: updatedUser.role?.permissions.map((item) => item.permission.actionName) ?? [],
   });
 }
 
@@ -943,4 +1260,32 @@ async function notifyWishlistUsersAboutCoupon(coupon) {
     coupon,
     wishlistProductIds.map((item) => item.productId),
   );
+}
+
+async function ensureAdminPermissionCatalogInDb() {
+  await prisma.permission.createMany({
+    data: adminPermissionCatalog,
+    skipDuplicates: true,
+  });
+}
+
+function normalizePermissionActionList(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function resolveEffectivePermissionsFromUser(user) {
+  const rolePermissions =
+    user?.role?.permissions?.map((item) => item.permission.actionName) ?? [];
+
+  if (String(user?.email ?? "").trim().toLowerCase() === "admin@gmail.com") {
+    return adminPermissionCatalog.map((item) => item.actionName);
+  }
+
+  return Array.from(new Set(rolePermissions.filter(Boolean)));
 }

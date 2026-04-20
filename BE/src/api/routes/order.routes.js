@@ -31,6 +31,10 @@ router.use((req, res, next) => {
     return res.status(403).json({ message: "Admin only" });
   }
 
+  if (!Array.isArray(req.auth?.permissions) || !req.auth.permissions.includes("admin_orders_manage")) {
+    return res.status(403).json({ message: "Bạn không có quyền quản lý đơn hàng" });
+  }
+
   return next();
 });
 

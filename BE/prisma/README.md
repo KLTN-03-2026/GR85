@@ -1,29 +1,19 @@
-﻿# Prisma setup
+# Prisma
 
-Project nay da co san Prisma schema va migration ban gui.
+Thu muc nay chi giu cac thanh phan Prisma dang duoc su dung:
 
-## Da duoc copy vao
-- `prisma/schema.prisma`
-- `prisma/migrations/migration_lock.toml`
-- `prisma/migrations/20260402210150_init/migration.sql`
+- `schema.prisma`
+- `migrations/`
+- `seed.js`
 
-## Database hien tai
-- Provider: `mysql`
-- Env can co: `DATABASE_URL`
+## Yeu cau
+
+- Database provider: `mysql`
+- Env bat buoc: `DATABASE_URL`
 
 ## Lenh hay dung
-- `npx prisma generate`
-- `npx prisma migrate dev`
-- `npx prisma db push`
-- `npx prisma studio`
 
-## Module co trong schema
-- User, Role, Permission
-- Product, Category, Supplier, ProductImage, ProductDetail
-- Coupon
-- Cart, Order, OrderItem
-- Warehouse, Batch, SerialNumber
-- Review
-- ChatRoom, Message
-- AiSavedBuild, AiBuildItem
-- EmailVerification
+- `npm run prisma:generate`
+- `npm run prisma:migrate`
+- `npm run prisma:studio`
+- `npm run prisma:seed`
