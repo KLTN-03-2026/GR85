@@ -148,7 +148,7 @@ router.patch(
       return res.json(data);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+        return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", });
       }
 
       if (error instanceof Error) {
