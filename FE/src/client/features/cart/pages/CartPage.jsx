@@ -984,100 +984,102 @@ export default function CartPage() {
                     </select>
                   </div>
 
-                  <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-4">
-                    <p className="text-sm font-medium">Voucher giảm giá sản phẩm</p>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={productVoucherCode}
-                      onChange={(event) => {
-                        setProductVoucherCode(event.target.value.toUpperCase());
-                      }}
-                    >
-                      <option value="">Không chọn voucher sản phẩm</option>
-                      {availableProductCoupons.map((coupon) => (
-                        <option key={`product-coupon-${coupon.id}`} value={coupon.code}>
-                          {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Nhập mã giảm giá sản phẩm"
+                  <div className="mb-6 grid gap-3">
+                    <div className="rounded-lg border border-border/70 p-3 space-y-3">
+                      <p className="text-sm font-semibold">Voucher giảm giá sản phẩm</p>
+                      <select
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={productVoucherCode}
-                        onChange={(event) => setProductVoucherCode(event.target.value.toUpperCase())}
-                      />
-                      <Button type="button" variant="outline" onClick={applyProductVoucher}>
-                        Áp dụng
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={clearProductVoucher}
-                        disabled={!productVoucherCode && !pricingPreview?.appliedCoupon?.code}
+                        onChange={(event) => {
+                          setProductVoucherCode(event.target.value.toUpperCase());
+                        }}
                       >
-                        Bỏ chọn
-                      </Button>
+                        <option value="">Không chọn voucher sản phẩm</option>
+                        {availableProductCoupons.map((coupon) => (
+                          <option key={`product-coupon-${coupon.id}`} value={coupon.code}>
+                            {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Nhập mã giảm giá sản phẩm"
+                          value={productVoucherCode}
+                          onChange={(event) => setProductVoucherCode(event.target.value.toUpperCase())}
+                        />
+                        <Button type="button" variant="outline" onClick={applyProductVoucher}>
+                          Áp dụng
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={clearProductVoucher}
+                          disabled={!productVoucherCode && !pricingPreview?.appliedCoupon?.code}
+                        >
+                          Bỏ chọn
+                        </Button>
+                      </div>
+                      {productVoucherFeedback && (
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{productVoucherFeedback}</span>
+                        </div>
+                      )}
+                      {productVoucherError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{productVoucherError}</span>
+                        </div>
+                      )}
                     </div>
-                    {productVoucherFeedback && (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{productVoucherFeedback}</span>
-                      </div>
-                    )}
-                    {productVoucherError && (
-                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{productVoucherError}</span>
-                      </div>
-                    )}
 
-                    <Separator />
-
-                    <p className="text-sm font-medium">Voucher giảm phí vận chuyển</p>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={shippingVoucherCode}
-                      onChange={(event) => {
-                        setShippingVoucherCode(event.target.value.toUpperCase());
-                      }}
-                    >
-                      <option value="">Không chọn voucher vận chuyển</option>
-                      {availableShippingCoupons.map((coupon) => (
-                        <option key={`shipping-coupon-${coupon.id}`} value={coupon.code}>
-                          {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Nhập mã giảm phí vận chuyển"
+                    <div className="rounded-lg border border-border/70 p-3 space-y-3">
+                      <p className="text-sm font-semibold">Voucher giảm phí vận chuyển</p>
+                      <select
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={shippingVoucherCode}
-                        onChange={(event) => setShippingVoucherCode(event.target.value.toUpperCase())}
-                      />
-                      <Button type="button" variant="outline" onClick={applyShippingVoucher}>
-                        Áp dụng
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={clearShippingVoucher}
-                        disabled={!shippingVoucherCode && !pricingPreview?.appliedShippingCoupon?.code}
+                        onChange={(event) => {
+                          setShippingVoucherCode(event.target.value.toUpperCase());
+                        }}
                       >
-                        Bỏ chọn
-                      </Button>
+                        <option value="">Không chọn voucher vận chuyển</option>
+                        {availableShippingCoupons.map((coupon) => (
+                          <option key={`shipping-coupon-${coupon.id}`} value={coupon.code}>
+                            {coupon.code} - giảm {formatPrice(Number(coupon.estimatedDiscountAmount ?? 0))}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Nhập mã giảm phí vận chuyển"
+                          value={shippingVoucherCode}
+                          onChange={(event) => setShippingVoucherCode(event.target.value.toUpperCase())}
+                        />
+                        <Button type="button" variant="outline" onClick={applyShippingVoucher}>
+                          Áp dụng
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={clearShippingVoucher}
+                          disabled={!shippingVoucherCode && !pricingPreview?.appliedShippingCoupon?.code}
+                        >
+                          Bỏ chọn
+                        </Button>
+                      </div>
+                      {shippingVoucherFeedback && (
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{shippingVoucherFeedback}</span>
+                        </div>
+                      )}
+                      {shippingVoucherError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{shippingVoucherError}</span>
+                        </div>
+                      )}
                     </div>
-                    {shippingVoucherFeedback && (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{shippingVoucherFeedback}</span>
-                      </div>
-                    )}
-                    {shippingVoucherError && (
-                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{shippingVoucherError}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="mb-6 rounded-lg border border-border/70 p-3 space-y-3">

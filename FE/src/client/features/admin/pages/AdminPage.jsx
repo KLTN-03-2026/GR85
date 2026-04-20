@@ -50,6 +50,7 @@ import {
 const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
   { id: "users", label: "Người dùng", icon: Users },
+  { id: "roles", label: "Phân quyền", icon: ShieldCheck },
   { id: "products", label: "Sản phẩm", icon: Package },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
@@ -59,11 +60,27 @@ const navItems = [
   { id: "chat", label: "Chat", icon: MessageSquareMore },
   { id: "ai-build", label: "Cấu hình AI", icon: Sparkles },
   { id: "verification", label: "Email OTP", icon: MailCheck },
-  { id: "roles", label: "Phân quyền", icon: ShieldCheck },
 ].map((item) => ({
   ...item,
   hash: `#${slugifyTabLabel(item.label)}`,
 }));
+
+const tabPermissionMap = {
+  dashboard: "admin_dashboard_view",
+  users: "admin_users_manage",
+  products: "admin_products_manage",
+  orders: "admin_orders_manage",
+  catalog: "admin_catalog_manage",
+  vouchers: "admin_vouchers_manage",
+  warehouse: "admin_warehouse_manage",
+  reviews: "admin_reviews_manage",
+  chat: "admin_chat_manage",
+  "ai-build": "admin_ai_build_manage",
+  verification: "admin_verification_view",
+  roles: "admin_roles_manage",
+};
+
+const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 
 const schemaBySection = {
   dashboard: {
@@ -87,11 +104,9 @@ const schemaBySection = {
     ],
   },
   users: {
-    headline: "Dữ liệu người dùng và phân quyền",
-    tables: ["Users", "Roles", "Permissions", "Role_Permissions", "User_Addresses"],
+    headline: "Dữ liệu người dùng",
+    tables: ["Users", "User_Addresses"],
     relations: [
-      "Roles 1 - n Users",
-      "Roles n - n Permissions qua Role_Permissions",
       "Users 1 - n User_Addresses",
     ],
   },
@@ -175,11 +190,11 @@ const schemaBySection = {
     relations: ["Bang luu OTP theo email, muc dich, thoi gian het han"],
   },
   roles: {
-    headline: "Dữ liệu vai trò và quyền hệ thống",
-    tables: ["Roles", "Permissions", "Role_Permissions", "Users"],
+    headline: "Dữ liệu phân quyền theo tài khoản",
+    tables: ["Users", "Roles", "Permissions", "Role_Permissions"],
     relations: [
       "Roles n - n Permissions qua Role_Permissions",
-      "Roles 1 - n Users",
+      "Users 1 - n Roles (vai trò cá nhân hóa theo tài khoản)",
     ],
   },
 };
@@ -445,7 +460,7 @@ const CATEGORY_SPEC_CONFIG = {
 };
 
 export default function AdminPage() {
-  const { token, isAuthenticated, isHydrated } = useAuth();
+  const { token, user, setSession, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboard, setDashboard] = useState(null);
@@ -487,6 +502,12 @@ export default function AdminPage() {
   const [editingVoucherId, setEditingVoucherId] = useState(null);
   const [deletingVoucherId, setDeletingVoucherId] = useState(null);
   const [selectedSummaryCard, setSelectedSummaryCard] = useState("users");
+  const [rolePermissionDraftByRoleId, setRolePermissionDraftByRoleId] = useState({});
+  const [savingRoleId, setSavingRoleId] = useState(null);
+  const [permissionTargets, setPermissionTargets] = useState([]);
+  const [selectedPermissionTargetId, setSelectedPermissionTargetId] = useState("");
+  const [permissionDraftByUserId, setPermissionDraftByUserId] = useState({});
+  const [savingPermissionTargetId, setSavingPermissionTargetId] = useState(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
   const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
   const [isSavingUserDetail, setIsSavingUserDetail] = useState(false);
@@ -618,6 +639,51 @@ export default function AdminPage() {
               ]),
             ),
           );
+          setRolePermissionDraftByRoleId(
+            Object.fromEntries(
+              (payload?.roles ?? []).map((item) => [
+                item.id,
+                Array.isArray(item.permissions) ? item.permissions : [],
+              ]),
+            ),
+          );
+        }
+
+        try {
+          const targetsResponse = await fetch("/api/admin/permission-targets", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (targetsResponse.ok) {
+            const targetsPayload = await targetsResponse.json();
+            if (!cancelled) {
+              const targets = Array.isArray(targetsPayload?.users)
+                ? targetsPayload.users
+                : Array.isArray(targetsPayload)
+                  ? targetsPayload
+                  : [];
+
+              setPermissionTargets(targets);
+              setPermissionDraftByUserId(
+                Object.fromEntries(
+                  targets.map((item) => [
+                    item.id,
+                    Array.isArray(item.permissions) ? item.permissions : [],
+                  ]),
+                ),
+              );
+
+              if (!selectedPermissionTargetId && targets.length > 0) {
+                setSelectedPermissionTargetId(String(targets[0].id));
+              }
+            }
+          }
+        } catch {
+          if (!cancelled) {
+            setPermissionTargets([]);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -2733,6 +2799,295 @@ export default function AdminPage() {
   const selectedSummaryDetail =
     summaryDetailByCard[selectedSummaryCard] ?? summaryDetailByCard.users;
 
+  const currentUserPermissions = useMemo(
+    () => normalizePermissionActions(user?.permissions),
+    [user?.permissions],
+  );
+
+  const allowedNavItems = useMemo(
+    () =>
+      navItems.filter((item) =>
+        canAccessAdminTab(item.id, {
+          email: user?.email,
+          role: user?.role,
+          permissions: currentUserPermissions,
+        }),
+      ),
+    [currentUserPermissions, user?.email, user?.role],
+  );
+
+  const permissionCatalog = useMemo(() => {
+    const fromDashboard = Array.isArray(dashboard?.permissionCatalog)
+      ? dashboard.permissionCatalog
+      : [];
+
+    if (fromDashboard.length > 0) {
+      return fromDashboard;
+    }
+
+    return Array.from(
+      new Set((dashboard?.roles ?? []).flatMap((role) => role.permissions ?? [])),
+    )
+      .sort((a, b) => String(a).localeCompare(String(b)))
+      .map((actionName) => ({
+        actionName,
+        description: "",
+      }));
+  }, [dashboard]);
+
+  const menuPermissionOptions = useMemo(() => {
+    const descriptionByAction = new Map(
+      permissionCatalog.map((item) => [item.actionName, item.description ?? ""]),
+    );
+
+    return navItems
+      .map((item) => {
+        const actionName = tabPermissionMap[item.id];
+        if (!actionName) {
+          return null;
+        }
+
+        return {
+          tabId: item.id,
+          label: item.label,
+          actionName,
+          description: descriptionByAction.get(actionName) ?? "",
+        };
+      })
+      .filter(Boolean);
+  }, [permissionCatalog]);
+
+  const toggleRolePermission = useCallback((roleId, permission, checked) => {
+    setRolePermissionDraftByRoleId((prev) => {
+      const current = new Set(Array.isArray(prev?.[roleId]) ? prev[roleId] : []);
+      if (checked) {
+        current.add(permission);
+      } else {
+        current.delete(permission);
+      }
+
+      return {
+        ...prev,
+        [roleId]: Array.from(current),
+      };
+    });
+  }, []);
+
+  const saveRolePermissions = useCallback(
+    async (role) => {
+      const roleId = Number(role?.id);
+      if (!Number.isFinite(roleId) || roleId <= 0) {
+        return;
+      }
+
+      try {
+        setSavingRoleId(roleId);
+        const response = await fetch(`/api/admin/roles/${roleId}/permissions`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            permissions: rolePermissionDraftByRoleId[roleId] ?? [],
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.message || "Không thể lưu phân quyền");
+        }
+
+        setDashboard((prev) => {
+          if (!prev) {
+            return prev;
+          }
+
+          const nextRoles = (prev.roles ?? []).map((item) =>
+            Number(item.id) === roleId ? { ...item, permissions: payload.permissions ?? [] } : item,
+          );
+
+          return {
+            ...prev,
+            roles: nextRoles,
+          };
+        });
+
+        if (String(user?.role ?? "") === String(role?.name ?? "")) {
+          try {
+            const meResponse = await fetch("/api/auth/me", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (meResponse.ok) {
+              const refreshedUser = await meResponse.json();
+              setSession({
+                token,
+                user: refreshedUser,
+              });
+            }
+          } catch {
+            // Ignore refresh errors to keep permission save successful.
+          }
+        }
+
+        toast({
+          title: "Đã cập nhật phân quyền",
+          description: `Vai trò ${role?.name ?? roleId} đã được lưu quyền mới`,
+        });
+      } catch (error) {
+        toast({
+          title: "Lưu phân quyền thất bại",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      } finally {
+        setSavingRoleId(null);
+      }
+    },
+    [rolePermissionDraftByRoleId, setSession, toast, token, user?.role],
+  );
+
+  const selectedPermissionTarget = useMemo(
+    () =>
+      permissionTargets.find(
+        (item) => String(item.id) === String(selectedPermissionTargetId),
+      ) ?? null,
+    [permissionTargets, selectedPermissionTargetId],
+  );
+
+  const effectiveSelectedPermissionDraft = useMemo(() => {
+    if (!selectedPermissionTarget) {
+      return [];
+    }
+
+    if (String(selectedPermissionTarget?.email ?? "").trim().toLowerCase() === "admin@gmail.com") {
+      return permissionCatalog.map((permission) => permission.actionName);
+    }
+
+    return normalizePermissionActions(
+      permissionDraftByUserId[selectedPermissionTarget.id] ?? selectedPermissionTarget.permissions ?? [],
+    );
+  }, [permissionCatalog, permissionDraftByUserId, selectedPermissionTarget]);
+
+  const toggleUserPermission = useCallback((userId, permission, checked) => {
+    setPermissionDraftByUserId((prev) => {
+      const current = new Set(Array.isArray(prev?.[userId]) ? prev[userId] : []);
+      if (checked) {
+        current.add(permission);
+      } else {
+        current.delete(permission);
+      }
+
+      return {
+        ...prev,
+        [userId]: Array.from(current),
+      };
+    });
+  }, []);
+
+  const saveUserPermissions = useCallback(
+    async (permissionTarget) => {
+      const userId = Number(permissionTarget?.id);
+      if (!Number.isFinite(userId) || userId <= 0) {
+        return;
+      }
+
+      const allowedPermissionActions = new Set(
+        menuPermissionOptions.map((item) => item.actionName),
+      );
+      const permissionsToSave = normalizePermissionActions(
+        (permissionDraftByUserId[userId] ?? []).filter((item) =>
+          allowedPermissionActions.has(String(item ?? "")),
+        ),
+      );
+
+      try {
+        setSavingPermissionTargetId(userId);
+        const response = await fetch(`/api/admin/users/${userId}/permissions`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            permissions: permissionsToSave,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.message || "Không thể lưu phân quyền tài khoản");
+        }
+
+        setPermissionTargets((prev) =>
+          (prev ?? []).map((item) =>
+            Number(item.id) === userId
+              ? {
+                  ...item,
+                  permissions: payload.permissions ?? [],
+                  roleId: payload.roleId ?? item.roleId,
+                  role: payload.role ?? item.role,
+                }
+              : item,
+          ),
+        );
+
+        setPermissionDraftByUserId((prev) => ({
+          ...prev,
+          [userId]: payload.permissions ?? [],
+        }));
+
+        if (String(user?.id ?? "") === String(userId)) {
+          try {
+            const meResponse = await fetch("/api/auth/me", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (meResponse.ok) {
+              const refreshedUser = await meResponse.json();
+              setSession({
+                token,
+                user: refreshedUser,
+              });
+            }
+          } catch {
+            // Ignore refresh errors to keep permission save successful.
+          }
+        }
+
+        toast({
+          title: "Đã cập nhật quyền tài khoản",
+          description: `Tài khoản ${permissionTarget?.email ?? userId} đã được lưu quyền mới`,
+        });
+      } catch (error) {
+        toast({
+          title: "Lưu quyền tài khoản thất bại",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      } finally {
+        setSavingPermissionTargetId(null);
+      }
+    },
+    [menuPermissionOptions, permissionDraftByUserId, setSession, toast, token, user?.id],
+  );
+
+  useEffect(() => {
+    if (allowedNavItems.length === 0) {
+      return;
+    }
+
+    const hasActiveTab = allowedNavItems.some((item) => item.id === activeTab);
+    if (!hasActiveTab) {
+      setActiveTab(allowedNavItems[0].id);
+    }
+  }, [activeTab, allowedNavItems]);
+
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
 
@@ -2742,11 +3097,11 @@ export default function AdminPage() {
 
       <div className="mx-auto max-w-[1600px] px-4 pb-10 pt-24 lg:px-6">
         <aside className="hidden lg:fixed lg:top-24 lg:block lg:w-72">
-          <div className="space-y-4 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="max-h-[calc(100vh-7.5rem)] space-y-4 overflow-y-auto rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
             <h1 className="text-xl font-bold">Trang quản trị</h1>
 
             <div className="space-y-1">
-              {navItems.map((item) => (
+              {allowedNavItems.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -2778,7 +3133,7 @@ export default function AdminPage() {
                 value={activeTab}
                 onChange={(event) => setActiveTab(event.target.value)}
               >
-                {navItems.map((item) => (
+                {allowedNavItems.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.label}
                   </option>
@@ -2917,7 +3272,6 @@ export default function AdminPage() {
                   "Tên",
                   "Email",
                   "Điện thoại",
-                  "Role",
                   "Trạng thái",
                   "Thao tác",
                 ]}
@@ -2967,31 +3321,6 @@ export default function AdminPage() {
                     />
                   ) : (
                     (item.phone ?? "-")
-                  ),
-                  editingUserId === item.id ? (
-                    <select
-                      key={`role-${item.id}`}
-                      className="w-full rounded-md border bg-background px-2 py-1 text-sm"
-                      value={userDraftById[item.id]?.roleId ?? ""}
-                      onChange={(event) =>
-                        setUserDraftById((prev) => ({
-                          ...prev,
-                          [item.id]: {
-                            ...prev[item.id],
-                            roleId: event.target.value,
-                          },
-                        }))
-                      }
-                    >
-                      <option value="">Không gán role</option>
-                      {(dashboard?.roles ?? []).map((role) => (
-                        <option key={role.id} value={String(role.id)}>
-                          {role.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    pill(item.role?.name ?? "User")
                   ),
                   editingUserId === item.id ? (
                     <select
@@ -3157,27 +3486,6 @@ export default function AdminPage() {
                             }))
                           }
                         />
-                      </div>
-
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Vai trò</label>
-                        <select
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          value={selectedUserDraft.roleId}
-                          onChange={(event) =>
-                            setSelectedUserDraft((prev) => ({
-                              ...prev,
-                              roleId: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Không gán role</option>
-                          {(dashboard?.roles ?? []).map((role) => (
-                            <option key={role.id} value={String(role.id)}>
-                              {role.name}
-                            </option>
-                          ))}
-                        </select>
                       </div>
 
                       <div className="grid gap-2">
@@ -5038,30 +5346,125 @@ export default function AdminPage() {
             <SectionHeader
               sectionId="roles"
               icon={ShieldCheck}
-              title="Phân quyền hệ thống"
-              description="Vai trò và quyền truy cập"
+              title="Phân quyền"
+              description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
             />
-            <div className="grid gap-6 xl:grid-cols-3">
-              {(dashboard?.roles ?? []).map((role) => (
-                <Panel
-                  key={role.name}
-                  title={`${role.name} (${role.userCount})`}
-                  description="Danh sách quyền"
-                >
-                  <div className="space-y-2">
-                    {(role.permissions ?? []).map((permission) => (
-                      <div
-                        key={permission}
-                        className="flex items-center gap-2 rounded-2xl bg-secondary/70 px-3 py-2 text-sm"
-                      >
-                        <Activity className="h-4 w-4 text-primary" />
-                        <span>{permission}</span>
-                      </div>
+            <Panel
+              title="Chọn tài khoản"
+              description="Tài khoản admin@gmail.com luôn có toàn bộ quyền"
+            >
+              <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold text-muted-foreground">
+                    Tài khoản nhân viên
+                  </label>
+                  <select
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={selectedPermissionTargetId}
+                    onChange={(event) => setSelectedPermissionTargetId(event.target.value)}
+                  >
+                    {permissionTargets.map((item) => (
+                      <option key={item.id} value={String(item.id)}>
+                        {item.fullName || item.email} {item.role?.name ? `(${item.role.name})` : ""}
+                      </option>
                     ))}
+                  </select>
+
+                  {selectedPermissionTarget ? (
+                    <div className="rounded-2xl border border-border/60 bg-secondary/40 p-4 text-sm">
+                      <div className="font-semibold">{selectedPermissionTarget.fullName || selectedPermissionTarget.email}</div>
+                      <div className="text-muted-foreground">{selectedPermissionTarget.email}</div>
+                      <div className="mt-2 text-xs uppercase tracking-wide text-muted-foreground">
+                        {String(selectedPermissionTarget.email ?? "").trim().toLowerCase() === "admin@gmail.com"
+                          ? "Siêu quản trị"
+                          : selectedPermissionTarget.role?.name || "Chưa có vai trò"}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold">Quyền theo menu</span>
+                    {selectedPermissionTarget ? (
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                        {menuPermissionOptions.filter((item) =>
+                          effectiveSelectedPermissionDraft.includes(item.actionName),
+                        ).length} mục
+                      </span>
+                    ) : null}
                   </div>
-                </Panel>
-              ))}
-            </div>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {menuPermissionOptions.map((permissionItem) => {
+                      const actionName = String(permissionItem.actionName ?? "");
+                      const isSuperAdmin =
+                        String(selectedPermissionTarget?.email ?? "")
+                          .trim()
+                          .toLowerCase() === "admin@gmail.com";
+                      const checked = isSuperAdmin
+                        ? true
+                        : effectiveSelectedPermissionDraft.includes(actionName);
+
+                      return (
+                        <label
+                          key={actionName}
+                          className="flex cursor-pointer items-start gap-2 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isSuperAdmin || !selectedPermissionTarget}
+                            onChange={(event) =>
+                              selectedPermissionTarget
+                                ? toggleUserPermission(
+                                    selectedPermissionTarget.id,
+                                    actionName,
+                                    event.target.checked,
+                                  )
+                                : null
+                            }
+                            className="mt-1"
+                          />
+                          <span className="flex flex-col gap-1">
+                            <span className="font-medium">{permissionItem.label}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {actionName}
+                            </span>
+                            {permissionItem.description ? (
+                              <span className="text-xs text-muted-foreground">
+                                {permissionItem.description}
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      selectedPermissionTarget ? saveUserPermissions(selectedPermissionTarget) : null
+                    }
+                    disabled={
+                      !selectedPermissionTarget ||
+                      savingPermissionTargetId === Number(selectedPermissionTarget?.id) ||
+                      String(selectedPermissionTarget?.email ?? "").trim().toLowerCase() ===
+                        "admin@gmail.com"
+                    }
+                    className="w-full"
+                  >
+                    {savingPermissionTargetId === Number(selectedPermissionTarget?.id)
+                      ? "Đang lưu quyền tài khoản..."
+                      : String(selectedPermissionTarget?.email ?? "").trim().toLowerCase() ===
+                          "admin@gmail.com"
+                        ? "Siêu quản trị luôn có toàn quyền"
+                        : "Lưu quyền tài khoản"}
+                  </Button>
+                </div>
+              </div>
+            </Panel>
           </section>
         </main>
       </div>
@@ -5377,4 +5780,51 @@ function resolveTabIdFromLocation() {
 
   const match = navItems.find((item) => getTabAliases(item).includes(token));
   return match?.id ?? null;
+}
+
+function normalizePermissionActions(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function canAccessAdminTab(tabId, context = {}) {
+  const permission = tabPermissionMap[tabId];
+  if (!permission) {
+    return true;
+  }
+
+  const normalizedEmail = String(context.email ?? "").trim().toLowerCase();
+  if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+    return true;
+  }
+
+  const normalizedRole = String(context.role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+  const permissions = normalizePermissionActions(context.permissions);
+
+  const isAdminRole =
+    normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  const hasAdminPermission = permissions.some((item) =>
+    String(item ?? "").toLowerCase().startsWith("admin_"),
+  );
+
+  if (!isAdminRole && !hasAdminPermission) {
+    return false;
+  }
+
+  // Always keep the permissions tab visible for admin users to avoid permission lockout.
+  if (tabId === "roles") {
+    return true;
+  }
+
+  return permissions.includes(permission);
 }

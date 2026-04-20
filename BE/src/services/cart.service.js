@@ -122,10 +122,7 @@ export async function listAvailableCoupons(userId, input = {}) {
       status: "ACTIVE",
       startDate: { lte: now },
       endDate: { gte: now },
-      OR: [
-        { couponUsers: { none: {} } },
-        { couponUsers: { some: { userId } } },
-      ],
+      couponUsers: { some: { userId } },
     },
     orderBy: [{ createdAt: "desc" }],
   });
@@ -1296,8 +1293,8 @@ async function resolveCouponOrThrow({ code, scope, userId, baseAmount }) {
   }
 
   if (
-    Array.isArray(coupon.couponUsers) &&
-    coupon.couponUsers.length > 0 &&
+    !Array.isArray(coupon.couponUsers) ||
+    coupon.couponUsers.length === 0 ||
     !coupon.couponUsers.some((item) => Number(item.userId) === Number(userId))
   ) {
     throw new Error("Bạn không được phép sử dụng voucher này");

@@ -109,13 +109,12 @@ async function markOrderPaid(orderId, note) {
       },
     });
 
-    const couponIdsToIncrease = [order.couponId, order.shippingCouponId].filter(
-      (value, index, arr) => value && arr.indexOf(value) === index,
-    );
+    const couponIdsToIncrease = [order.couponId, order.shippingCouponId]
+      .filter((value, index, arr) => Number.isFinite(Number(value)) && arr.indexOf(value) === index);
 
     for (const couponId of couponIdsToIncrease) {
       await tx.coupon.update({
-        where: { id: couponId },
+        where: { id: Number(couponId) },
         data: {
           usedCount: {
             increment: 1,

@@ -10,8 +10,10 @@ import {
   normalizeAndValidateFullName,
   normalizeAndValidatePhoneNumber,
 } from "../utils/validation.js";
+import { adminPermissionCatalog } from "./admin.service.js";
 
 const defaultUserPermissions = ["place_order", "save_build", "send_review"];
+const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 const verificationPurposes = {
   EMAIL_VERIFY: "EMAIL_VERIFY",
   PASSWORD_RESET: "PASSWORD_RESET",
@@ -290,6 +292,9 @@ export async function getCurrentUser(userId) {
     throw new Error("Người dùng không tồn tại");
   }
 
+  const permissions = resolveEffectivePermissions(user);
+  const roleName = resolveDisplayRoleFromPermissions(user, permissions);
+
   return serializeData({
     id: user.id,
     email: user.email,
@@ -298,12 +303,10 @@ export async function getCurrentUser(userId) {
     address: user.address,
     walletBalance: Number(user.walletBalance ?? 0),
     status: user.status,
-    role: user.role?.name ?? "User",
+    role: roleName,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
-    permissions:
-      user.role?.permissions.map((item) => item.permission.actionName) ??
-      defaultUserPermissions,
+    permissions,
   });
 }
 
@@ -686,15 +689,14 @@ export async function changePassword(userId, input) {
 }
 
 function buildAuthPayload(user) {
-  const permissions =
-    user.role?.permissions.map((item) => item.permission.actionName) ??
-    defaultUserPermissions;
+  const permissions = resolveEffectivePermissions(user);
+  const roleName = resolveDisplayRoleFromPermissions(user, permissions);
 
   const token = jwt.sign(
     {
       sub: user.id,
       email: user.email,
-      role: user.role?.name ?? "User",
+      role: roleName,
       permissions,
     },
     env.JWT_SECRET,
@@ -709,10 +711,40 @@ function buildAuthPayload(user) {
       fullName: user.fullName,
       phone: user.phone,
       status: user.status,
-      role: user.role?.name ?? "User",
+      role: roleName,
       permissions,
     },
   });
+}
+
+function resolveEffectivePermissions(user) {
+  const rolePermissions =
+    user?.role?.permissions?.map((item) => item.permission.actionName) ??
+    defaultUserPermissions;
+
+  if (String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+    return adminPermissionCatalog.map((item) => item.actionName);
+  }
+
+  return Array.from(new Set(rolePermissions.filter(Boolean)));
+}
+
+function resolveDisplayRoleFromPermissions(user, permissions = []) {
+  const baseRole = String(user?.role?.name ?? "User").trim() || "User";
+
+  if (String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+    return "Admin";
+  }
+
+  if (
+    (Array.isArray(permissions) ? permissions : []).some((item) =>
+      String(item ?? "").toLowerCase().startsWith("admin_"),
+    )
+  ) {
+    return "Admin";
+  }
+
+  return baseRole;
 }
 
 function normalizeAddressInput(input) {

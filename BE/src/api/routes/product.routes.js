@@ -242,8 +242,20 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 function requireAdmin(req, res, next) {
-  if (req.auth?.role !== "Admin") {
+  const normalizedRole = String(req.auth?.role ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  const isAdmin = normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  if (!isAdmin) {
     return res.status(403).json({ message: "Chỉ admin mới được phép thực hiện thao tác này" });
+  }
+
+  if (!Array.isArray(req.auth?.permissions) || !req.auth.permissions.includes("admin_products_manage")) {
+    return res.status(403).json({ message: "Bạn không có quyền quản lý sản phẩm" });
   }
 
   return next();

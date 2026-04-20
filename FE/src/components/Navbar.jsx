@@ -54,6 +54,23 @@ const ADMIN_NAV_ITEMS = [
   { id: "pad", label: "Lót chuột" },
 ];
 
+const ADMIN_TAB_PERMISSION_MAP = {
+  dashboard: "admin_dashboard_view",
+  users: "admin_users_manage",
+  products: "admin_products_manage",
+  orders: "admin_orders_manage",
+  catalog: "admin_catalog_manage",
+  vouchers: "admin_vouchers_manage",
+  warehouse: "admin_warehouse_manage",
+  reviews: "admin_reviews_manage",
+  chat: "admin_chat_manage",
+  "ai-build": "admin_ai_build_manage",
+  verification: "admin_verification_view",
+  roles: "admin_roles_manage",
+};
+
+const SUPER_ADMIN_EMAIL = "admin@gmail.com";
+
 export function Navbar() {
   const { totalItems } = useCart();
   const { isAuthenticated, user, logout, isHydrated } = useAuth();
@@ -62,16 +79,52 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
+  const permissionSet = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(user?.permissions) ? user.permissions : [])
+          .map((item) => String(item ?? "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    [user?.permissions],
+  );
+  const hasAdminPermission = useMemo(
+    () => Array.from(permissionSet).some((item) => item.startsWith("admin_")),
+    [permissionSet],
+  );
+  const isSuperAdmin =
+    String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+  const canAccessAdmin = isAdmin || isSuperAdmin || hasAdminPermission;
+  const isAdminPage = location.pathname.startsWith("/admin");
 
   const filteredAdminItems = useMemo(() => {
     if (!featureSearchKeyword.trim()) {
       return [];
     }
+
+    const currentPermissions = new Set(Array.from(permissionSet));
     const keyword = featureSearchKeyword.toLowerCase().trim();
-    return ADMIN_NAV_ITEMS.filter((item) =>
-      item.label.toLowerCase().includes(keyword),
-    );
-  }, [featureSearchKeyword]);
+    return ADMIN_NAV_ITEMS.filter((item) => {
+      if (!item.label.toLowerCase().includes(keyword)) {
+        return false;
+      }
+
+      if (item.id === "roles" && isAdmin) {
+        return true;
+      }
+
+      const requiredPermission = ADMIN_TAB_PERMISSION_MAP[item.id];
+      if (!requiredPermission) {
+        return true;
+      }
+
+      if (isSuperAdmin) {
+        return true;
+      }
+
+      return currentPermissions.has(String(requiredPermission ?? "").toLowerCase());
+    });
+  }, [featureSearchKeyword, isAdmin, isSuperAdmin, permissionSet]);
 
   const navLinks = [
     { href: "/", label: "Trang chủ" },
@@ -94,7 +147,7 @@ export function Navbar() {
               </span>
             </Link>
 
-            {isHydrated && isAuthenticated && isAdmin && (
+            {isHydrated && isAuthenticated && canAccessAdmin && (
               <div className="hidden items-center gap-2 lg:flex flex-1 max-w-sm">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -133,7 +186,7 @@ export function Navbar() {
           </div>
 
           <div className="hidden items-center gap-1 overflow-x-auto md:flex md:max-w-[44vw] lg:max-w-none">
-            {!isAdmin && navLinks.map((link) => (
+            {(!isAdminPage || !canAccessAdmin) && navLinks.map((link) => (
               <Link key={link.href} to={link.href}>
                 <Button
                   variant={
@@ -150,7 +203,20 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isHydrated && isAuthenticated && isAdmin ? (
+            {isHydrated && isAuthenticated && canAccessAdmin ? (
+              <Link to="/">
+                <Button
+                  variant={location.pathname.startsWith("/admin") ? "outline" : "default"}
+                  size="sm"
+                  className="hidden gap-2 md:flex"
+                >
+                  <User className="h-4 w-4" />
+                  Trang người dùng
+                </Button>
+              </Link>
+            ) : null}
+
+            {isHydrated && isAuthenticated && canAccessAdmin ? (
               <Link to="/admin">
                 <Button
                   variant={
@@ -167,7 +233,7 @@ export function Navbar() {
               </Link>
             ) : null}
 
-            {!isAdmin && (
+            {(!isAdminPage || !canAccessAdmin) && (
               <Link to="/chat">
                 <Button variant="ghost" size="icon" className="relative">
                   <MessageCircle className="h-5 w-5" />
@@ -175,7 +241,7 @@ export function Navbar() {
               </Link>
             )}
 
-            {!isAdmin && (
+            {(!isAdminPage || !canAccessAdmin) && (
               <Link to="/cart">
                 <Button variant="ghost" size="icon" className="relative">
                   <ShoppingCart className="h-5 w-5" />
@@ -188,11 +254,11 @@ export function Navbar() {
               </Link>
             )}
 
-            {isHydrated && isAuthenticated && !isAdmin && (
+            {isHydrated && isAuthenticated && (!isAdminPage || !canAccessAdmin) && (
               <NotificationBell />
             )}
 
-            {isHydrated && isAuthenticated && isAdmin ? (
+            {isHydrated && isAuthenticated && canAccessAdmin ? (
               <div className="hidden items-center gap-3 sm:flex">
                 <Button
                   variant="ghost"
@@ -270,7 +336,7 @@ export function Navbar() {
         {mobileMenuOpen && (
           <div className="border-t border-border/50 py-4 md:hidden">
             <div className="flex flex-col gap-2">
-              {!isAdmin && navLinks.map((link) => (
+              {(!isAdminPage || !canAccessAdmin) && navLinks.map((link) => (
                 <Link
                   key={link.href}
                   to={link.href}
@@ -288,7 +354,19 @@ export function Navbar() {
                 </Link>
               ))}
 
-              {isHydrated && isAuthenticated && isAdmin ? (
+              {isHydrated && isAuthenticated && canAccessAdmin ? (
+                <Link to="/" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={!location.pathname.startsWith("/admin") ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <User className="h-4 w-4" />
+                    Trang người dùng
+                  </Button>
+                </Link>
+              ) : null}
+
+              {isHydrated && isAuthenticated && canAccessAdmin ? (
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
                   <Button
                     variant={
@@ -346,5 +424,8 @@ function isAdminRole(role) {
   return String(role ?? "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
     .includes("admin");
 }
