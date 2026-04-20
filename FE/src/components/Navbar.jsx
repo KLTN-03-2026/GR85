@@ -204,19 +204,6 @@ export function Navbar() {
 
           <div className="flex items-center gap-2">
             {isHydrated && isAuthenticated && canAccessAdmin ? (
-              <Link to="/">
-                <Button
-                  variant={location.pathname.startsWith("/admin") ? "outline" : "default"}
-                  size="sm"
-                  className="hidden gap-2 md:flex"
-                >
-                  <User className="h-4 w-4" />
-                  Trang người dùng
-                </Button>
-              </Link>
-            ) : null}
-
-            {isHydrated && isAuthenticated && canAccessAdmin ? (
               <Link to="/admin">
                 <Button
                   variant={
@@ -353,18 +340,6 @@ export function Navbar() {
                   </Button>
                 </Link>
               ))}
-
-              {isHydrated && isAuthenticated && canAccessAdmin ? (
-                <Link to="/" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={!location.pathname.startsWith("/admin") ? "default" : "ghost"}
-                    className="w-full justify-start gap-2"
-                  >
-                    <User className="h-4 w-4" />
-                    Trang người dùng
-                  </Button>
-                </Link>
-              ) : null}
 
               {isHydrated && isAuthenticated && canAccessAdmin ? (
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
