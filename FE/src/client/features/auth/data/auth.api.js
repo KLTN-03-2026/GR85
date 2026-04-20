@@ -59,6 +59,12 @@ export const authApi = {
       body: JSON.stringify(payload),
     });
   },
+  validateResetOtp(payload) {
+    return request("/validate-reset-otp", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   resetPassword(payload) {
     return request("/reset-password", {
       method: "POST",

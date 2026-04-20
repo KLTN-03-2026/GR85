@@ -17,7 +17,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
-  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,10 +49,10 @@ const modeConfig = {
   register: {
     badge: "Tạo tài khoản mới",
     title: "Đăng ký tài khoản TechBuiltAI",
-    description: "Tạo tài khoản mới trong vài giây.",
+    description: "Nhập email và mật khẩu, xác minh Gmail trước rồi bổ sung hồ sơ sau.",
     submit: "Gửi mã xác minh",
     submitIcon: MailCheck,
-    helper: "Hệ thống sẽ gửi OTP về Gmail.",
+    helper: "Email sẽ chứa cả mã OTP và link kích hoạt nhanh. Mật khẩu tối thiểu 8 ký tự.",
     switchLabel: "Đã có tài khoản?",
     switchAction: "Đăng nhập",
     switchHref: "/login",
@@ -72,7 +71,7 @@ const modeConfig = {
   verify: {
     badge: "Xác minh email",
     title: "Nhập mã OTP vừa gửi vào Gmail",
-    description: "Nhập mã 6 số vừa nhận qua Gmail.",
+    description: "Nhập mã 6 số hoặc bấm link trong email để kích hoạt tự động.",
     submit: "Xác minh tài khoản",
     submitIcon: ShieldCheck,
     helper: "Nếu chưa nhận được, hãy gửi lại mã.",
@@ -101,30 +100,41 @@ export default function AuthPage() {
   const { setSession } = useAuth();
   const mode = resolveMode(location.pathname);
   const queryEmail = searchParams.get("email") ?? "";
+  const queryOtp = searchParams.get("otp") ?? "";
+  const autoVerify = searchParams.get("auto") === "1";
 
   const [form, setForm] = useState({
-    fullName: "",
     email: queryEmail,
     password: "",
     confirmPassword: "",
     otp: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifyingResetOtp, setIsVerifyingResetOtp] = useState(false);
+  const [isResetOtpVerified, setIsResetOtpVerified] = useState(false);
+  const hasAutoVerifiedRef = useRef(false);
 
   useEffect(() => {
     setForm({
-      fullName: "",
       email: queryEmail,
       password: "",
       confirmPassword: "",
-      otp: "",
+      otp: /^\d{6}$/.test(queryOtp) ? queryOtp : "",
     });
-  }, [mode, queryEmail]);
+  }, [mode, queryEmail, queryOtp]);
 
   const pageCopy = useMemo(() => modeConfig[mode], [mode]);
   const SubmitIcon = pageCopy.submitIcon;
   const isResetOtpComplete =
     mode !== "reset" || /^\d{6}$/.test(String(form.otp ?? ""));
+
+  useEffect(() => {
+    if (mode !== "reset") {
+      return;
+    }
+
+    setIsResetOtpVerified(false);
+  }, [form.email, form.otp, mode]);
 
   const handleChange = (field) => (valueOrEvent) => {
     const value = valueOrEvent?.target
@@ -146,10 +156,28 @@ export default function AuthPage() {
       return;
     }
 
+    if (mode === "reset" && !isResetOtpVerified) {
+      toast({
+        title: "OTP chưa được xác minh",
+        description: "Vui lòng bấm Xác minh mã OTP trước khi đặt mật khẩu mới.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (mode === "register" && form.password !== form.confirmPassword) {
       toast({
         title: "Mật khẩu chưa khớp",
         description: "Bạn kiểm tra lại phần xác nhận mật khẩu giúp mình nhé.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (mode === "register" && String(form.password ?? "").length < 8) {
+      toast({
+        title: "Mật khẩu chưa hợp lệ",
+        description: "Mật khẩu đăng ký phải có ít nhất 8 ký tự.",
         variant: "destructive",
       });
       return;
@@ -164,13 +192,21 @@ export default function AuthPage() {
       return;
     }
 
+    if (mode === "reset" && String(form.password ?? "").length < 8) {
+      toast({
+        title: "Mật khẩu mới chưa hợp lệ",
+        description: "Mật khẩu mới phải có ít nhất 8 ký tự.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       switch (mode) {
         case "register": {
           const result = await authApi.register({
-            fullName: form.fullName,
             email: form.email,
             password: form.password,
           });
@@ -205,9 +241,9 @@ export default function AuthPage() {
           setSession(result);
           toast({
             title: "Xác minh thành công",
-            description: "Tài khoản của bạn đã sẵn sàng sử dụng.",
+            description: "Tài khoản đã kích hoạt. Hãy cập nhật hồ sơ của bạn.",
           });
-          window.location.assign(resolvePostLoginPath(result?.user?.role));
+          window.location.assign("/profile");
           break;
         }
         case "reset": {
@@ -264,6 +300,83 @@ export default function AuthPage() {
       });
     }
   };
+
+  const handleVerifyResetOtp = async () => {
+    if (!form.email || !/^\d{6}$/.test(String(form.otp ?? ""))) {
+      toast({
+        title: "OTP chưa hợp lệ",
+        description: "Vui lòng nhập đúng email và đủ 6 số OTP.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsVerifyingResetOtp(true);
+      await authApi.validateResetOtp({
+        email: form.email,
+        otp: form.otp,
+      });
+
+      setIsResetOtpVerified(true);
+      toast({
+        title: "OTP hợp lệ",
+        description: "Bạn có thể nhập mật khẩu mới ngay bây giờ.",
+      });
+    } catch (error) {
+      setIsResetOtpVerified(false);
+      toast({
+        title: "Xác minh OTP thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVerifyingResetOtp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode !== "verify" || !autoVerify) {
+      return;
+    }
+
+    if (hasAutoVerifiedRef.current) {
+      return;
+    }
+
+    if (!form.email || !/^\d{6}$/.test(String(form.otp ?? ""))) {
+      return;
+    }
+
+    hasAutoVerifiedRef.current = true;
+
+    (async () => {
+      setIsSubmitting(true);
+      try {
+        const result = await authApi.verifyEmail({
+          email: form.email,
+          otp: form.otp,
+        });
+
+        setSession(result);
+        toast({
+          title: "Kích hoạt thành công",
+          description: "Tài khoản đã được xác minh. Hãy cập nhật hồ sơ của bạn.",
+        });
+
+        window.location.assign("/profile");
+      } catch (error) {
+        hasAutoVerifiedRef.current = false;
+        toast({
+          title: "Kích hoạt tự động thất bại",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  }, [autoVerify, form.email, form.otp, mode, setSession, toast]);
 
   return (
     <div className="relative h-screen overflow-hidden bg-[linear-gradient(125deg,_rgba(6,78,59,0.10)_0%,_rgba(255,255,255,1)_30%,_rgba(14,165,233,0.12)_100%)]">
@@ -344,22 +457,6 @@ export default function AuthPage() {
                 </div>
               )}
 
-              {mode === "register" && (
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Họ và tên</Label>
-                  <div className="relative">
-                    <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="fullName"
-                      className="h-11 pl-10"
-                      placeholder="Nguyễn Văn A"
-                      value={form.fullName}
-                      onChange={handleChange("fullName")}
-                    />
-                  </div>
-                </div>
-              )}
-
               {(mode === "login" || mode === "register") && (
                 <div className="space-y-2">
                   <Label htmlFor="password">Mật khẩu</Label>
@@ -368,6 +465,7 @@ export default function AuthPage() {
                     <Input
                       id="password"
                       type="password"
+                      minLength={mode === "register" ? 8 : undefined}
                       className="h-11 pl-10"
                       placeholder={
                         mode === "register" ? "Tạo mật khẩu" : "Nhập mật khẩu"
@@ -387,6 +485,7 @@ export default function AuthPage() {
                     <Input
                       id="confirmPassword"
                       type="password"
+                      minLength={8}
                       className="h-11 pl-10"
                       placeholder="Nhập lại mật khẩu"
                       value={form.confirmPassword}
@@ -413,10 +512,24 @@ export default function AuthPage() {
                       <InputOTPSlot index={5} />
                     </InputOTPGroup>
                   </InputOTP>
+                  {mode === "reset" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleVerifyResetOtp}
+                      disabled={
+                        isVerifyingResetOtp ||
+                        !form.email ||
+                        !/^\d{6}$/.test(String(form.otp ?? ""))
+                      }
+                    >
+                      {isVerifyingResetOtp ? "Đang kiểm tra OTP..." : "Xác minh mã OTP"}
+                    </Button>
+                  ) : null}
                 </div>
               )}
 
-              {mode === "reset" && (
+              {mode === "reset" && isResetOtpVerified && (
                 <div className="space-y-2">
                   <Label htmlFor="password">Mật khẩu mới</Label>
                   <div className="relative">
@@ -424,17 +537,17 @@ export default function AuthPage() {
                     <Input
                       id="password"
                       type="password"
+                      minLength={8}
                       className="h-11 pl-10"
                       placeholder="Nhập mật khẩu mới"
                       value={form.password}
                       onChange={handleChange("password")}
-                      disabled={!isResetOtpComplete}
                     />
                   </div>
                 </div>
               )}
 
-              {mode === "reset" && (
+              {mode === "reset" && isResetOtpVerified && (
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Xác nhận mật khẩu mới</Label>
                   <div className="relative">
@@ -442,19 +555,19 @@ export default function AuthPage() {
                     <Input
                       id="confirmPassword"
                       type="password"
+                      minLength={8}
                       className="h-11 pl-10"
                       placeholder="Nhập lại mật khẩu mới"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
-                      disabled={!isResetOtpComplete}
                     />
                   </div>
                 </div>
               )}
 
               <div className="auth-helper rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
-                {mode === "reset" && !isResetOtpComplete
-                  ? "Nhập đủ 6 số OTP trước, sau đó nhập mật khẩu mới và xác nhận mật khẩu."
+                {mode === "reset" && !isResetOtpVerified
+                  ? "Nhập OTP rồi bấm Xác minh mã OTP. Chỉ mã đúng mới mở 2 ô mật khẩu mới."
                   : pageCopy.helper}
               </div>
 
@@ -464,7 +577,7 @@ export default function AuthPage() {
                 size="lg"
                 className="w-full gap-2"
                 disabled={
-                  isSubmitting || (mode === "reset" && !isResetOtpComplete)
+                  isSubmitting || (mode === "reset" && !isResetOtpVerified)
                 }
               >
                 {isSubmitting ? (

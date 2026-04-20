@@ -2,6 +2,7 @@ import { compare, hash } from "bcryptjs";
 import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
+import dns from "node:dns";
 import { UserStatus } from "@prisma/client";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
@@ -19,20 +20,28 @@ const verificationPurposes = {
   PASSWORD_RESET: "PASSWORD_RESET",
 };
 
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // Ignore when runtime does not support setting DNS result order.
+}
+
 const mailTransport = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  family: 4,
   auth: {
     user: env.EMAIL,
     pass: env.APP_PASSWORD.replace(/\s+/g, ""),
   },
+  tls: {
+    servername: "smtp.gmail.com",
+  },
 });
 
 export async function registerUser(input) {
-  const normalizedFullName = normalizeAndValidateFullName(
-    input.fullName,
-    "Full name",
-  );
-  const normalizedPhone = normalizeAndValidatePhoneNumber(input.phone);
+  const provisionalFullName = buildProvisionalFullNameFromEmail(input.email);
 
   const existingUser = await prisma.user.findUnique({
     where: { email: input.email },
@@ -52,8 +61,8 @@ export async function registerUser(input) {
       data: {
         email: input.email,
         passwordHash,
-        fullName: normalizedFullName,
-        phone: normalizedPhone,
+        fullName: provisionalFullName,
+        phone: null,
         status: UserStatus.UNVERIFIED,
         roleId: userRole?.id,
         cart: {
@@ -199,12 +208,20 @@ export async function resendVerificationCode(input) {
     });
   });
 
-  await sendOtpEmail({
-    email: user.email,
-    fullName: user.fullName,
-    otp: verificationCode,
-    purpose: verificationPurposes.EMAIL_VERIFY,
-  });
+  try {
+    try {
+      await sendOtpEmail({
+        email: user.email,
+        fullName: user.fullName,
+        otp: verificationCode,
+        purpose: verificationPurposes.EMAIL_VERIFY,
+      });
+    } catch {
+      throw new Error("Không thể gửi lại email xác minh. Vui lòng thử lại sau");
+    }
+  } catch {
+    throw new Error("Không thể gửi lại email xác minh. Vui lòng thử lại sau");
+  }
 
   return serializeData({
     message: "Mã xác minh đã được gửi lại đến email của bạn",
@@ -232,16 +249,38 @@ export async function requestPasswordReset(input) {
     });
   });
 
-  await sendOtpEmail({
-    email: user.email,
-    fullName: user.fullName,
-    otp: resetCode,
-    purpose: verificationPurposes.PASSWORD_RESET,
-  });
+  try {
+    try {
+      await sendOtpEmail({
+        email: user.email,
+        fullName: user.fullName,
+        otp: resetCode,
+        purpose: verificationPurposes.PASSWORD_RESET,
+      });
+    } catch {
+      throw new Error("Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau");
+    }
+  } catch {
+    throw new Error("Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau");
+  }
 
   return serializeData({
     message: "Mã đặt lại mật khẩu đã được gửi đến email của bạn",
     email: user.email,
+  });
+}
+
+export async function validatePasswordResetOtp(input) {
+  await getValidVerification({
+    email: input.email,
+    purpose: verificationPurposes.PASSWORD_RESET,
+    otp: input.otp,
+  });
+
+  return serializeData({
+    valid: true,
+    message: "Mã OTP hợp lệ",
+    email: input.email,
   });
 }
 
@@ -450,6 +489,11 @@ async function sendOtpEmail({ email, fullName, otp, purpose }) {
       ? "đặt lại mật khẩu"
       : "xác minh email";
 
+  const verificationLink =
+    purpose === verificationPurposes.EMAIL_VERIFY
+      ? `${env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(otp)}&auto=1`
+      : null;
+
   await mailTransport.sendMail({
     from: `TechBuiltAI <${env.EMAIL}>`,
     to: email,
@@ -458,6 +502,9 @@ async function sendOtpEmail({ email, fullName, otp, purpose }) {
       `Xin chào ${fullName || email},`,
       `Mã ${label} của bạn là: ${otp}`,
       `Mã này sẽ hết hạn sau ${env.OTP_EXPIRY_MINUTES} phút.`,
+      ...(verificationLink
+        ? [`Bấm link này để kích hoạt tài khoản tự động: ${verificationLink}`]
+        : []),
       "Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.",
     ].join("\n\n"),
     html: `
@@ -466,10 +513,29 @@ async function sendOtpEmail({ email, fullName, otp, purpose }) {
         <p>Mã <strong>${label}</strong> của bạn là:</p>
         <div style="font-size: 28px; letter-spacing: 6px; font-weight: 700; padding: 12px 18px; background: #ecfdf5; border-radius: 12px; display: inline-block;">${otp}</div>
         <p>Mã này sẽ hết hạn sau ${env.OTP_EXPIRY_MINUTES} phút.</p>
+        ${verificationLink ? `<p>Hoặc bấm trực tiếp vào link để kích hoạt tài khoản tự động:</p><p><a href="${verificationLink}" target="_blank" rel="noopener noreferrer">Kích hoạt tài khoản ngay</a></p>` : ""}
         <p>Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.</p>
       </div>
     `,
   });
+}
+
+function buildProvisionalFullNameFromEmail(email) {
+  const raw = String(email ?? "").split("@")[0] ?? "";
+  const cleaned = raw
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    return "Nguoi dung moi";
+  }
+
+  return cleaned
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+    .slice(0, 100);
 }
 
 export async function updateUserProfile(userId, input) {
