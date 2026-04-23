@@ -10,6 +10,7 @@ import {
   Star,
   Users2,
 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,10 +48,70 @@ export function AdminChatPanel({ token, currentUser, toast }) {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [priorityQuickFilter, setPriorityQuickFilter] = useState(false);
   const selectedRoomIdRef = useRef(null);
+  const messageViewportRef = useRef(null);
+  const isTypingRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     selectedRoomIdRef.current = selectedRoomId;
   }, [selectedRoomId]);
+
+  useEffect(() => {
+    if (messageViewportRef.current) {
+      messageViewportRef.current.scrollTop = messageViewportRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  function stopAdminTyping() {
+    const activeRoomId = selectedRoomIdRef.current;
+    const socket = getChatSocket();
+    if (!socket || !activeRoomId || !isTypingRef.current) {
+      return;
+    }
+
+    socket.emit("chat_typing", { roomId: activeRoomId, isTyping: false });
+    isTypingRef.current = false;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+      }
+      stopAdminTyping();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedRoomId) {
+      stopAdminTyping();
+      return;
+    }
+
+    const socket = getChatSocket();
+    if (!socket) {
+      return;
+    }
+
+    const hasDraft = newMessage.trim().length > 0;
+    if (!hasDraft) {
+      stopAdminTyping();
+      return;
+    }
+
+    if (!isTypingRef.current) {
+      socket.emit("chat_typing", { roomId: selectedRoomId, isTyping: true });
+      isTypingRef.current = true;
+    }
+
+    if (typingTimeoutRef.current) {
+      window.clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = window.setTimeout(() => {
+      stopAdminTyping();
+    }, 1200);
+  }, [selectedRoomId, newMessage]);
 
   const selectedRoom = useMemo(
     () => rooms.find((item) => Number(item.id) === Number(selectedRoomId)) ?? null,
@@ -313,6 +374,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
 
     return () => {
       cancelled = true;
+      stopAdminTyping();
       if (socket) {
         socket.emit("admin_room_viewing", { roomId: selectedRoomId, isViewing: false });
         socket.emit("leave_room", { roomId: selectedRoomId });
@@ -334,6 +396,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
         type: "TEXT",
       });
       setNewMessage("");
+      stopAdminTyping();
     } catch (error) {
       toast?.({
         variant: "destructive",
@@ -580,7 +643,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
                   key={room.id}
                   type="button"
                   onClick={() => setSelectedRoomId(room.id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                  className={`w-full rounded-2xl border px-3 py-2 text-left transition ${
                     isSelected
                       ? "border-primary bg-primary/10 shadow-sm"
                       : isUnreplied
@@ -590,51 +653,68 @@ export function AdminChatPanel({ token, currentUser, toast }) {
                           : "border-border hover:border-primary/40 hover:bg-secondary/50"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate text-sm font-semibold">
-                      {room.customer?.fullName || room.customer?.email || `Room #${room.id}`}
-                    </div>
-                    <div className="inline-flex items-center gap-1 text-xs">
-                      {isDone ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
-                          <CheckCheck className="h-3 w-3" />
-                          Done
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600">
-                          <Circle className="h-2.5 w-2.5 fill-current" />
-                          Active
-                        </span>
-                      )}
+                  <div className="flex items-start gap-2">
+                    <Avatar className="mt-0.5 h-9 w-9">
+                      <AvatarFallback className="bg-primary/15 text-primary">
+                        {(room.customer?.fullName || room.customer?.email || "U").slice(0, 1).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold">
+                          {room.customer?.fullName || room.customer?.email || `Room #${room.id}`}
+                        </div>
+                        <div className="shrink-0 text-[11px] text-muted-foreground">
+                          {formatRoomTime(room?.lastMessage?.createdAt || room?.updatedAt || room?.createdAt)}
+                        </div>
+                      </div>
+
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {room.lastMessage?.content || "Chưa có tin nhắn"}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {hasUnread ? (
+                          <span className="rounded-full bg-primary px-2 py-0.5 font-medium text-primary-foreground">
+                            {room.unreadCount} mới
+                          </span>
+                        ) : null}
+                        {isUnreplied ? (
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700">
+                            Chưa rep
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                            Rep: {room.resolvedBy?.fullName || "Admin"}
+                          </span>
+                        )}
+
+                        {isDone ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
+                            <CheckCheck className="h-3 w-3" />
+                            Done
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600">
+                            <Circle className="h-2.5 w-2.5 fill-current" />
+                            Active
+                          </span>
+                        )}
+
+                        {room.customerVote ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                            <Star className="h-3 w-3 fill-current text-amber-500" />
+                            {room.customerVote}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {room.lastMessage?.content || "Chưa có tin nhắn"}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
-                      Room #{room.id}
-                    </span>
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
-                      {room.unreadCount} chưa đọc
-                    </span>
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
-                      Rep: {room.resolvedBy?.fullName || "Chưa có"}
-                    </span>
-                    {isUnreplied ? (
-                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700">
-                        Chưa rep
-                      </span>
-                    ) : null}
-                    {room.customerVote ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
-                        <Star className="h-3 w-3 fill-current text-amber-500" />
-                        {room.customerVote}
-                      </span>
-                    ) : null}
-                  </div>
+                  <div className="mt-2 text-[11px] text-muted-foreground">
+                    Room #{room.id}
+                    </div>
                 </button>
               );
             })}
@@ -695,7 +775,10 @@ export function AdminChatPanel({ token, currentUser, toast }) {
             ) : null}
           </div>
 
-          <div className="max-h-[420px] space-y-2 overflow-auto rounded-md border bg-muted/10 p-3">
+          <div
+            ref={messageViewportRef}
+            className="max-h-[420px] space-y-2 overflow-auto rounded-xl border bg-[radial-gradient(circle_at_1px_1px,hsl(var(--muted))_1px,transparent_0)] [background-size:14px_14px] p-3"
+          >
             {loadingMessages ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -707,15 +790,22 @@ export function AdminChatPanel({ token, currentUser, toast }) {
               messages.map((message) => {
                 const isMine = Number(message.senderId) === Number(currentUser?.id);
                 return (
-                  <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${isMine ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-                      <div className={`mb-1 text-[11px] ${isMine ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                        {message.sender?.fullName || message.sender?.email || `User ${message.senderId}`}
+                  <div key={`${message.id}-${message.createdAt}`} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                    <div className="max-w-[82%]">
+                      <div className={`rounded-2xl px-3 py-2 text-sm shadow-sm ${isMine ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-background"}`}>
+                        {!isMine ? (
+                          <div className="mb-1 text-[11px] text-muted-foreground">
+                            {message.sender?.fullName || message.sender?.email || `User ${message.senderId}`}
+                          </div>
+                        ) : null}
+                        <div className="whitespace-pre-wrap">{message.content}</div>
                       </div>
-                      <div className="whitespace-pre-wrap">{message.content}</div>
-                      <div className={`mt-1 text-[11px] ${isMine ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                        {new Date(message.createdAt).toLocaleTimeString("vi-VN")}
-                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Chưa xem") : ""}
+                      <div className={`mt-1 px-1 text-[11px] ${isMine ? "text-right text-primary/80" : "text-muted-foreground"}`}>
+                        {new Date(message.createdAt).toLocaleTimeString("vi-VN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Đã gửi") : ""}
                       </div>
                     </div>
                   </div>
@@ -729,16 +819,10 @@ export function AdminChatPanel({ token, currentUser, toast }) {
               value={newMessage}
               onChange={(event) => setNewMessage(event.target.value)}
               placeholder="Nhập phản hồi cho khách..."
-              onFocus={() => {
-                const socket = getChatSocket();
-                if (socket && selectedRoomId) {
-                  socket.emit("chat_typing", { roomId: selectedRoomId, isTyping: true });
-                }
-              }}
-              onBlur={() => {
-                const socket = getChatSocket();
-                if (socket && selectedRoomId) {
-                  socket.emit("chat_typing", { roomId: selectedRoomId, isTyping: false });
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSendMessage();
                 }
               }}
             />
@@ -789,4 +873,27 @@ function normalizeVietnameseText(value) {
     .replace(/Đ/g, "D")
     .toLowerCase()
     .trim();
+}
+
+function formatRoomTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const now = new Date();
+  const isSameDay =
+    now.getFullYear() === date.getFullYear() &&
+    now.getMonth() === date.getMonth() &&
+    now.getDate() === date.getDate();
+
+  if (isSameDay) {
+    return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }
