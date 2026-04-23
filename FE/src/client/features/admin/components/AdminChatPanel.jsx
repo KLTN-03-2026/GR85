@@ -405,7 +405,8 @@ export function AdminChatPanel({ token, currentUser, toast }) {
   const typingAdmins = (presence?.typers ?? []).filter((item) => item?.isAdmin);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+    <div className="space-y-4">
+      {/* Phần lọc - full width trên cùng */}
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h4 className="text-base font-semibold">Messenger Hỗ Trợ</h4>
@@ -485,8 +486,8 @@ export function AdminChatPanel({ token, currentUser, toast }) {
           </Button>
         </div>
 
-        <div className="mb-3 space-y-2">
-          <div className="relative">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchKeyword}
@@ -496,65 +497,67 @@ export function AdminChatPanel({ token, currentUser, toast }) {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <label className="grid gap-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                <Filter className="h-3.5 w-3.5" />
-                Trạng thái
-              </span>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={statusFilter}
-                onChange={(event) => {
-                  setStatusFilter(event.target.value);
-                  setPriorityQuickFilter(false);
-                }}
-              >
-                <option value="all">Tất cả</option>
-                <option value="active">Đang xử lý</option>
-                <option value="done">Đã done</option>
-              </select>
-            </label>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Filter className="h-3.5 w-3.5" />
+              Trạng thái
+            </span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              value={statusFilter}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPriorityQuickFilter(false);
+              }}
+            >
+              <option value="all">Tất cả</option>
+              <option value="active">Đang xử lý</option>
+              <option value="done">Đã done</option>
+            </select>
+          </label>
 
-            <label className="grid gap-1 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Người rep</span>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={responderFilter}
-                onChange={(event) => {
-                  setResponderFilter(event.target.value);
-                  setPriorityQuickFilter(false);
-                }}
-              >
-                <option value="all">Tất cả</option>
-                <option value="none">Chưa có</option>
-                {responderOptions.map((item) => (
-                  <option key={item.id} value={String(item.id)}>{item.label}</option>
-                ))}
-              </select>
-            </label>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Người rep</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              value={responderFilter}
+              onChange={(event) => {
+                setResponderFilter(event.target.value);
+                setPriorityQuickFilter(false);
+              }}
+            >
+              <option value="all">Tất cả</option>
+              <option value="none">Chưa có</option>
+              {responderOptions.map((item) => (
+                <option key={item.id} value={String(item.id)}>{item.label}</option>
+              ))}
+            </select>
+          </label>
 
-            <label className="grid gap-1 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Số sao</span>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={starFilter}
-                onChange={(event) => {
-                  setStarFilter(event.target.value);
-                  setPriorityQuickFilter(false);
-                }}
-              >
-                <option value="all">Tất cả</option>
-                <option value="5">5 sao</option>
-                <option value="4">4 sao</option>
-                <option value="3">3 sao</option>
-                <option value="2">2 sao</option>
-                <option value="1">1 sao</option>
-              </select>
-            </label>
-          </div>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Số sao</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              value={starFilter}
+              onChange={(event) => {
+                setStarFilter(event.target.value);
+                setPriorityQuickFilter(false);
+              }}
+            >
+              <option value="all">Tất cả</option>
+              <option value="5">5 sao</option>
+              <option value="4">4 sao</option>
+              <option value="3">3 sao</option>
+              <option value="2">2 sao</option>
+              <option value="1">1 sao</option>
+            </select>
+          </label>
         </div>
+      </Card>
 
+      {/* Phần nội dung 2 cột: danh sách room + khung chat */}
+      <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <Card className="p-4">
         {loadingRooms ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -772,6 +775,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
             ))}
           </div>
         </Card>
+      </div>
       </div>
     </div>
   );

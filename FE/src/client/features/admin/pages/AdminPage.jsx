@@ -3089,6 +3089,10 @@ export default function AdminPage() {
     }
   }, [activeTab, allowedNavItems]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeTab]);
+
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
 
