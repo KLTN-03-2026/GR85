@@ -3,6 +3,7 @@ import { askAiAdvisor, mapAiAdvisorError } from "../../services/ai-advisor.servi
 
 const askSchema = z.object({
   question: z.string().min(1).max(500),
+  scope: z.enum(["PC", "GEAR", "BOTH"]).optional(),
 });
 
 export async function askAiAdvisorHandler(req, res) {

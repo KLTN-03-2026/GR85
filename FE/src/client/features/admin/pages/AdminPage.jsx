@@ -547,6 +547,7 @@ export default function AdminPage() {
   const [selectedOrderUserOrders, setSelectedOrderUserOrders] = useState([]);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
+  const [deletingOrderId, setDeletingOrderId] = useState(null);
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
@@ -1211,6 +1212,45 @@ export default function AdminPage() {
         description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
+    }
+  }
+
+  async function deleteOrder(orderId) {
+    if (!token) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Bạn có chắc muốn xóa đơn #${orderId}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingOrderId(orderId);
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể xóa đơn hàng");
+      }
+
+      setAdminOrders((prev) => prev.filter((item) => Number(item.id) !== Number(orderId)));
+      if (Number(selectedOrderDetail?.id) === Number(orderId)) {
+        setSelectedOrderDetail(null);
+      }
+
+      toast({ title: "Đã xóa đơn hàng" });
+    } catch (error) {
+      toast({
+        title: "Xóa đơn hàng thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingOrderId(null);
     }
   }
 
@@ -5032,11 +5072,11 @@ export default function AdminPage() {
                     onChange={(e) => setOrderFilterStatus(e.target.value)}
                   >
                     <option value="all">Tất cả</option>
-                    <option value="PENDING">Chờ xác nhận</option>
-                    <option value="PROCESSING">Chuẩn bị hàng</option>
-                    <option value="SHIPPING">Đang giao</option>
-                    <option value="DELIVERED">Hoàn thành</option>
-                    <option value="CANCELLED">Đã hủy</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="PROCESSING">Processing</option>
+                    <option value="SHIPPING">In Transit</option>
+                    <option value="DELIVERED">Delivered</option>
+                    <option value="CANCELLED">Cancelled</option>
                   </select>
                 </div>
                 <div className="flex items-end">
@@ -5051,6 +5091,7 @@ export default function AdminPage() {
                   "Mã đơn",
                   "Khách hàng",
                   "Tổng tiền",
+                  "Phương thức",
                   "Thanh toán",
                   "Trạng thái",
                   "Cập nhật",
@@ -5065,9 +5106,20 @@ export default function AdminPage() {
                   </button>,
                   item.customer?.fullName ?? item.customer?.email ?? "-",
                   formatMoney(item.totalAmount),
-                  statusBadge(formatEnum(item.paymentStatus)),
-                  statusBadge(formatEnum(item.orderStatus)),
-                  renderOrderActionCell(item),
+                  formatPaymentMethodLabelAdmin(item.paymentMethod),
+                  statusBadge(formatPaymentStatusLabelAdmin(item.paymentStatus)),
+                  statusBadge(formatOrderStatusLabelAdmin(item.orderStatus, item.paymentStatus)),
+                  <div key={`order-actions-${item.id}`} className="flex items-center gap-2">
+                    {renderOrderActionCell(item)}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={deletingOrderId === item.id}
+                      onClick={() => deleteOrder(item.id)}
+                    >
+                      {deletingOrderId === item.id ? "Đang xóa..." : "Xóa"}
+                    </Button>
+                  </div>,
                 ])}
               />
               {displayedOrders.length === 0 && (
@@ -5091,6 +5143,9 @@ export default function AdminPage() {
                     formatMoney(item.lineTotal),
                   ])}
                 />
+                <div className="mt-3 text-sm text-muted-foreground">
+                  Phương thức thanh toán: <strong>{formatPaymentMethodLabelAdmin(selectedOrderDetail.paymentMethod)}</strong>
+                </div>
                 <div className="mt-4">
                   <h4 className="mb-2 text-sm font-semibold">
                     Lịch sử trạng thái
@@ -5784,6 +5839,35 @@ function formatEnum(value) {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ")
   );
+}
+
+function formatOrderStatusLabelAdmin(orderStatusValue, paymentStatusValue) {
+  const orderStatus = String(orderStatusValue ?? "").trim().toUpperCase();
+  const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
+
+  if (orderStatus === "PENDING") return "Pending";
+  if (orderStatus === "PROCESSING") return "Processing";
+  if (orderStatus === "SHIPPING") return "In Transit";
+  if (orderStatus === "DELIVERED") return "Delivered";
+  if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") return "Failed Attempt";
+  if (orderStatus === "CANCELLED") return "Cancelled";
+  return formatEnum(orderStatus);
+}
+
+function formatPaymentStatusLabelAdmin(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "PAID") return "Paid";
+  if (normalized === "PENDING") return "Pending";
+  if (normalized === "FAILED") return "Failed Attempt";
+  if (normalized === "REFUNDED") return "Refunded";
+  return formatEnum(normalized);
+}
+
+function formatPaymentMethodLabelAdmin(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "COD") return "COD";
+  if (normalized === "VNPAY" || normalized === "PAYOS") return "QR";
+  return normalized || "-";
 }
 
 function formatMoney(value) {
