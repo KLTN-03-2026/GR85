@@ -109,10 +109,6 @@ export function Navbar() {
         return false;
       }
 
-      if (item.id === "roles" && isAdmin) {
-        return true;
-      }
-
       const requiredPermission = ADMIN_TAB_PERMISSION_MAP[item.id];
       if (!requiredPermission) {
         return true;

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
 import {
   BarChart,
   Bar,
@@ -5268,20 +5269,7 @@ export default function AdminPage() {
               title="Chat khách hàng"
               description="Phòng chat mới nhất"
             />
-            <Panel
-              title="Chat room monitor"
-              description="Dữ liệu trực tiếp từ bảng Chat_Rooms"
-            >
-              <DataTable
-                columns={["Room", "Khách hàng", "Tin nhắn cuối", "Trạng thái"]}
-                rows={(dashboard?.chatRooms ?? []).map((item) => [
-                  `Room #${item.id}`,
-                  item.customer,
-                  item.lastMessage ?? "-",
-                  statusBadge(formatEnum(item.status)),
-                ])}
-              />
-            </Panel>
+            <AdminChatPanel token={token} currentUser={user} toast={toast} />
           </section>
 
           <section id="ai-build" className={sectionClassName("ai-build")}>
@@ -5819,11 +5807,6 @@ function canAccessAdminTab(tabId, context = {}) {
 
   if (!isAdminRole && !hasAdminPermission) {
     return false;
-  }
-
-  // Always keep the permissions tab visible for admin users to avoid permission lockout.
-  if (tabId === "roles") {
-    return true;
   }
 
   return permissions.includes(permission);
