@@ -68,7 +68,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showPendingOrders, setShowPendingOrders] = useState(false);
+  const [showPendingOrders, setShowPendingOrders] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
   const [errors, setErrors] = useState({});
@@ -962,9 +962,11 @@ export default function ProfilePage() {
                               <td className="px-3 py-3">#{order.id}</td>
                               <td className="px-3 py-3">{formatDate(order.createdAt)}</td>
                               <td className="px-3 py-3">{formatMoney(order.totalAmount)}</td>
-                              <td className="px-3 py-3">{formatEnum(order.paymentStatus)}</td>
                               <td className="px-3 py-3">
-                                <Badge variant="outline">{formatEnum(order.orderStatus)}</Badge>
+                                {formatPaymentMethod(order.paymentMethod)} - {formatPaymentStatus(order.paymentStatus)}
+                              </td>
+                              <td className="px-3 py-3">
+                                <Badge variant="outline">{formatOrderStatus(order.orderStatus, order.paymentStatus)}</Badge>
                               </td>
                               <td className="px-3 py-3">
                                 <Button
@@ -1003,6 +1005,10 @@ export default function ProfilePage() {
                       </h4>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Giao tới: {selectedOrderDetail.shippingAddress || "-"} · SĐT: {selectedOrderDetail.phoneNumber || "-"}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Thanh toán: {formatPaymentMethod(selectedOrderDetail.paymentMethod)} - {formatPaymentStatus(selectedOrderDetail.paymentStatus)}
+                        {" "}· Trạng thái: {formatOrderStatus(selectedOrderDetail.orderStatus, selectedOrderDetail.paymentStatus)}
                       </p>
 
                       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -1218,6 +1224,60 @@ function formatEnum(value) {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function formatPaymentMethod(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "COD") {
+    return "COD";
+  }
+  if (normalized === "VNPAY" || normalized === "PAYOS") {
+    return "QR";
+  }
+  return normalized || "UNKNOWN";
+}
+
+function formatPaymentStatus(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "PAID") {
+    return "Paid";
+  }
+  if (normalized === "PENDING") {
+    return "Pending";
+  }
+  if (normalized === "FAILED") {
+    return "Failed Attempt";
+  }
+  if (normalized === "REFUNDED") {
+    return "Refunded";
+  }
+  return formatEnum(normalized);
+}
+
+function formatOrderStatus(orderStatusValue, paymentStatusValue) {
+  const orderStatus = String(orderStatusValue ?? "").trim().toUpperCase();
+  const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
+
+  if (orderStatus === "PENDING") {
+    return "Pending";
+  }
+  if (orderStatus === "PROCESSING") {
+    return "Processing";
+  }
+  if (orderStatus === "SHIPPING") {
+    return "In Transit";
+  }
+  if (orderStatus === "DELIVERED") {
+    return "Delivered";
+  }
+  if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") {
+    return "Failed Attempt";
+  }
+  if (orderStatus === "CANCELLED") {
+    return "Cancelled";
+  }
+
+  return formatEnum(orderStatus);
 }
 
 function canRequestReturn(order) {

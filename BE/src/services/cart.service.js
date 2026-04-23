@@ -17,6 +17,7 @@ import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
 import { estimateShippingFromCartItems } from "./shipping.service.js";
 import { payos } from "../config/payos.config.js";
+import { createSystemNotification } from "./notification.service.js";
 
 function resolveFrontendBaseUrl() {
   const candidate = String(env.FE_DOMAIN ?? env.FRONTEND_URL ?? "").trim();
@@ -122,7 +123,10 @@ export async function listAvailableCoupons(userId, input = {}) {
       status: "ACTIVE",
       startDate: { lte: now },
       endDate: { gte: now },
-      couponUsers: { some: { userId } },
+      OR: [
+        { couponUsers: { none: {} } },
+        { couponUsers: { some: { userId } } },
+      ],
     },
     orderBy: [{ createdAt: "desc" }],
   });
@@ -484,10 +488,28 @@ export async function checkoutCart(userId, input) {
         });
       }
 
-      await removePurchasedCartItems(tx, cart.id, cartItems);
     }
 
+    await removePurchasedCartItems(tx, cart.id, cartItems);
+
     return createdOrder;
+  });
+
+  console.info(
+    `[Checkout] order=${result.id} user=${userId} paymentMethod=${paymentMethod} paymentStatus=${
+      isFullyPaidByWallet ? PaymentStatus.PAID : PaymentStatus.PENDING
+    } orderStatus=${initialOrderStatus}`,
+  );
+
+  await createSystemNotification({
+    userId,
+    title: "Cảm ơn bạn đã đặt hàng",
+    message: "Đơn hàng của bạn đã được tạo và đang chờ xác nhận.",
+    payload: {
+      orderId: result.id,
+      paymentMethod,
+      orderStatus: initialOrderStatus,
+    },
   });
 
   if (isFullyPaidByWallet) {
@@ -829,13 +851,24 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: OrderStatus.CANCELLED,
           changedBy: order.userId,
-          note: `VNPAY payment failed via ${source}`,
           note: `Thanh toán VNPAY thất bại qua ${source}`,
         },
       });
 
-      await refundWalletDebitForOrder(tx, order.id, order.userId, "Payment failed");
       await refundWalletDebitForOrder(tx, order.id, order.userId, "Thanh toán thất bại");
+    });
+
+    console.info(`[VNPAY] order=${orderId} failed via ${source}`);
+
+    await createSystemNotification({
+      userId: order.userId,
+      title: "Thanh toán chưa thành công",
+      message: "Thanh toán VNPAY không thành công. Đơn hàng đã được hủy.",
+      payload: {
+        orderId,
+        paymentMethod: PaymentMethod.VNPAY,
+        paymentStatus: PaymentStatus.FAILED,
+      },
     });
 
     return {
@@ -966,6 +999,20 @@ async function finalizeVnpayPayment({
 
     throw error;
   }
+
+  console.info(`[VNPAY] order=${orderId} paid via ${source}`);
+
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán thành công",
+    message: "Thanh toán của bạn đã được xác nhận. Đơn hàng đang được xử lý.",
+    payload: {
+      orderId,
+      paymentMethod: PaymentMethod.VNPAY,
+      paymentStatus: PaymentStatus.PAID,
+      orderStatus: OrderStatus.PROCESSING,
+    },
+  });
 
   return {
     isSuccess: true,
@@ -1295,11 +1342,11 @@ async function resolveCouponOrThrow({ code, scope, userId, baseAmount }) {
     throw new Error("Voucher usage limit reached");
   }
 
-  if (
-    !Array.isArray(coupon.couponUsers) ||
-    coupon.couponUsers.length === 0 ||
-    !coupon.couponUsers.some((item) => Number(item.userId) === Number(userId))
-  ) {
+  const assignedUsers = Array.isArray(coupon.couponUsers) ? coupon.couponUsers : [];
+  const isGlobalCoupon = assignedUsers.length === 0;
+  const isAssignedToUser = assignedUsers.some((item) => Number(item.userId) === Number(userId));
+
+  if (!isGlobalCoupon && !isAssignedToUser) {
     throw new Error("Bạn không được phép sử dụng voucher này");
   }
 

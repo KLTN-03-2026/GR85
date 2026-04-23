@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import {
+  deleteOrderForAdmin,
   getOrderDetailForAdmin,
   listOrdersForAdmin,
   updateOrderStatusForAdmin,
@@ -64,6 +65,18 @@ router.patch("/:orderId/status", async (req, res) => {
       parsed.status,
       Number(req.auth?.sub),
       parsed.note,
+    );
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.delete("/:orderId", async (req, res) => {
+  try {
+    const data = await deleteOrderForAdmin(
+      Number(req.params.orderId),
+      Number(req.auth?.sub),
     );
     return res.json(data);
   } catch (error) {

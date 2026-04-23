@@ -885,6 +885,12 @@ export async function updateProductById(productId, input) {
     },
   });
 
+  console.info(
+    `[ProductUpdate] id=${id} stock ${Number(current.stockQuantity ?? 0)} -> ${Number(
+      updatedWithDetail?.stockQuantity ?? current.stockQuantity ?? 0,
+    )} price ${Number(current.price ?? 0)} -> ${Number(updatedWithDetail?.price ?? current.price ?? 0)}`,
+  );
+
   return serializeData(mapProductDetail(updatedWithDetail));
 }
 

@@ -31,6 +31,7 @@ export async function listOrdersForAdmin() {
       id: order.id,
       orderStatus: order.orderStatus,
       paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
       totalAmount: order.totalAmount,
       discountAmount: order.discountAmount,
       shippingAddress: order.shippingAddress,
@@ -85,6 +86,7 @@ export async function getOrderDetailForAdmin(orderId) {
     id: order.id,
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
     totalAmount: order.totalAmount,
     discountAmount: order.discountAmount,
     shippingAddress: order.shippingAddress,
@@ -181,7 +183,54 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
   // Create notification for order status change
   await createOrderStatusChangeNotification(id, current.userId, nextStatus);
 
+  console.info(`[AdminOrder] order=${id} status ${current.orderStatus} -> ${nextStatus} by=${changedBy}`);
+
   return getOrderDetailForAdmin(id);
+}
+
+export async function deleteOrderForAdmin(orderId, changedBy) {
+  const id = Number(orderId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("ID đơn hàng không hợp lệ");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      orderItems: true,
+    },
+  });
+
+  if (!order) {
+    throw new Error("Không tìm thấy đơn hàng");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      for (const item of order.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              increment: item.quantity,
+            },
+          },
+        });
+      }
+    }
+
+    await tx.orderStatusHistory.deleteMany({ where: { orderId: id } });
+    await tx.orderItem.deleteMany({ where: { orderId: id } });
+    await tx.order.delete({ where: { id } });
+  });
+
+  console.info(`[AdminOrder] order=${id} deleted by=${changedBy}`);
+
+  return serializeData({
+    success: true,
+    orderId: id,
+    message: "Đã xóa đơn hàng",
+  });
 }
 
 function assertOrderTransitionAllowed(currentStatus, nextStatus) {

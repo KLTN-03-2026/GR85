@@ -1,6 +1,7 @@
 import { prisma } from "../../db/prisma.js";
 import { payos } from "../../config/payos.config.js";
 import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { createSystemNotification } from "../../services/notification.service.js";
 
 function buildFrontendBaseUrl() {
   const baseUrl = String(process.env.FE_DOMAIN ?? "").trim();
@@ -163,6 +164,19 @@ async function markOrderPaid(orderId, note) {
       }
     }
   });
+
+  console.info(`[PayOS] order=${orderId} paid`);
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán thành công",
+    message: "Thanh toán QR thành công. Đơn hàng đang được xử lý.",
+    payload: {
+      orderId,
+      paymentMethod: "QR",
+      paymentStatus: PaymentStatus.PAID,
+      orderStatus: OrderStatus.PROCESSING,
+    },
+  });
 }
 
 async function markOrderFailed(orderId, note) {
@@ -197,6 +211,19 @@ async function markOrderFailed(orderId, note) {
         note,
       },
     });
+  });
+
+  console.info(`[PayOS] order=${orderId} failed`);
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán chưa thành công",
+    message: "Thanh toán QR chưa thành công. Đơn hàng đã chuyển sang trạng thái hủy.",
+    payload: {
+      orderId,
+      paymentMethod: "QR",
+      paymentStatus: PaymentStatus.FAILED,
+      orderStatus: OrderStatus.CANCELLED,
+    },
   });
 }
 

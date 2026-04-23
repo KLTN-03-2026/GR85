@@ -1,4 +1,6 @@
 const API_ENDPOINT = "/api/ai/recommend-build";
+const ADVISOR_ASK_ENDPOINT = "/api/ai/ask";
+const ADVISOR_CHAT_ENDPOINT = "/api/ai/chat-build";
 
 export async function requestAiBuildRecommendation(input) {
   const response = await fetch(API_ENDPOINT, {
@@ -61,6 +63,51 @@ export async function requestAiBuildRecommendation(input) {
     recommendations,
     fullCatalog,
   };
+}
+
+export async function requestAiAdvisorRecommendation({ question, scope = "BOTH" }) {
+  const response = await fetch(ADVISOR_ASK_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      question: String(question ?? "").trim(),
+      scope,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "Không thể lấy tư vấn AI");
+  }
+
+  return payload;
+}
+
+export async function requestAiAdvisorChat({ message, history = [] }) {
+  const response = await fetch(ADVISOR_CHAT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: String(message ?? "").trim(),
+      history: Array.isArray(history)
+        ? history.map((item) => ({
+          role: String(item?.role ?? "user"),
+          content: String(item?.content ?? ""),
+        }))
+        : [],
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "Không thể chat với AI");
+  }
+
+  return payload;
 }
 
 function normalizeRecommendedItem(item, index) {
