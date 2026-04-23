@@ -75,6 +75,13 @@
 
   html {
     scroll-behavior: smooth;
+    font-size: 87.5%;
+  }
+
+  @media (max-width: 768px) {
+    html {
+      font-size: 100%;
+    }
   }
 
   h1,

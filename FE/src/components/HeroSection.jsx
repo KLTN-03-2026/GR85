@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Cpu, Sparkles, ShoppingBag } from "lucide-react";
 import heroImage from "@/assets/hero-pc.jpg";
 
-export function HeroSection() {
+export function HeroSection({ leftPanel = null, rightPanel = null }) {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
       {/* Background */}
@@ -29,8 +29,11 @@ export function HeroSection() {
       />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 text-center">
-        <div className="max-w-4xl mx-auto space-y-8">
+      <div className="relative z-10 container mx-auto px-4">
+        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
+          <div className="hidden lg:block lg:pt-20">{leftPanel}</div>
+
+          <div className="mx-auto w-full max-w-4xl space-y-8 text-center">
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/30"
@@ -85,6 +88,11 @@ export function HeroSection() {
             </Link>
           </div>
 
+          <div className="grid gap-4 lg:hidden">
+            {leftPanel}
+            {rightPanel}
+          </div>
+
           {/* Features */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 pt-8 border-t border-border/50">
             <FeatureCard
@@ -108,6 +116,9 @@ export function HeroSection() {
               description="Đặt hàng ngay với giá tốt nhất"
             />
           </div>
+          </div>
+
+          <div className="hidden lg:block lg:pt-20">{rightPanel}</div>
         </div>
       </div>
 
