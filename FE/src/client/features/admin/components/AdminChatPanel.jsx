@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, Loader2, Send, Users2 } from "lucide-react";
+import {
+  BadgeCheck,
+  CheckCheck,
+  Circle,
+  Filter,
+  Loader2,
+  Search,
+  Send,
+  Star,
+  Users2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +40,12 @@ export function AdminChatPanel({ token, currentUser, toast }) {
   const [isSending, setIsSending] = useState(false);
   const [terms, setTerms] = useState([]);
   const [newTerm, setNewTerm] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [responderFilter, setResponderFilter] = useState("all");
+  const [starFilter, setStarFilter] = useState("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [priorityQuickFilter, setPriorityQuickFilter] = useState(false);
   const selectedRoomIdRef = useRef(null);
 
   useEffect(() => {
@@ -40,6 +56,136 @@ export function AdminChatPanel({ token, currentUser, toast }) {
     () => rooms.find((item) => Number(item.id) === Number(selectedRoomId)) ?? null,
     [rooms, selectedRoomId],
   );
+
+  const responderOptions = useMemo(() => {
+    const map = new Map();
+    for (const room of rooms) {
+      if (!room?.resolvedBy?.id) {
+        continue;
+      }
+
+      map.set(room.resolvedBy.id, {
+        id: room.resolvedBy.id,
+        label: room.resolvedBy.fullName || room.resolvedBy.email || `Admin #${room.resolvedBy.id}`,
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  }, [rooms]);
+
+  const filteredRooms = useMemo(() => {
+    const normalizedKeyword = normalizeVietnameseText(searchKeyword);
+
+    return rooms.filter((room) => {
+      const isDone = String(room?.status ?? "").toUpperCase() === "CLOSED";
+
+      if (statusFilter === "done" && !isDone) {
+        return false;
+      }
+
+      if (statusFilter === "active" && isDone) {
+        return false;
+      }
+
+      if (responderFilter !== "all") {
+        const responderId = room?.resolvedBy?.id ? String(room.resolvedBy.id) : "none";
+        if (responderId !== responderFilter) {
+          return false;
+        }
+      }
+
+      if (starFilter !== "all") {
+        const expected = Number(starFilter);
+        if (!Number.isFinite(expected) || Number(room?.customerVote ?? 0) !== expected) {
+          return false;
+        }
+      }
+
+      if (unreadOnly && Number(room?.unreadCount ?? 0) <= 0) {
+        return false;
+      }
+
+      if (!normalizedKeyword) {
+        return true;
+      }
+
+      const haystack = normalizeVietnameseText([
+        room?.customer?.fullName,
+        room?.customer?.email,
+        room?.resolvedBy?.fullName,
+        room?.resolvedBy?.email,
+        room?.lastMessage?.content,
+        `room ${room?.id}`,
+      ].filter(Boolean).join(" "));
+
+      return haystack.includes(normalizedKeyword);
+    });
+  }, [rooms, searchKeyword, statusFilter, responderFilter, starFilter, unreadOnly]);
+
+  const prioritizedRooms = useMemo(() => {
+    return [...filteredRooms].sort((a, b) => {
+      const aIsSelected = Number(a?.id) === Number(selectedRoomId);
+      const bIsSelected = Number(b?.id) === Number(selectedRoomId);
+      if (aIsSelected !== bIsSelected) {
+        return aIsSelected ? -1 : 1;
+      }
+
+      const aIsUnreplied = !a?.resolvedBy?.id;
+      const bIsUnreplied = !b?.resolvedBy?.id;
+      const aHasUnread = Number(a?.unreadCount ?? 0) > 0;
+      const bHasUnread = Number(b?.unreadCount ?? 0) > 0;
+
+      // Highest priority: rooms that are both unreplied and unread.
+      const aPriorityHot = aIsUnreplied && aHasUnread;
+      const bPriorityHot = bIsUnreplied && bHasUnread;
+      if (aPriorityHot !== bPriorityHot) {
+        return aPriorityHot ? -1 : 1;
+      }
+
+      // Then keep all unreplied rooms higher for faster triage.
+      if (aIsUnreplied !== bIsUnreplied) {
+        return aIsUnreplied ? -1 : 1;
+      }
+
+      const aIsDone = String(a?.status ?? "").toUpperCase() === "CLOSED";
+      const bIsDone = String(b?.status ?? "").toUpperCase() === "CLOSED";
+      if (aIsDone !== bIsDone) {
+        return aIsDone ? 1 : -1;
+      }
+
+      const unreadA = Number(a?.unreadCount ?? 0);
+      const unreadB = Number(b?.unreadCount ?? 0);
+      if (unreadA !== unreadB) {
+        return unreadB - unreadA;
+      }
+
+      const updatedA = Date.parse(a?.lastMessage?.createdAt || a?.updatedAt || a?.createdAt || 0);
+      const updatedB = Date.parse(b?.lastMessage?.createdAt || b?.updatedAt || b?.createdAt || 0);
+
+      return updatedB - updatedA;
+    });
+  }, [filteredRooms, selectedRoomId]);
+
+  const visibleRooms = useMemo(() => {
+    return prioritizedRooms.filter((room) => {
+      const content = String(room?.lastMessage?.content ?? "").trim();
+      return content.length > 0;
+    });
+  }, [prioritizedRooms]);
+
+  useEffect(() => {
+    if (!visibleRooms.length) {
+      if (selectedRoomId !== null) {
+        setSelectedRoomId(null);
+      }
+      return;
+    }
+
+    const exists = visibleRooms.some((room) => Number(room.id) === Number(selectedRoomId));
+    if (!exists) {
+      setSelectedRoomId(visibleRooms[0].id);
+    }
+  }, [visibleRooms, selectedRoomId]);
 
   useEffect(() => {
     if (!token) {
@@ -259,40 +405,236 @@ export function AdminChatPanel({ token, currentUser, toast }) {
   const typingAdmins = (presence?.typers ?? []).filter((item) => item?.isAdmin);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
       <Card className="p-4">
-        <h4 className="mb-3 text-sm font-semibold">Phòng chat</h4>
+        <div className="mb-3 flex items-center justify-between">
+          <h4 className="text-base font-semibold">Messenger Hỗ Trợ</h4>
+          <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+            {visibleRooms.length} hội thoại
+          </span>
+        </div>
+
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={statusFilter === "active" ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => setStatusFilter((prev) => (prev === "active" ? "all" : "active"))}
+          >
+            Active
+          </Button>
+          <Button
+            size="sm"
+            variant={statusFilter === "done" ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => setStatusFilter((prev) => (prev === "done" ? "all" : "done"))}
+          >
+            Done
+          </Button>
+          <Button
+            size="sm"
+            variant={starFilter === "5" ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => setStarFilter((prev) => (prev === "5" ? "all" : "5"))}
+          >
+            5 Sao
+          </Button>
+          <Button
+            size="sm"
+            variant={responderFilter === "none" ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => {
+              setResponderFilter((prev) => (prev === "none" ? "all" : "none"));
+              setPriorityQuickFilter(false);
+            }}
+          >
+            Chưa Có Rep
+          </Button>
+          <Button
+            size="sm"
+            variant={unreadOnly ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => {
+              setUnreadOnly((prev) => !prev);
+              setPriorityQuickFilter(false);
+            }}
+          >
+            Chưa đọc
+          </Button>
+          <Button
+            size="sm"
+            variant={priorityQuickFilter ? "default" : "outline"}
+            className="h-8 rounded-full px-3"
+            onClick={() => {
+              setPriorityQuickFilter((prev) => {
+                const next = !prev;
+                if (next) {
+                  setStatusFilter("active");
+                  setResponderFilter("none");
+                  setUnreadOnly(true);
+                } else {
+                  setStatusFilter("all");
+                  setResponderFilter("all");
+                  setUnreadOnly(false);
+                }
+                return next;
+              });
+            }}
+          >
+            Ưu Tiên Xử Lý
+          </Button>
+        </div>
+
+        <div className="mb-3 space-y-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchKeyword}
+              onChange={(event) => setSearchKeyword(event.target.value)}
+              className="pl-9"
+              placeholder="Tìm khách, tin nhắn, người rep (lọc không dấu)..."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                <Filter className="h-3.5 w-3.5" />
+                Trạng thái
+              </span>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  setPriorityQuickFilter(false);
+                }}
+              >
+                <option value="all">Tất cả</option>
+                <option value="active">Đang xử lý</option>
+                <option value="done">Đã done</option>
+              </select>
+            </label>
+
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Người rep</span>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={responderFilter}
+                onChange={(event) => {
+                  setResponderFilter(event.target.value);
+                  setPriorityQuickFilter(false);
+                }}
+              >
+                <option value="all">Tất cả</option>
+                <option value="none">Chưa có</option>
+                {responderOptions.map((item) => (
+                  <option key={item.id} value={String(item.id)}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Số sao</span>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={starFilter}
+                onChange={(event) => {
+                  setStarFilter(event.target.value);
+                  setPriorityQuickFilter(false);
+                }}
+              >
+                <option value="all">Tất cả</option>
+                <option value="5">5 sao</option>
+                <option value="4">4 sao</option>
+                <option value="3">3 sao</option>
+                <option value="2">2 sao</option>
+                <option value="1">1 sao</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         {loadingRooms ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Đang tải...
+            Đang tải danh sách hội thoại...
+          </div>
+        ) : visibleRooms.length === 0 ? (
+          <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+            Chưa có hội thoại nào có tin nhắn.
           </div>
         ) : (
           <div className="space-y-2">
-            {rooms.map((room) => (
-              <button
-                key={room.id}
-                type="button"
-                onClick={() => setSelectedRoomId(room.id)}
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                  Number(selectedRoomId) === Number(room.id)
-                    ? "border-primary bg-primary/10"
-                    : "border-border"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <strong>Room #{room.id}</strong>
-                  <span className="text-xs">{room.unreadCount} chưa đọc</span>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {room.customer?.fullName || room.customer?.email}
-                </div>
-                <div className="mt-1 line-clamp-2 text-xs">{room.lastMessage?.content || "Chưa có tin"}</div>
-                <div className="mt-2 text-xs">
-                  {String(room.status || "OPEN").toUpperCase() === "CLOSED" ? "Đã hoàn thành" : "Đang hoạt động"}
-                </div>
-              </button>
-            ))}
+            {visibleRooms.map((room) => {
+              const isDone = String(room.status || "OPEN").toUpperCase() === "CLOSED";
+              const isSelected = Number(selectedRoomId) === Number(room.id);
+              const isUnreplied = !room?.resolvedBy?.id;
+              const hasUnread = Number(room?.unreadCount ?? 0) > 0;
+
+              return (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => setSelectedRoomId(room.id)}
+                  className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                    isSelected
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : isUnreplied
+                        ? "border-amber-300 bg-amber-50/60 hover:border-amber-400"
+                        : hasUnread
+                          ? "border-sky-300 bg-sky-50/60 hover:border-sky-400"
+                          : "border-border hover:border-primary/40 hover:bg-secondary/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate text-sm font-semibold">
+                      {room.customer?.fullName || room.customer?.email || `Room #${room.id}`}
+                    </div>
+                    <div className="inline-flex items-center gap-1 text-xs">
+                      {isDone ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
+                          <CheckCheck className="h-3 w-3" />
+                          Done
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600">
+                          <Circle className="h-2.5 w-2.5 fill-current" />
+                          Active
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {room.lastMessage?.content || "Chưa có tin nhắn"}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                      Room #{room.id}
+                    </span>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                      {room.unreadCount} chưa đọc
+                    </span>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                      Rep: {room.resolvedBy?.fullName || "Chưa có"}
+                    </span>
+                    {isUnreplied ? (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700">
+                        Chưa rep
+                      </span>
+                    ) : null}
+                    {room.customerVote ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                        <Star className="h-3 w-3 fill-current text-amber-500" />
+                        {room.customerVote}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -301,10 +643,10 @@ export function AdminChatPanel({ token, currentUser, toast }) {
         <Card className="p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h4 className="text-sm font-semibold">Hội thoại</h4>
+              <h4 className="text-sm font-semibold">Khung Chat</h4>
               <p className="text-xs text-muted-foreground">
                 {selectedRoom
-                  ? `${selectedRoom.customer?.fullName || selectedRoom.customer?.email || "Khách"}`
+                  ? `${selectedRoom.customer?.fullName || selectedRoom.customer?.email || "Khách"} • Room #${selectedRoom.id}`
                   : "Chọn một room để bắt đầu"}
               </p>
             </div>
@@ -326,10 +668,16 @@ export function AdminChatPanel({ token, currentUser, toast }) {
               <Users2 className="h-3.5 w-3.5" />
               Tài khoản đang xem trả lời
             </div>
-            <div>
-              {adminViewers.length > 0
-                ? adminViewers.map((item) => item.fullName || item.role).join(", ")
-                : "Không có admin đang xem"}
+            <div className="flex flex-wrap gap-1">
+              {adminViewers.length > 0 ? (
+                adminViewers.map((item) => (
+                  <span key={item.userId} className="rounded-full bg-background px-2 py-0.5">
+                    {item.fullName || item.role}
+                  </span>
+                ))
+              ) : (
+                <span className="text-muted-foreground">Không có admin đang xem</span>
+              )}
             </div>
             <div className="mt-1 text-muted-foreground">
               {typingAdmins.length > 0
@@ -344,7 +692,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
             ) : null}
           </div>
 
-          <div className="max-h-[360px] space-y-2 overflow-auto rounded-md border p-3">
+          <div className="max-h-[420px] space-y-2 overflow-auto rounded-md border bg-muted/10 p-3">
             {loadingMessages ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -353,18 +701,23 @@ export function AdminChatPanel({ token, currentUser, toast }) {
             ) : messages.length === 0 ? (
               <p className="text-sm text-muted-foreground">Chưa có tin nhắn</p>
             ) : (
-              messages.map((message) => (
-                <div key={message.id} className="rounded-md border bg-background p-2 text-sm">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{message.sender?.fullName || message.sender?.email || `User ${message.senderId}`}</span>
-                    <span>{new Date(message.createdAt).toLocaleTimeString("vi-VN")}</span>
+              messages.map((message) => {
+                const isMine = Number(message.senderId) === Number(currentUser?.id);
+                return (
+                  <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${isMine ? "bg-primary text-primary-foreground" : "bg-background"}`}>
+                      <div className={`mb-1 text-[11px] ${isMine ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                        {message.sender?.fullName || message.sender?.email || `User ${message.senderId}`}
+                      </div>
+                      <div className="whitespace-pre-wrap">{message.content}</div>
+                      <div className={`mt-1 text-[11px] ${isMine ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                        {new Date(message.createdAt).toLocaleTimeString("vi-VN")}
+                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Chưa xem") : ""}
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-1 whitespace-pre-wrap">{message.content}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    {message.readByUserIds?.length > 0 ? "Đã xem" : "Chưa xem"}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -422,4 +775,14 @@ export function AdminChatPanel({ token, currentUser, toast }) {
       </div>
     </div>
   );
+}
+
+function normalizeVietnameseText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim();
 }

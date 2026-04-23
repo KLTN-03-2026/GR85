@@ -16,6 +16,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
+import { FloatingChatWidget } from "@/components/FloatingChatWidget";
 
 const ADMIN_NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan" },
@@ -77,6 +78,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
   const permissionSet = useMemo(
@@ -217,11 +219,21 @@ export function Navbar() {
             ) : null}
 
             {(!isAdminPage || !canAccessAdmin) && (
-              <Link to="/chat">
-                <Button variant="ghost" size="icon" className="relative">
-                  <MessageCircle className="h-5 w-5" />
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    navigate("/login");
+                    return;
+                  }
+
+                  setChatOpen((open) => !open);
+                }}
+              >
+                <MessageCircle className="h-5 w-5" />
+              </Button>
             )}
 
             {(!isAdminPage || !canAccessAdmin) && (
@@ -378,6 +390,7 @@ export function Navbar() {
           </div>
         )}
       </div>
+      <FloatingChatWidget isOpen={chatOpen && (!isAdminPage || !canAccessAdmin)} onClose={() => setChatOpen(false)} />
     </nav>
   );
 }
