@@ -10,7 +10,6 @@ import PayOSCheckoutPage from "@/client/features/cart/pages/PayOSCheckoutPage";
 import PaymentQrPage from "@/client/features/cart/pages/PaymentQrPage";
 import PaymentResultPage from "@/client/features/cart/pages/PaymentResultPage";
 import PayOSReturnPage from "@/client/features/cart/pages/PayOSReturnPage";
-import ChatPage from "@/client/features/chat/pages/ChatPage";
 import AdminPage from "@/client/features/admin/pages/AdminPage";
 import ProfilePage from "@/client/features/profile/pages/ProfilePage";
 import NotFoundPage from "@/client/features/shared/pages/NotFoundPage";
@@ -39,7 +38,6 @@ export function AppRouter() {
         <Route path="/payment/success" element={<UserRoute><PayOSReturnPage /></UserRoute>} />
         <Route path="/payment/cancel" element={<UserRoute><PayOSReturnPage /></UserRoute>} />
         <Route path="/payment-result" element={<UserRoute><PaymentResultPage /></UserRoute>} />
-        <Route path="/chat" element={<UserRoute><ChatPage /></UserRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
