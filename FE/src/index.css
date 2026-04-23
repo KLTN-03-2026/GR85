@@ -365,3 +365,16 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary));
 }
+
+.homepage-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.homepage-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.homepage-sidebar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 999px;
+}

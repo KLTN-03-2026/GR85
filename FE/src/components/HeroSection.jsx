@@ -3,17 +3,16 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Cpu, Sparkles, ShoppingBag } from "lucide-react";
 import heroImage from "@/assets/hero-pc.jpg";
 
-export function HeroSection({ leftPanel = null, rightPanel = null }) {
+export function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+    <section className="relative flex min-h-[70vh] items-center justify-center overflow-hidden pt-16">
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img
           src={heroImage}
           alt="Gaming PC"
-          className="w-full h-full object-cover opacity-40"
+          className="h-full w-full object-cover opacity-40"
         />
-
         <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_hsl(var(--primary)/0.15)_0%,_transparent_70%)]" />
       </div>
@@ -30,10 +29,7 @@ export function HeroSection({ leftPanel = null, rightPanel = null }) {
 
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4">
-        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
-          <div className="hidden lg:block lg:pt-20">{leftPanel}</div>
-
-          <div className="mx-auto w-full max-w-4xl space-y-8 text-center">
+        <div className="mx-auto w-full max-w-4xl space-y-8 text-center">
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/30"
@@ -88,11 +84,6 @@ export function HeroSection({ leftPanel = null, rightPanel = null }) {
             </Link>
           </div>
 
-          <div className="grid gap-4 lg:hidden">
-            {leftPanel}
-            {rightPanel}
-          </div>
-
           {/* Features */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 pt-8 border-t border-border/50">
             <FeatureCard
@@ -101,14 +92,12 @@ export function HeroSection({ leftPanel = null, rightPanel = null }) {
               title="Build thủ công"
               description="Tự chọn từng linh kiện theo ý thích"
             />
-
             <FeatureCard
               icon={Sparkles}
               delay={90}
               title="AI thông minh"
               description="Gợi ý cấu hình tối ưu theo ngân sách"
             />
-
             <FeatureCard
               icon={ShoppingBag}
               delay={180}
@@ -116,9 +105,6 @@ export function HeroSection({ leftPanel = null, rightPanel = null }) {
               description="Đặt hàng ngay với giá tốt nhất"
             />
           </div>
-          </div>
-
-          <div className="hidden lg:block lg:pt-20">{rightPanel}</div>
         </div>
       </div>
 
