@@ -447,7 +447,7 @@ export default function ComponentsPage() {
                   )}
                 </Button>
               </SheetTrigger>
-              <SheetContent className="glass border-border/50">
+              <SheetContent side="left" className="glass border-border/50">
                 <SheetHeader>
                   <SheetTitle className="font-display">Bộ lọc</SheetTitle>
                 </SheetHeader>
