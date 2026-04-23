@@ -489,20 +489,20 @@ export default function BuilderPage() {
       <main className="pt-20 pb-6">
         <div className="container mx-auto px-4">
           <div className="mb-4">
-            <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-slate-800 mb-1">
               Tự <span className="text-gradient-primary">ráp PC</span>
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-slate-500">
               Chọn linh kiện theo cách của bạn
             </p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[295px_minmax(0,1fr)] lg:min-h-[calc(100vh-8.25rem)]">
-            <Card className="glass border-primary/20 p-3.5 lg:sticky lg:top-20 lg:h-[calc(100vh-8.25rem)] lg:overflow-y-auto">
-              <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-card/95 pb-2 backdrop-blur">
+            <Card className="rounded-2xl border border-emerald-200/60 bg-white p-3.5 shadow-sm lg:sticky lg:top-20 lg:h-[calc(100vh-8.25rem)] lg:overflow-y-auto homepage-sidebar">
+              <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-white/95 pb-2 backdrop-blur">
                 <div>
-                  <h2 className="font-display text-lg font-bold">Cấu hình của bạn</h2>
-                  <p className="text-xs text-muted-foreground">
+                  <h2 className="font-display text-lg font-bold text-slate-800">Cấu hình của bạn</h2>
+                  <p className="text-xs text-slate-400">
                     {selectedComponents.length} linh kiện đã chọn
                   </p>
                 </div>
@@ -696,9 +696,9 @@ export default function BuilderPage() {
             </Card>
 
             <div className="flex min-h-0 flex-col gap-4">
-              <div className="flex flex-col justify-between gap-3 rounded-3xl border border-border/60 bg-background/80 p-4 shadow-sm md:flex-row md:items-end">
+              <div className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:flex-row md:items-end">
                 <div>
-                  <h3 className="font-display text-xl font-semibold">
+                  <h3 className="font-display text-xl font-semibold text-slate-800">
                     {selectedCategory === ACCESSORY_GROUP_ID
                       ? `Bước 2: Chọn linh kiện phụ (${selectedAccessoryCategoryMeta?.name ?? ""})`
                       : `Bước 1: Chọn ${selectedCategoryMeta?.name ?? "linh kiện"}`}
@@ -730,7 +730,7 @@ export default function BuilderPage() {
                 <div className="flex items-center gap-2">
                   {selectedCategory === ACCESSORY_GROUP_ID && accessoryCategories.length > 0 && (
                     <select
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      className="h-9 rounded-lg border border-slate-200 bg-slate-50/80 px-3 text-sm text-slate-700 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                       value={selectedAccessoryCategory}
                       onChange={(event) => setSelectedAccessoryCategory(event.target.value)}
                     >
@@ -740,31 +740,6 @@ export default function BuilderPage() {
                         </option>
                       ))}
                     </select>
-                  )}
-
-                  {Math.max(1, Number(pagination.totalPages ?? 1)) > 1 && (
-                    <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                    >
-                      Trước
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= Math.max(1, Number(pagination.totalPages ?? 1))}
-                      onClick={() =>
-                        setPage((prev) =>
-                          Math.min(Math.max(1, Number(pagination.totalPages ?? 1)), prev + 1),
-                        )
-                      }
-                    >
-                      Sau
-                    </Button>
-                    </>
                   )}
                 </div>
               </div>
@@ -899,7 +874,7 @@ function mapProductToBuilderComponent(product) {
     slug: product.slug,
     name: String(product.name ?? "Sản phẩm"),
     brand:
-      product?.specifications?.brand ||
+      product?.category?.name ||
       product?.supplier?.name ||
       "TechBuiltAI",
     category,

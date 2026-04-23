@@ -461,7 +461,7 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
 }
 
 export async function getCatalogOverview() {
-  const [categories, products] = await Promise.all([
+  const [categories, products, topBuyerAggregates] = await Promise.all([
     prisma.category.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -488,7 +488,37 @@ export async function getCatalogOverview() {
         },
       },
     }),
+    prisma.order.groupBy({
+      by: ["userId"],
+      where: { orderStatus: OrderStatus.DELIVERED },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+      orderBy: { _sum: { totalAmount: "desc" } },
+      take: 5,
+    }),
   ]);
+
+  // Resolve top buyer user details
+  let topBuyers = [];
+  if (topBuyerAggregates.length > 0) {
+    const userIds = topBuyerAggregates.map((agg) => agg.userId);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fullName: true, email: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    topBuyers = topBuyerAggregates.map((agg) => {
+      const user = userMap.get(agg.userId);
+      const fullName = String(user?.fullName ?? "").trim();
+      return {
+        id: `u${agg.userId}`,
+        name: fullName || String(user?.email ?? "Ẩn danh").split("@")[0],
+        orders: agg._count._all,
+        spend: Number(agg._sum.totalAmount ?? 0),
+      };
+    });
+  }
 
   const productsWithRating = await attachProductRatings(products);
 
@@ -500,6 +530,7 @@ export async function getCatalogOverview() {
       productCount: category._count.products,
     })),
     products: productsWithRating.map(mapProductDetail),
+    topBuyers,
   });
 }
 
