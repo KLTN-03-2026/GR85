@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Check, Search, Sparkles, X } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { ComponentCard } from "@/components/ComponentCard";
 import { Button } from "@/components/ui/button";
@@ -8,13 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 
 const PAGE_SIZE = 12;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -330,442 +323,417 @@ export default function ComponentsPage() {
 
       <main className="pt-24 pb-12">
         <div className="container mx-auto px-4">
-          <div className="mb-8">
-            <h1 className="font-display text-3xl md:text-4xl font-bold mb-2">
-              Linh kiện <span className="text-gradient-primary">PC</span>
-            </h1>
-            <p className="text-muted-foreground">
-              Tìm kiếm theo tên hoặc mã sản phẩm, lọc kết hợp nhiều điều kiện
-            </p>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-4 mb-8">
-            <div className="relative flex-1">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Tìm tên hoặc mã sản phẩm..."
-                    value={keywordInput}
-                    onChange={(event) => setKeywordInput(event.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => {
-                      setTimeout(() => setIsSearchFocused(false), 150);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        applyKeywordSearch();
-                      }
-                    }}
-                    className="pl-10"
-                  />
-                </div>
-                <Button onClick={applyKeywordSearch}>Tìm</Button>
-              </div>
-
-              {isSearchFocused && suggestions.length > 0 && (
-                <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
-                  <p className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
-                    Gợi ý gần đúng
-                  </p>
-                  <div className="py-1">
-                    {suggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
-                        onMouseDown={() => applySuggestedKeyword(item.label)}
-                      >
-                        <span>{item.label}</span>
-                        <span className="text-xs text-muted-foreground">{item.code}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {isSearchFocused && suggestions.length === 0 && searchHistory.length > 0 && !keywordInput.trim() && (
-                <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
-                  <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Lịch sử tìm kiếm
-                    </p>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onMouseDown={() => {
-                        clearSearchHistory();
-                        setSearchHistory([]);
-                      }}
-                    >
-                      Xóa
-                    </button>
-                  </div>
-                  <div className="py-1">
-                    {searchHistory.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
-                        onMouseDown={() => applySuggestedKeyword(item)}
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <select
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              value={sortBy}
-              onChange={(event) => {
-                setSortBy(event.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="display_order">Thứ tự ưu tiên</option>
-              <option value="best_selling">Đang bán chạy</option>
-              <option value="newest">Mới nhất</option>
-              <option value="price_asc">Giá tăng dần</option>
-              <option value="price_desc">Giá giảm dần</option>
-              <option value="name_asc">Tên A-Z</option>
-              <option value="stock_desc">Tồn kho cao</option>
-            </select>
-
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Bộ lọc
-                  {hasActiveFilters && (
-                    <Badge className="bg-primary text-primary-foreground ml-1">
-                      Đang lọc
-                    </Badge>
-                  )}
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="glass border-border/50">
-                <SheetHeader>
-                  <SheetTitle className="font-display">Bộ lọc</SheetTitle>
-                </SheetHeader>
-
-                <div className="space-y-6 mt-6">
-                  <div className="space-y-3">
-                    <Label>Bộ lọc nhanh</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant={stockStatus === "in-stock" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
-                          setPage(1);
-                        }}
-                        className="gap-1"
-                      >
-                        {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
-                        Còn hàng
-                      </Button>
-                      <Button
-                        variant={priceRange[0] === 0 && priceRange[1] <= 5000000 ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setPriceRange((prev) => {
-                            if (prev[0] === 0 && prev[1] <= 5000000) {
-                              return [0, 50000000];
-                            }
-                            return [0, 5000000];
-                          });
-                          setPage(1);
-                        }}
-                      >
-                        Dưới 5 triệu
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label>Danh mục</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant={selectedCategory === "all" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setSelectedCategory("all");
-                          setPage(1);
-                        }}
-                      >
-                        Tất cả
-                      </Button>
-                      {categoryButtons.map((category) => (
-                        <Button
-                          key={category.id}
-                          variant={selectedCategory === category.id ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setSelectedCategory(category.id);
-                            setPage(1);
-                          }}
-                        >
-                          {category.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Hãng sản xuất</Label>
-                    <select
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      value={selectedBrand}
-                      onChange={(event) => {
-                        setSelectedBrand(event.target.value);
-                        setPage(1);
-                      }}
-                    >
-                      <option value="all">Tất cả</option>
-                      {brands.map((brand) => (
-                        <option key={brand} value={brand}>
-                          {brand}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Tình trạng hàng</Label>
-                    <select
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      value={stockStatus}
-                      onChange={(event) => {
-                        setStockStatus(event.target.value);
-                        setPage(1);
-                      }}
-                    >
-                      <option value="all">Tất cả</option>
-                      <option value="in-stock">Còn hàng</option>
-                      <option value="out-of-stock">Hết hàng</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-4">
-                    <Label>Khoảng giá</Label>
-                    <Slider
-                      value={priceRange}
-                      onValueChange={(values) => {
-                        setPriceRange(values);
-                        setPage(1);
-                      }}
-                      min={0}
-                      max={50000000}
-                      step={500000}
-                    />
-                    <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>{formatPrice(priceRange[0])}</span>
-                      <span>{formatPrice(priceRange[1])}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        step={500000}
-                        value={customMinPrice}
-                        onChange={(event) => setCustomMinPrice(Number(event.target.value || 0))}
-                      />
-                      <Input
-                        type="number"
-                        min={0}
-                        step={500000}
-                        value={customMaxPrice}
-                        onChange={(event) => setCustomMaxPrice(Number(event.target.value || 0))}
-                      />
-                    </div>
-                    <Button variant="outline" className="w-full" onClick={applyPriceInputs}>
-                      Áp dụng khoảng giá
-                    </Button>
-                  </div>
-
-                  {hasActiveFilters && (
-                    <Button variant="outline" className="w-full" onClick={clearFilters}>
-                      Xóa bộ lọc
-                    </Button>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
-
-            <Link to="/ai-recommend">
-              <Button variant="accent" className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                AI Gợi ý
-              </Button>
-            </Link>
-          </div>
-
-          {hasActiveFilters && (
-            <div className="flex flex-wrap gap-2 mb-6">
-              {keyword && (
-                <Badge variant="secondary" className="gap-1">
-                  Từ khóa: {keyword}
-                  <X
-                    className="w-3 h-3 cursor-pointer"
+          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="h-fit space-y-6 rounded-lg border border-border bg-card p-4 sticky top-24 self-start">
+              <div className="space-y-3">
+                <Label>Bộ lọc nhanh</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={stockStatus === "in-stock" ? "default" : "outline"}
+                    size="sm"
                     onClick={() => {
-                      setKeyword("");
-                      setKeywordInput("");
+                      setStockStatus((prev) => (prev === "in-stock" ? "all" : "in-stock"));
                       setPage(1);
                     }}
-                  />
-                </Badge>
-              )}
-              {selectedCategory !== "all" && (
-                <Badge variant="secondary" className="gap-1">
-                  {
-                    categoryButtons.find((item) => item.id === selectedCategory)
-                      ?.name
-                  }
-                  <X
-                    className="w-3 h-3 cursor-pointer"
+                    className="gap-1"
+                  >
+                    {stockStatus === "in-stock" && <Check className="h-3.5 w-3.5" />}
+                    Còn hàng
+                  </Button>
+                  <Button
+                    variant={priceRange[0] === 0 && priceRange[1] <= 5000000 ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setPriceRange((prev) => {
+                        if (prev[0] === 0 && prev[1] <= 5000000) {
+                          return [0, 50000000];
+                        }
+                        return [0, 5000000];
+                      });
+                      setPage(1);
+                    }}
+                  >
+                    Dưới 5 triệu
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Danh mục</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={selectedCategory === "all" ? "default" : "outline"}
+                    size="sm"
                     onClick={() => {
                       setSelectedCategory("all");
                       setPage(1);
                     }}
-                  />
-                </Badge>
-              )}
-              {selectedBrand !== "all" && (
-                <Badge variant="secondary" className="gap-1">
-                  Hãng: {selectedBrand}
-                  <X
-                    className="w-3 h-3 cursor-pointer"
-                    onClick={() => {
-                      setSelectedBrand("all");
-                      setPage(1);
-                    }}
-                  />
-                </Badge>
-              )}
-              {stockStatus !== "all" && (
-                <Badge variant="secondary" className="gap-1">
-                  {stockStatus === "in-stock" ? "Còn hàng" : "Hết hàng"}
-                  <X
-                    className="w-3 h-3 cursor-pointer"
-                    onClick={() => {
-                      setStockStatus("all");
-                      setPage(1);
-                    }}
-                  />
-                </Badge>
-              )}
-              {featuredOnly && (
-                <Badge variant="secondary" className="gap-1">
-                  Sản phẩm nổi bật
-                  <X
-                    className="w-3 h-3 cursor-pointer"
-                    onClick={() => {
-                      setFeaturedOnly(false);
-                      setPage(1);
-                    }}
-                  />
-                </Badge>
-              )}
-            </div>
-          )}
-
-          <p className="text-sm text-muted-foreground mb-6">
-            {isLoading
-              ? "Đang tải dữ liệu sản phẩm..."
-              : `Hiển thị ${items.length} / ${pagination.totalItems ?? 0} sản phẩm`}
-          </p>
-
-          {!isLoading && errorMessage && (
-            <p className="mb-6 text-sm text-destructive">{errorMessage}</p>
-          )}
-
-          {!isLoading && items.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {items.map((component) => (
-                <ComponentCard key={component.id} component={component} />
-              ))}
-            </div>
-          ) : isLoading ? (
-            <div className="text-center py-20">
-              <p className="text-muted-foreground">Đang tải dữ liệu sản phẩm...</p>
-            </div>
-          ) : (
-            <div className="text-center py-20">
-              <p className="text-muted-foreground mb-4">Không tìm thấy sản phẩm</p>
-              {featuredOnly && (
-                <p className="mb-4 text-xs text-amber-600">
-                  Chưa có sản phẩm nổi bật. Vào trang admin sản phẩm để bật nút "Đặt nổi bật".
-                </p>
-              )}
-              <Button variant="outline" onClick={clearFilters}>
-                Xóa bộ lọc
-              </Button>
-            </div>
-          )}
-
-          {!isLoading && totalPages > 1 && (
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 1}
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                >
-                  Trước
-                </Button>
-
-                {visiblePageItems.map((item, index) =>
-                  item === "..." ? (
-                    <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
-                      ...
-                    </span>
-                  ) : (
+                  >
+                    Tất cả
+                  </Button>
+                  {categoryButtons.map((category) => (
                     <Button
-                      key={item}
-                      variant={page === item ? "default" : "outline"}
+                      key={category.id}
+                      variant={selectedCategory === category.id ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setPage(item)}
+                      onClick={() => {
+                        setSelectedCategory(category.id);
+                        setPage(1);
+                      }}
                     >
-                      {item}
+                      {category.name}
                     </Button>
-                  ),
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                >
-                  Sau
-                </Button>
+                  ))}
+                </div>
               </div>
 
-              <div className="ml-0 flex items-center gap-2 sm:ml-4">
-                <Input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={jumpPageInput}
-                  onChange={(event) => setJumpPageInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      jumpToPage();
-                    }
+              <div className="space-y-2">
+                <Label>Hãng sản xuất</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={selectedBrand}
+                  onChange={(event) => {
+                    setSelectedBrand(event.target.value);
+                    setPage(1);
                   }}
-                  className="h-9 w-24"
+                >
+                  <option value="all">Tất cả</option>
+                  {brands.map((brand) => (
+                    <option key={brand} value={brand}>
+                      {brand}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tình trạng hàng</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={stockStatus}
+                  onChange={(event) => {
+                    setStockStatus(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="in-stock">Còn hàng</option>
+                  <option value="out-of-stock">Hết hàng</option>
+                </select>
+              </div>
+
+              <div className="space-y-4">
+                <Label>Khoảng giá</Label>
+                <Slider
+                  value={priceRange}
+                  onValueChange={(values) => {
+                    setPriceRange(values);
+                    setPage(1);
+                  }}
+                  min={0}
+                  max={50000000}
+                  step={500000}
                 />
-                <Button size="sm" variant="secondary" onClick={jumpToPage}>
-                  Đến
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{formatPrice(priceRange[0])}</span>
+                  <span>{formatPrice(priceRange[1])}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={500000}
+                    value={customMinPrice}
+                    onChange={(event) => setCustomMinPrice(Number(event.target.value || 0))}
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    step={500000}
+                    value={customMaxPrice}
+                    onChange={(event) => setCustomMaxPrice(Number(event.target.value || 0))}
+                  />
+                </div>
+                <Button variant="outline" className="w-full" onClick={applyPriceInputs}>
+                  Áp dụng khoảng giá
                 </Button>
               </div>
-            </div>
-          )}
+
+              {hasActiveFilters && (
+                <Button variant="outline" className="w-full" onClick={clearFilters}>
+                  Xóa bộ lọc
+                </Button>
+              )}
+            </aside>
+
+            <section>
+              <div className="sticky top-24 z-20 mb-8 rounded-lg border border-border/60 bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                        <Input
+                          type="text"
+                          placeholder="Tìm tên hoặc mã sản phẩm..."
+                          value={keywordInput}
+                          onChange={(event) => setKeywordInput(event.target.value)}
+                          onFocus={() => setIsSearchFocused(true)}
+                          onBlur={() => {
+                            setTimeout(() => setIsSearchFocused(false), 150);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              applyKeywordSearch();
+                            }
+                          }}
+                          className="pl-10"
+                        />
+                      </div>
+                      <Button onClick={applyKeywordSearch}>Tìm</Button>
+                    </div>
+
+                    {isSearchFocused && suggestions.length > 0 && (
+                      <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
+                        <p className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                          Gợi ý gần đúng
+                        </p>
+                        <div className="py-1">
+                          {suggestions.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
+                              onMouseDown={() => applySuggestedKeyword(item.label)}
+                            >
+                              <span>{item.label}</span>
+                              <span className="text-xs text-muted-foreground">{item.code}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {isSearchFocused && suggestions.length === 0 && searchHistory.length > 0 && !keywordInput.trim() && (
+                      <div className="absolute z-20 mt-2 w-full rounded-lg border border-border bg-background shadow-lg">
+                        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Lịch sử tìm kiếm
+                          </p>
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            onMouseDown={() => {
+                              clearSearchHistory();
+                              setSearchHistory([]);
+                            }}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                        <div className="py-1">
+                          {searchHistory.map((item) => (
+                            <button
+                              key={item}
+                              type="button"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-secondary"
+                              onMouseDown={() => applySuggestedKeyword(item)}
+                            >
+                              <span>{item}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                <select
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  value={sortBy}
+                  onChange={(event) => {
+                    setSortBy(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="display_order">Thứ tự ưu tiên</option>
+                  <option value="best_selling">Đang bán chạy</option>
+                  <option value="newest">Mới nhất</option>
+                  <option value="price_asc">Giá tăng dần</option>
+                  <option value="price_desc">Giá giảm dần</option>
+                  <option value="name_asc">Tên A-Z</option>
+                  <option value="stock_desc">Tồn kho cao</option>
+                </select>
+
+                <Link to="/ai-recommend">
+                  <Button variant="accent" className="gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    AI Gợi ý
+                  </Button>
+                </Link>
+                </div>
+              </div>
+
+              {hasActiveFilters && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {keyword && (
+                    <Badge variant="secondary" className="gap-1">
+                      Từ khóa: {keyword}
+                      <X
+                        className="w-3 h-3 cursor-pointer"
+                        onClick={() => {
+                          setKeyword("");
+                          setKeywordInput("");
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  )}
+                  {selectedCategory !== "all" && (
+                    <Badge variant="secondary" className="gap-1">
+                      {categoryButtons.find((item) => item.id === selectedCategory)?.name}
+                      <X
+                        className="w-3 h-3 cursor-pointer"
+                        onClick={() => {
+                          setSelectedCategory("all");
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  )}
+                  {selectedBrand !== "all" && (
+                    <Badge variant="secondary" className="gap-1">
+                      Hãng: {selectedBrand}
+                      <X
+                        className="w-3 h-3 cursor-pointer"
+                        onClick={() => {
+                          setSelectedBrand("all");
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  )}
+                  {stockStatus !== "all" && (
+                    <Badge variant="secondary" className="gap-1">
+                      {stockStatus === "in-stock" ? "Còn hàng" : "Hết hàng"}
+                      <X
+                        className="w-3 h-3 cursor-pointer"
+                        onClick={() => {
+                          setStockStatus("all");
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  )}
+                  {featuredOnly && (
+                    <Badge variant="secondary" className="gap-1">
+                      Sản phẩm nổi bật
+                      <X
+                        className="w-3 h-3 cursor-pointer"
+                        onClick={() => {
+                          setFeaturedOnly(false);
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              <p className="text-sm text-muted-foreground mb-6">
+                {isLoading
+                  ? "Đang tải dữ liệu sản phẩm..."
+                  : `Hiển thị ${items.length} / ${pagination.totalItems ?? 0} sản phẩm`}
+              </p>
+
+              {!isLoading && errorMessage && (
+                <p className="mb-6 text-sm text-destructive">{errorMessage}</p>
+              )}
+
+              {!isLoading && items.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  {items.map((component) => (
+                    <ComponentCard key={component.id} component={component} />
+                  ))}
+                </div>
+              ) : isLoading ? (
+                <div className="text-center py-20">
+                  <p className="text-muted-foreground">Đang tải dữ liệu sản phẩm...</p>
+                </div>
+              ) : (
+                <div className="text-center py-20">
+                  <p className="text-muted-foreground mb-4">Không tìm thấy sản phẩm</p>
+                  {featuredOnly && (
+                    <p className="mb-4 text-xs text-amber-600">
+                      Chưa có sản phẩm nổi bật. Vào trang admin sản phẩm để bật nút "Đặt nổi bật".
+                    </p>
+                  )}
+                  <Button variant="outline" onClick={clearFilters}>
+                    Xóa bộ lọc
+                  </Button>
+                </div>
+              )}
+
+              {!isLoading && totalPages > 1 && (
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page === 1}
+                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      Trước
+                    </Button>
+
+                    {visiblePageItems.map((item, index) =>
+                      item === "..." ? (
+                        <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                          ...
+                        </span>
+                      ) : (
+                        <Button
+                          key={item}
+                          variant={page === item ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(item)}
+                        >
+                          {item}
+                        </Button>
+                      ),
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page === totalPages}
+                      onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    >
+                      Sau
+                    </Button>
+                  </div>
+
+                  <div className="ml-0 flex items-center gap-2 sm:ml-4">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={jumpPageInput}
+                      onChange={(event) => setJumpPageInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          jumpToPage();
+                        }
+                      }}
+                      className="h-9 w-24"
+                    />
+                    <Button size="sm" variant="secondary" onClick={jumpToPage}>
+                      Đến
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </main>
     </div>

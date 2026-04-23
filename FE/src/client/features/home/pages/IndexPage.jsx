@@ -4,6 +4,7 @@ import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { ComponentCard } from "@/components/ComponentCard";
 import { Button } from "@/components/ui/button";
+import { TOP_BUYERS } from "@/client/features/home/data/top-buyers.data";
 import {
   ArrowRight,
   Cpu,
@@ -12,6 +13,7 @@ import {
   Shield,
   Truck,
   MessageCircle,
+  Trophy,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -21,6 +23,8 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [isCategorySearchFocused, setIsCategorySearchFocused] = useState(false);
 
   useEffect(() => {
     AOS.init({
@@ -99,6 +103,17 @@ const Index = () => {
     return categoryCards.reduce((sum, category) => sum + category.productCount, 0);
   }, [categoryCards]);
 
+  const filteredCategoryCards = useMemo(() => {
+    const query = normalizeText(categorySearch);
+    if (!query) {
+      return categoryCards;
+    }
+
+    return categoryCards.filter((category) => normalizeText(category.name).includes(query));
+  }, [categoryCards, categorySearch]);
+
+  const topBuyers = useMemo(() => TOP_BUYERS, []);
+
   const homepageSuggestions = useMemo(() => {
     const query = searchInput.trim();
     if (!query) {
@@ -138,7 +153,75 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <HeroSection />
+      <HeroSection
+        leftPanel={(
+          <div className="rounded-2xl border border-primary/25 bg-background/80 p-4 shadow-[0_12px_30px_hsl(var(--primary)/0.15)] backdrop-blur-xl md:p-5" data-aos="fade-right">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="font-display text-lg font-semibold text-foreground">Tìm kiếm theo danh mục</h3>
+              <Cpu className="h-4 w-4 text-primary" />
+            </div>
+
+            <div className="relative mb-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={categorySearch}
+                onChange={(event) => setCategorySearch(event.target.value)}
+                onFocus={() => setIsCategorySearchFocused(true)}
+                onBlur={() => setTimeout(() => setIsCategorySearchFocused(false), 120)}
+                placeholder="Tìm danh mục..."
+                className="h-10 w-full rounded-md border border-primary/20 bg-background/95 pl-10 pr-3 text-sm focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            {(isCategorySearchFocused || categorySearch.trim()) && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {filteredCategoryCards.map((category) => (
+                  <Link key={category.id} to={`/components?category=${category.id}`} className="group">
+                    <div className="rounded-lg border border-border/70 bg-background/90 p-2 text-center transition-all duration-300 hover:border-primary/60 hover:bg-primary/10">
+                      <p className="line-clamp-2 text-xs font-medium">{category.name}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{category.productCount} SP</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {!isLoading && (isCategorySearchFocused || categorySearch.trim()) && filteredCategoryCards.length === 0 && (
+              <p className="mt-3 text-xs text-muted-foreground">Không tìm thấy danh mục phù hợp.</p>
+            )}
+          </div>
+        )}
+        rightPanel={(
+          <div className="rounded-2xl border border-primary/25 bg-background/80 p-4 shadow-[0_12px_30px_hsl(var(--primary)/0.15)] backdrop-blur-xl md:p-5" data-aos="fade-left" data-aos-delay="80">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="font-display text-lg font-semibold">Top người dùng</h3>
+              <Trophy className="h-4 w-4 text-primary" />
+            </div>
+
+            <div className="space-y-2">
+              {topBuyers.map((buyer, index) => (
+                <div key={buyer.id} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/90 p-2">
+                  <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${index === 0
+                    ? "bg-amber-100 text-amber-700"
+                    : index === 1
+                      ? "bg-slate-200 text-slate-700"
+                      : index === 2
+                        ? "bg-orange-100 text-orange-700"
+                        : "bg-primary/10 text-primary"
+                    }`}>
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold">{buyer.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{buyer.orders} đơn</p>
+                  </div>
+                  <p className="text-[11px] font-semibold text-emerald-600">{formatVnd(buyer.spend)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      />
 
       <section className="relative z-20 mt-4 pb-2 sm:mt-6">
         <div className="container mx-auto px-4">
@@ -188,55 +271,6 @@ const Index = () => {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      </section>
-
-      {/* Categories Section */}
-      <section className="relative py-12 bg-emerald-50/60">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-8" data-aos="fade-up">
-            <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">
-              Danh mục <span className="text-gradient-primary">linh kiện</span>
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Đầy đủ các linh kiện từ các thương hiệu hàng đầu thế giới
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {categoryCards.map((category, index) => (
-              <Link
-                key={category.id}
-                to={`/components?category=${category.id}`}
-                className="group"
-              >
-                <div
-                  className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)]"
-                  data-aos="fade-up"
-                  data-aos-delay={Math.min(index * 90, 360)}
-                  data-aos-duration="1200"
-                >
-                  <div
-                    className="w-16 h-16 rounded-xl mx-auto mb-4 flex items-center justify-center transition-transform group-hover:scale-110"
-                    style={{
-                      backgroundColor: `hsl(var(--${category.color}) / 0.2)`,
-                    }}
-                  >
-                    <Cpu
-                      className="w-8 h-8"
-                      style={{ color: `hsl(var(--${category.color}))` }}
-                    />
-                  </div>
-                  <h3 className="font-display font-semibold">
-                    {category.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {category.productCount} sản phẩm
-                  </p>
-                </div>
-              </Link>
-            ))}
           </div>
         </div>
       </section>
@@ -444,6 +478,14 @@ function normalizeCategory(slug) {
 function resolveCategoryColor(slug) {
   const normalized = normalizeCategory(slug);
   return normalized;
+}
+
+function formatVnd(value) {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(Number(value ?? 0));
 }
 
 function scoreSearchCandidate(query, candidate) {
