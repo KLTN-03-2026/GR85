@@ -14,6 +14,10 @@ export function createServer() {
     }),
   );
   app.use(express.json());
+  app.use((req, _res, next) => {
+    console.info(`[API] ${req.method} ${req.originalUrl}`);
+    return next();
+  });
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
   app.use("/api", apiRouter);

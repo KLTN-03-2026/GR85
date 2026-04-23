@@ -25,16 +25,17 @@ const envSchema = z.object({
   MOCK_QR_ACCOUNT_NO: z.string().default("19031111111111"),
   MOCK_QR_ACCOUNT_NAME: z.string().default("TECHBUILTAI"),
   MOCK_QR_TEMPLATE: z.string().default("compact2"),
+  WEBHOOK_SECRET: z.string().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error(
-    "Biến môi trường máy chủ không hợp lệ",
+    "Invalid server environment variables",
     parsed.error.flatten().fieldErrors,
   );
-  throw new Error("Xác thực biến môi trường máy chủ thất bại");
+  throw new Error("Server environment validation failed");
 }
 
 export const env = parsed.data;

@@ -4,6 +4,7 @@ import {
   buildAiRecommendation,
   generateAiChatReply,
 } from "../../services/ai.service.js";
+import { askAiAdvisorHandler } from "../controllers/ai-advisor.controller.js";
 
 const router = Router();
 
@@ -47,6 +48,8 @@ router.post("/recommend-build", async (req, res) => {
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
+
+router.post("/ask", askAiAdvisorHandler);
 
 router.post("/chat-build", async (req, res) => {
   try {
