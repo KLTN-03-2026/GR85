@@ -23,6 +23,11 @@ import {
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -52,7 +57,9 @@ const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
   { id: "users", label: "Người dùng", icon: Users },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
-  { id: "products", label: "Sản phẩm", icon: Package },
+  { id: "products-create", label: "Thêm sản phẩm mới", icon: Plus },
+  { id: "products-inventory", label: "Kho sản phẩm", icon: Package },
+  { id: "products-edit", label: "Chỉnh sửa sản phẩm", icon: Pencil },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
   { id: "vouchers", label: "Mã giảm giá", icon: TicketPercent },
@@ -66,10 +73,48 @@ const navItems = [
   hash: `#${slugifyTabLabel(item.label)}`,
 }));
 
+const navGroups = [
+  {
+    id: "overview",
+    label: "Tổng quan",
+    tabIds: ["dashboard"],
+  },
+  {
+    id: "account",
+    label: "Tài khoản & phân quyền",
+    tabIds: ["users", "roles", "verification"],
+  },
+  {
+    id: "catalog-ops",
+    label: "Sản phẩm & kho",
+    tabIds: ["products-create", "products-inventory", "products-edit", "catalog", "warehouse"],
+  },
+  {
+    id: "commerce",
+    label: "Kinh doanh & CSKH",
+    tabIds: ["orders", "vouchers", "reviews", "chat"],
+  },
+  {
+    id: "automation",
+    label: "Tự động hóa",
+    tabIds: ["ai-build"],
+  },
+];
+
+const tabGroupByTabId = navGroups.reduce((accumulator, group) => {
+  for (const tabId of group.tabIds) {
+    accumulator[tabId] = group.id;
+  }
+
+  return accumulator;
+}, {});
+
 const tabPermissionMap = {
   dashboard: "admin_dashboard_view",
   users: "admin_users_manage",
-  products: "admin_products_manage",
+  "products-create": "admin_products_manage",
+  "products-inventory": "admin_products_manage",
+  "products-edit": "admin_products_manage",
   orders: "admin_orders_manage",
   catalog: "admin_catalog_manage",
   vouchers: "admin_vouchers_manage",
@@ -111,7 +156,27 @@ const schemaBySection = {
       "Users 1 - n User_Addresses",
     ],
   },
-  products: {
+  "products-create": {
+    headline: "Dữ liệu thêm sản phẩm",
+    tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Products 1 - 1 Product_Details",
+      "Products 1 - n Product_Images",
+    ],
+  },
+  "products-inventory": {
+    headline: "Dữ liệu kho sản phẩm",
+    tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
+    relations: [
+      "Categories 1 - n Products",
+      "Suppliers 1 - n Products",
+      "Products 1 - 1 Product_Details",
+      "Products 1 - n Product_Images",
+    ],
+  },
+  "products-edit": {
     headline: "Dữ liệu quản lý sản phẩm",
     tables: ["Products", "Categories", "Suppliers", "Product_Details", "Product_Images"],
     relations: [
@@ -464,6 +529,12 @@ export default function AdminPage() {
   const { token, user, setSession, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [openMenuGroups, setOpenMenuGroups] = useState(() => {
+    return navGroups.reduce((accumulator, group) => {
+      accumulator[group.id] = group.id === "overview";
+      return accumulator;
+    }, {});
+  });
   const [dashboard, setDashboard] = useState(null);
   const [editingUserId, setEditingUserId] = useState(null);
   const [savingUserId, setSavingUserId] = useState(null);
@@ -2817,6 +2888,24 @@ export default function AdminPage() {
     [currentUserPermissions, user?.email, user?.role],
   );
 
+  const allowedNavItemById = useMemo(
+    () => new Map(allowedNavItems.map((item) => [item.id, item])),
+    [allowedNavItems],
+  );
+
+  const visibleMenuGroups = useMemo(
+    () =>
+      navGroups
+        .map((group) => ({
+          ...group,
+          items: group.tabIds
+            .map((tabId) => allowedNavItemById.get(tabId))
+            .filter(Boolean),
+        }))
+        .filter((group) => group.items.length > 0),
+    [allowedNavItemById],
+  );
+
   const permissionCatalog = useMemo(() => {
     const fromDashboard = Array.isArray(dashboard?.permissionCatalog)
       ? dashboard.permissionCatalog
@@ -2841,21 +2930,23 @@ export default function AdminPage() {
       permissionCatalog.map((item) => [item.actionName, item.description ?? ""]),
     );
 
-    return navItems
-      .map((item) => {
-        const actionName = tabPermissionMap[item.id];
-        if (!actionName) {
-          return null;
-        }
+    const dedupedByAction = new Map();
 
-        return {
-          tabId: item.id,
-          label: item.label,
-          actionName,
-          description: descriptionByAction.get(actionName) ?? "",
-        };
-      })
-      .filter(Boolean);
+    for (const item of navItems) {
+      const actionName = tabPermissionMap[item.id];
+      if (!actionName || dedupedByAction.has(actionName)) {
+        continue;
+      }
+
+      dedupedByAction.set(actionName, {
+        tabId: item.id,
+        label: item.label,
+        actionName,
+        description: descriptionByAction.get(actionName) ?? "",
+      });
+    }
+
+    return Array.from(dedupedByAction.values());
   }, [permissionCatalog]);
 
   const toggleRolePermission = useCallback((roleId, permission, checked) => {
@@ -3090,11 +3181,33 @@ export default function AdminPage() {
   }, [activeTab, allowedNavItems]);
 
   useEffect(() => {
+    const activeGroupId = tabGroupByTabId[activeTab];
+    if (!activeGroupId) {
+      return;
+    }
+
+    setOpenMenuGroups((prev) => ({
+      ...prev,
+      [activeGroupId]: true,
+    }));
+  }, [activeTab]);
+
+  useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab === "products-create" && editingProductId) {
+      resetProductForm();
+    }
+  }, [activeTab, editingProductId]);
+
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
+
+  const isProductCreateTab = activeTab === "products-create";
+  const isProductInventoryTab = activeTab === "products-inventory";
+  const isProductEditTab = activeTab === "products-edit";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,1)_0%,_rgba(240,253,250,1)_100%)]">
@@ -3105,24 +3218,52 @@ export default function AdminPage() {
           <div className="max-h-[calc(100vh-7.5rem)] space-y-4 overflow-y-auto rounded-3xl border border-border/60 bg-white/85 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur">
             <h1 className="text-xl font-bold">Trang quản trị</h1>
 
-            <div className="space-y-1">
-              {allowedNavItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition ${activeTab === item.id
-                      ? "bg-primary text-primary-foreground"
-                      : "text-slate-700 hover:bg-secondary hover:text-primary"
-                    }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </span>
-                  <ChevronRight className="h-4 w-4 opacity-50" />
-                </button>
-              ))}
+            <div className="space-y-2">
+              {visibleMenuGroups.map((group) => {
+                const isOpen = Boolean(openMenuGroups[group.id]);
+
+                return (
+                  <Collapsible
+                    key={group.id}
+                    open={isOpen}
+                    onOpenChange={(nextOpen) => {
+                      setOpenMenuGroups((prev) => ({
+                        ...prev,
+                        [group.id]: nextOpen,
+                      }));
+                    }}
+                    className="rounded-2xl border border-border/60 bg-white/70"
+                  >
+                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold text-slate-800 transition hover:bg-secondary/70">
+                      <span>{group.label}</span>
+                      <ChevronRight
+                        className={`h-4 w-4 text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}
+                      />
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent className="space-y-1 px-2 pb-2">
+                      {group.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setActiveTab(item.id)}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                            activeTab === item.id
+                              ? "bg-primary text-primary-foreground"
+                              : "text-slate-700 hover:bg-secondary hover:text-primary"
+                          }`}
+                        >
+                          <span className="flex items-center gap-3">
+                            <item.icon className="h-4 w-4" />
+                            {item.label}
+                          </span>
+                          <ChevronRight className="h-4 w-4 opacity-50" />
+                        </button>
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
             </div>
           </div>
         </aside>
@@ -3138,10 +3279,14 @@ export default function AdminPage() {
                 value={activeTab}
                 onChange={(event) => setActiveTab(event.target.value)}
               >
-                {allowedNavItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
+                {visibleMenuGroups.map((group) => (
+                  <optgroup key={group.id} label={group.label}>
+                    {group.items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -3663,27 +3808,56 @@ export default function AdminPage() {
             </Panel>
           </section>
 
-          <section id="products" className={sectionClassName("products")}>
+          <section
+            id="products"
+            className={`space-y-6 ${
+              isProductCreateTab || isProductInventoryTab || isProductEditTab
+                ? "block"
+                : "hidden"
+            }`}
+          >
             <SectionHeader
-              sectionId="products"
+              sectionId={activeTab}
               icon={Package}
-              title="Quản lý sản phẩm"
-              description="Thêm, sửa, xóa, upload ảnh và tìm kiếm sản phẩm"
+              title={
+                isProductCreateTab
+                  ? "Thêm sản phẩm mới"
+                  : isProductInventoryTab
+                    ? "Kho sản phẩm"
+                    : "Chỉnh sửa sản phẩm"
+              }
+              description={
+                isProductCreateTab
+                  ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
+                  : isProductInventoryTab
+                    ? "Danh sách sản phẩm, tìm kiếm, ưu tiên hiển thị và thao tác nhanh"
+                    : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
+              }
             />
-            <div className="grid gap-6 xl:grid-cols-5">
-              <div className="xl:col-span-2">
+            <div className="grid gap-6">
+              <div className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}>
                 <Panel
-                  title={
-                    editingProductId
-                      ? "Chỉnh sửa sản phẩm"
-                      : "Thêm sản phẩm mới"
+                  title={isProductEditTab ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
+                  description={
+                    isProductEditTab
+                      ? "Cập nhật thông tin sản phẩm đã có trong kho"
+                      : "Điền thông tin cơ bản, giá bán, tồn kho và hình ảnh sản phẩm"
                   }
-                  description="Điền thông tin cơ bản, giá bán, tồn kho và hình ảnh sản phẩm"
                 >
                   <div className="space-y-3">
+                    {isProductEditTab && !editingProductId ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                        Chưa chọn sản phẩm để sửa. Vui lòng bấm "Sửa" ở danh sách Kho sản phẩm.
+                      </div>
+                    ) : null}
+
                     <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
-                      <p className="font-semibold">Hướng dẫn nhanh</p>
-                      <p className="mt-1">1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu.</p>
+                      <p className="font-semibold">{isProductEditTab ? "Hướng dẫn chỉnh sửa" : "Hướng dẫn nhanh"}</p>
+                      <p className="mt-1">
+                        {isProductEditTab
+                          ? "1) Chọn sản phẩm từ Kho sản phẩm. 2) Cập nhật thông tin cần sửa. 3) Bấm Cập nhật để lưu thay đổi."
+                          : "1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu."}
+                      </p>
                     </div>
 
                     <div className="grid gap-2">
@@ -4068,14 +4242,18 @@ export default function AdminPage() {
                       <Button
                         className="gap-2"
                         onClick={saveProduct}
-                        disabled={isSavingProduct}
+                        disabled={isSavingProduct || (isProductEditTab && !editingProductId)}
                       >
-                        {editingProductId ? (
+                        {isProductEditTab ? (
                           <Pencil className="h-4 w-4" />
                         ) : (
                           <Plus className="h-4 w-4" />
                         )}
-                        {editingProductId ? "Cập nhật" : "Thêm sản phẩm"}
+                        {isProductEditTab
+                          ? editingProductId
+                            ? "Cập nhật"
+                            : "Chọn sản phẩm để sửa"
+                          : "Thêm sản phẩm"}
                       </Button>
                       <Button
                         variant="outline"
@@ -4089,7 +4267,7 @@ export default function AdminPage() {
                 </Panel>
               </div>
 
-              <div className="xl:col-span-3">
+              <div className={`${isProductCreateTab ? "hidden" : ""}`}>
                 <Panel
                   title="Kho sản phẩm"
                   description="Task #31 + #32: tìm kiếm nhanh, phân trang 12 sản phẩm/trang"
@@ -4339,7 +4517,10 @@ export default function AdminPage() {
                           size="sm"
                           variant="outline"
                           className="gap-1"
-                          onClick={() => startEditingProduct(item)}
+                          onClick={() => {
+                            startEditingProduct(item);
+                            setActiveTab("products-edit");
+                          }}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Sửa
