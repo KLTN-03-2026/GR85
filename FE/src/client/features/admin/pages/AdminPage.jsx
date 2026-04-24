@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -5072,11 +5072,11 @@ export default function AdminPage() {
                     onChange={(e) => setOrderFilterStatus(e.target.value)}
                   >
                     <option value="all">Tất cả</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="PROCESSING">Processing</option>
-                    <option value="SHIPPING">In Transit</option>
-                    <option value="DELIVERED">Delivered</option>
-                    <option value="CANCELLED">Cancelled</option>
+                    <option value="PENDING">Chờ xác nhận</option>
+                    <option value="PROCESSING">Đang chuẩn bị</option>
+                    <option value="SHIPPING">Đang vận chuyển</option>
+                    <option value="DELIVERED">Đã giao hàng</option>
+                    <option value="CANCELLED">Đã hủy</option>
                   </select>
                 </div>
                 <div className="flex items-end">
@@ -5767,7 +5767,9 @@ function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
       value === "Đã thanh toán" ||
+      value === "Đã hoàn tiền" ||
       value === "Đã giao" ||
+      value === "Đã giao hàng" ||
       value === "Đã kết nối" ||
       value === "Đã đăng" ||
       value === "Phổ biến" ||
@@ -5776,13 +5778,17 @@ function statusBadge(value) {
       value === "Đã dùng"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
+        value === "Chờ xác nhận" ||
+        value === "Chờ thanh toán" ||
         value === "Đang xử lý" ||
+        value === "Đang chuẩn bị" ||
         value === "Tạm dừng" ||
         value === "Cần xem xét" ||
         value === "Bản nháp" ||
         value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
+          value === "Đang vận chuyển" ||
           value === "Quản trị viên" ||
           value === "Nhân viên" ||
           value === "Mở"
@@ -5845,21 +5851,21 @@ function formatOrderStatusLabelAdmin(orderStatusValue, paymentStatusValue) {
   const orderStatus = String(orderStatusValue ?? "").trim().toUpperCase();
   const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
 
-  if (orderStatus === "PENDING") return "Pending";
-  if (orderStatus === "PROCESSING") return "Processing";
-  if (orderStatus === "SHIPPING") return "In Transit";
-  if (orderStatus === "DELIVERED") return "Delivered";
-  if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") return "Failed Attempt";
-  if (orderStatus === "CANCELLED") return "Cancelled";
+  if (orderStatus === "PENDING") return "Chờ xác nhận";
+  if (orderStatus === "PROCESSING") return "Đang chuẩn bị";
+  if (orderStatus === "SHIPPING") return "Đang vận chuyển";
+  if (orderStatus === "DELIVERED") return "Đã giao hàng";
+  if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") return "Thất bại";
+  if (orderStatus === "CANCELLED") return "Đã hủy";
   return formatEnum(orderStatus);
 }
 
 function formatPaymentStatusLabelAdmin(value) {
   const normalized = String(value ?? "").trim().toUpperCase();
-  if (normalized === "PAID") return "Paid";
-  if (normalized === "PENDING") return "Pending";
-  if (normalized === "FAILED") return "Failed Attempt";
-  if (normalized === "REFUNDED") return "Refunded";
+  if (normalized === "PAID") return "Đã thanh toán";
+  if (normalized === "PENDING") return "Chờ thanh toán";
+  if (normalized === "FAILED") return "Thanh toán thất bại";
+  if (normalized === "REFUNDED") return "Đã hoàn tiền";
   return formatEnum(normalized);
 }
 
