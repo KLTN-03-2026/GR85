@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,10 @@ import {
   Pencil,
   Trash2,
   Navigation,
+  Package,
+  Truck,
+  House,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileApi } from "@/client/features/profile/data/profile.api";
@@ -60,6 +64,8 @@ const passwordValidation = {
   },
 };
 
+const ORDERS_PER_PAGE = 4;
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { token, isAuthenticated, isHydrated, setSession } = useAuth();
@@ -70,6 +76,7 @@ export default function ProfilePage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showPendingOrders, setShowPendingOrders] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
+  const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
@@ -217,6 +224,31 @@ export default function ProfilePage() {
             String(order?.orderStatus ?? "").toUpperCase() === "PENDING"
           ),
       );
+
+  const sortedVisibleOrders = useMemo(
+    () =>
+      [...visibleOrders].sort(
+        (a, b) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime(),
+      ),
+    [visibleOrders],
+  );
+
+  const totalOrderPages = Math.max(1, Math.ceil(sortedVisibleOrders.length / ORDERS_PER_PAGE));
+
+  const pagedOrders = useMemo(() => {
+    const startIndex = (currentOrderPage - 1) * ORDERS_PER_PAGE;
+    return sortedVisibleOrders.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+  }, [sortedVisibleOrders, currentOrderPage]);
+
+  useEffect(() => {
+    if (currentOrderPage > totalOrderPages) {
+      setCurrentOrderPage(totalOrderPages);
+    }
+  }, [currentOrderPage, totalOrderPages]);
+
+  useEffect(() => {
+    setCurrentOrderPage(1);
+  }, [showPendingOrders]);
 
   async function loadOrderDetail(orderId) {
     try {
@@ -940,11 +972,12 @@ export default function ProfilePage() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Đang tải đơn hàng...
                     </div>
-                  ) : visibleOrders.length === 0 ? (
+                  ) : sortedVisibleOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Bạn chưa có đơn hàng nào phù hợp bộ lọc hiện tại.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[700px] text-left text-sm">
+                    <div className="space-y-4">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[700px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-border/70 text-muted-foreground">
                             <th className="px-3 py-3 font-medium">Mã đơn</th>
@@ -957,7 +990,7 @@ export default function ProfilePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {visibleOrders.map((order) => (
+                          {pagedOrders.map((order) => (
                             <tr key={order.id} className="border-b border-border/40">
                               <td className="px-3 py-3">#{order.id}</td>
                               <td className="px-3 py-3">{formatDate(order.createdAt)}</td>
@@ -994,12 +1027,36 @@ export default function ProfilePage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs text-muted-foreground">
+                          Hiển thị {pagedOrders.length} / {sortedVisibleOrders.length} đơn hàng
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {Array.from({ length: totalOrderPages }, (_, index) => {
+                            const page = index + 1;
+                            const isActive = page === currentOrderPage;
+                            return (
+                              <Button
+                                key={`order-page-${page}`}
+                                variant={isActive ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setCurrentOrderPage(page)}
+                                className="min-w-9"
+                              >
+                                {page}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {selectedOrderDetail && (
-                    <div className="rounded-xl border border-border p-4">
+                    <div className="rounded-xl border border-border p-4 space-y-4">
                       <h4 className="text-base font-semibold">
                         Theo dõi đơn #{selectedOrderDetail.id}
                       </h4>
@@ -1010,6 +1067,50 @@ export default function ProfilePage() {
                         Thanh toán: {formatPaymentMethod(selectedOrderDetail.paymentMethod)} - {formatPaymentStatus(selectedOrderDetail.paymentStatus)}
                         {" "}· Trạng thái: {formatOrderStatus(selectedOrderDetail.orderStatus, selectedOrderDetail.paymentStatus)}
                       </p>
+
+                      <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-emerald-900">Hành trình đơn hàng</p>
+                          <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                            {getTrackingHeadline(selectedOrderDetail)}
+                          </Badge>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-4">
+                          {buildTrackingSteps(selectedOrderDetail).map((step) => (
+                            <div
+                              key={`tracking-step-${step.key}`}
+                              className={`rounded-lg border p-3 text-xs ${
+                                step.state === "done"
+                                  ? "border-emerald-300 bg-emerald-100/70"
+                                  : step.state === "active"
+                                    ? "border-sky-300 bg-sky-100/70"
+                                    : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <p className="font-semibold text-slate-900">{step.title}</p>
+                              <p className="mt-1 text-slate-600">{step.description}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-lg border border-sky-200 bg-white p-3">
+                          <div className="flex items-center justify-center gap-4 text-sky-700">
+                            <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-amber-700">
+                              <Package className="h-4 w-4 animate-pulse" />
+                              <span className="text-xs font-medium">Người bán đang gói hàng</span>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sky-700">
+                              <Truck className="h-4 w-4 animate-bounce" />
+                              <span className="text-xs font-medium">Xe giao hàng đang di chuyển</span>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-emerald-700">
+                              <House className="h-4 w-4" />
+                              <span className="text-xs font-medium">Đang hướng tới địa chỉ của bạn</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
                       <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div>
@@ -1032,10 +1133,10 @@ export default function ProfilePage() {
                             {(selectedOrderDetail.statusHistory ?? []).map((entry) => (
                               <div key={entry.id} className="rounded-lg border p-2 text-sm">
                                 <p className="font-medium">
-                                  {formatEnum(entry.fromStatus)} → {formatEnum(entry.toStatus)}
+                                  {formatHistoryStatus(entry.fromStatus)} → {formatHistoryStatus(entry.toStatus)}
                                 </p>
                                 <p className="text-muted-foreground">{formatDate(entry.createdAt)}</p>
-                                {entry.note ? <p className="text-xs">{entry.note}</p> : null}
+                                {entry.note ? <p className="text-xs">{formatOrderHistoryNote(entry.note)}</p> : null}
                               </div>
                             ))}
                           </div>
@@ -1240,16 +1341,16 @@ function formatPaymentMethod(value) {
 function formatPaymentStatus(value) {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "PAID") {
-    return "Paid";
+    return "Đã thanh toán";
   }
   if (normalized === "PENDING") {
-    return "Pending";
+    return "Chờ thanh toán";
   }
   if (normalized === "FAILED") {
-    return "Failed Attempt";
+    return "Thanh toán thất bại";
   }
   if (normalized === "REFUNDED") {
-    return "Refunded";
+    return "Đã hoàn tiền";
   }
   return formatEnum(normalized);
 }
@@ -1259,25 +1360,155 @@ function formatOrderStatus(orderStatusValue, paymentStatusValue) {
   const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
 
   if (orderStatus === "PENDING") {
-    return "Pending";
+    return paymentStatus === "PAID" ? "Đã thanh toán, đang chuẩn bị hàng" : "Chờ thanh toán";
   }
   if (orderStatus === "PROCESSING") {
-    return "Processing";
+    return "Đang chuẩn bị hàng";
   }
   if (orderStatus === "SHIPPING") {
-    return "In Transit";
+    return "Đang giao hàng";
   }
   if (orderStatus === "DELIVERED") {
-    return "Delivered";
+    return "Đã nhận hàng";
   }
   if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") {
-    return "Failed Attempt";
+    return "Thanh toán thất bại";
   }
   if (orderStatus === "CANCELLED") {
-    return "Cancelled";
+    return "Đã hủy";
   }
 
   return formatEnum(orderStatus);
+}
+
+function formatHistoryStatus(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+
+  if (normalized === "PENDING") {
+    return "Chờ xác nhận";
+  }
+  if (normalized === "PROCESSING") {
+    return "Đang chuẩn bị hàng";
+  }
+  if (normalized === "SHIPPING") {
+    return "Đang giao hàng";
+  }
+  if (normalized === "DELIVERED") {
+    return "Đã nhận hàng";
+  }
+  if (normalized === "CANCELLED") {
+    return "Đã hủy";
+  }
+
+  return formatEnum(normalized);
+}
+
+function formatOrderHistoryNote(note) {
+  const normalized = String(note ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.includes("Order created and waiting for PayOS payment")) {
+    return "Đơn hàng đã được tạo, hệ thống đang chờ bạn hoàn tất thanh toán QR.";
+  }
+  if (normalized.includes("Order placed with COD and waiting for delivery")) {
+    return "Đơn hàng COD đã ghi nhận thành công, shop bắt đầu xử lý đóng gói.";
+  }
+  if (normalized.includes("PayOS confirmed via")) {
+    return "Thanh toán QR đã xác nhận thành công, đơn đang được chuyển sang đóng gói.";
+  }
+  if (normalized.includes("VNPAY confirmed via")) {
+    return "Thanh toán VNPAY đã xác nhận thành công.";
+  }
+  if (normalized.includes("Cancelled: stock changed during payment confirmation")) {
+    return "Đơn bị hủy do tồn kho thay đổi trong lúc xác nhận thanh toán.";
+  }
+
+  return normalized;
+}
+
+function getTrackingStage(order) {
+  const paymentStatus = String(order?.paymentStatus ?? "").trim().toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "").trim().toUpperCase();
+
+  if (orderStatus === "CANCELLED") {
+    return "cancelled";
+  }
+  if (orderStatus === "DELIVERED") {
+    return "delivered";
+  }
+  if (orderStatus === "SHIPPING") {
+    return "shipping";
+  }
+  if (paymentStatus === "PAID" || orderStatus === "PROCESSING") {
+    return "preparing";
+  }
+
+  return "awaiting_payment";
+}
+
+function buildTrackingSteps(order) {
+  const stage = getTrackingStage(order);
+  const indexMap = {
+    awaiting_payment: 0,
+    preparing: 1,
+    shipping: 2,
+    delivered: 3,
+  };
+
+  const activeIndex = indexMap[stage] ?? 0;
+
+  const steps = [
+    {
+      key: "awaiting_payment",
+      title: "Chờ thanh toán",
+      description: "Đơn đã tạo thành công, chờ xác nhận thanh toán.",
+    },
+    {
+      key: "preparing",
+      title: "Đang chuẩn bị hàng",
+      description: "Shop xác nhận đơn, kiểm kho và đóng gói sản phẩm.",
+    },
+    {
+      key: "shipping",
+      title: "Đang giao hàng",
+      description: "Đơn đã bàn giao vận chuyển, tài xế đang giao tới bạn.",
+    },
+    {
+      key: "delivered",
+      title: "Đã nhận hàng",
+      description: "Đơn đã giao thành công. Bạn có thể đánh giá sản phẩm.",
+    },
+  ];
+
+  if (stage === "cancelled") {
+    return steps.map((step) => ({ ...step, state: "pending" }));
+  }
+
+  return steps.map((step, index) => ({
+    ...step,
+    state: index < activeIndex ? "done" : index === activeIndex ? "active" : "pending",
+  }));
+}
+
+function getTrackingHeadline(order) {
+  const stage = getTrackingStage(order);
+
+  if (stage === "awaiting_payment") {
+    return "Đơn đang chờ bạn thanh toán";
+  }
+  if (stage === "preparing") {
+    return "Đã thanh toán, shop đang chuẩn bị hàng";
+  }
+  if (stage === "shipping") {
+    return "Đơn đang được giao tới bạn";
+  }
+  if (stage === "delivered") {
+    return "Bạn đã nhận hàng thành công";
+  }
+
+  return "Đơn hàng đã bị hủy";
 }
 
 function canRequestReturn(order) {
