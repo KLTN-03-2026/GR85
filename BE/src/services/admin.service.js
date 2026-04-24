@@ -972,15 +972,19 @@ export async function deleteCouponByAdmin(couponId) {
     throw new Error("Không tìm thấy mã giảm giá");
   }
 
-  if (
-    Number(current._count?.orders ?? 0) > 0 ||
-    Number(current._count?.shippingOrders ?? 0) > 0 ||
-    Number(current.usedCount ?? 0) > 0
-  ) {
-    throw new Error("Mã giảm giá đã được sử dụng. Hãy tắt thay vì xóa");
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.order.updateMany({
+      where: { couponId: id },
+      data: { couponId: null },
+    });
 
-  await prisma.coupon.delete({ where: { id } });
+    await tx.order.updateMany({
+      where: { shippingCouponId: id },
+      data: { shippingCouponId: null },
+    });
+
+    await tx.coupon.delete({ where: { id } });
+  });
 
   return serializeData({
     success: true,
