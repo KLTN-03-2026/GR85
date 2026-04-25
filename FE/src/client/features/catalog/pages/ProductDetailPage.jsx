@@ -20,6 +20,8 @@ export default function ProductDetailPage() {
   });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
+  const [reviewImages, setReviewImages] = useState([]);
+  const [reviewImagePreviews, setReviewImagePreviews] = useState([]);
   const [reviewError, setReviewError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
@@ -30,39 +32,44 @@ export default function ProductDetailPage() {
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
 
-  const refreshReviewEligibility = useCallback(async (productSlug, authToken, isCancelled = () => false) => {
-    if (!productSlug || !authToken || !isAuthenticated) {
-      setCanReview(false);
-      setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
-      return;
-    }
+  const refreshReviewEligibility = useCallback(
+    async (productSlug, authToken, isCancelled = () => false) => {
+      if (!productSlug || !authToken || !isAuthenticated) {
+        setCanReview(false);
+        setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
+        return;
+      }
 
-    try {
-      const response = await fetch(
-        `/api/products/${productSlug}/review-eligibility`,
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
+      try {
+        const response = await fetch(
+          `/api/products/${productSlug}/review-eligibility`,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
           },
-        },
-      );
+        );
 
-      const payload = await response.json().catch(() => ({}));
-      if (isCancelled()) {
-        return;
+        const payload = await response.json().catch(() => ({}));
+        if (isCancelled()) {
+          return;
+        }
+
+        setCanReview(Boolean(payload?.canReview));
+        setReviewEligibilityMessage(String(payload?.reason ?? ""));
+      } catch {
+        if (isCancelled()) {
+          return;
+        }
+
+        setCanReview(false);
+        setReviewEligibilityMessage(
+          "Không thể kiểm tra quyền đánh giá lúc này",
+        );
       }
-
-      setCanReview(Boolean(payload?.canReview));
-      setReviewEligibilityMessage(String(payload?.reason ?? ""));
-    } catch {
-      if (isCancelled()) {
-        return;
-      }
-
-      setCanReview(false);
-      setReviewEligibilityMessage("Không thể kiểm tra quyền đánh giá lúc này");
-    }
-  }, [isAuthenticated]);
+    },
+    [isAuthenticated],
+  );
 
   const loadReviews = async (productSlug, isCancelled = () => false) => {
     try {
@@ -90,6 +97,19 @@ export default function ProductDetailPage() {
       setReviewSummary({ totalReviews: 0, averageRating: 0 });
     }
   };
+
+  useEffect(() => {
+    const nextPreviews = reviewImages.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    setReviewImagePreviews(nextPreviews);
+
+    return () => {
+      nextPreviews.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    };
+  }, [reviewImages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -249,16 +269,21 @@ export default function ProductDetailPage() {
     try {
       setIsSubmittingReview(true);
 
+      const formData = new FormData();
+      formData.append("rating", String(reviewRating));
+      if (reviewComment.trim()) {
+        formData.append("comment", reviewComment.trim());
+      }
+      reviewImages.forEach((file) => {
+        formData.append("images", file);
+      });
+
       const response = await fetch(`/api/products/${product.slug}/reviews`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          rating: Number(reviewRating),
-          comment: reviewComment.trim() || undefined,
-        }),
+        body: formData,
       });
 
       const responseText = await response.text();
@@ -278,6 +303,7 @@ export default function ProductDetailPage() {
 
       setReviewMessage("Đánh giá của bạn đã được ghi nhận");
       setReviewComment("");
+      setReviewImages([]);
       await loadReviews(product.slug);
       await refreshReviewEligibility(product.slug, token);
     } catch (error) {
@@ -494,6 +520,45 @@ export default function ProductDetailPage() {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-sm font-medium">
+                          Ảnh đánh giá
+                        </label>
+                        <span className="text-xs text-muted-foreground">
+                          Tối đa 6 ảnh, JPG/PNG/WEBP
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
+                        onChange={(event) => {
+                          const files = Array.from(
+                            event.target.files ?? [],
+                          ).slice(0, 6);
+                          setReviewImages(files);
+                        }}
+                      />
+                      {reviewImagePreviews.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {reviewImagePreviews.map((item, index) => (
+                            <div
+                              key={`${item.file.name}-${index}`}
+                              className="relative overflow-hidden rounded-xl border border-border/60 bg-secondary/20"
+                            >
+                              <img
+                                src={item.previewUrl}
+                                alt={`Ảnh đánh giá ${index + 1}`}
+                                className="h-28 w-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
                     <Button type="submit" disabled={isSubmittingReview}>
                       {isSubmittingReview ? "Đang gửi..." : "Gửi đánh giá"}
                     </Button>
@@ -548,8 +613,22 @@ export default function ProductDetailPage() {
                           <p className="mt-2 text-sm">{review.comment}</p>
                         )}
 
+                        {Array.isArray(review?.images) &&
+                        review.images.length > 0 ? (
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {review.images.map((image) => (
+                              <img
+                                key={image.id}
+                                src={image.imageUrl}
+                                alt="Ảnh đánh giá"
+                                className="h-24 w-full rounded-md border border-border/60 object-cover"
+                              />
+                            ))}
+                          </div>
+                        ) : null}
 
-                        {Array.isArray(review?.thread) && review.thread.length > 0 ? (
+                        {Array.isArray(review?.thread) &&
+                        review.thread.length > 0 ? (
                           <div className="mt-3 rounded-md border border-border/60 bg-secondary/30 px-3 py-2">
                             <p className="text-xs font-semibold text-muted-foreground">
                               Phản hồi từ cửa hàng & trao đổi
@@ -568,7 +647,8 @@ export default function ProductDetailPage() {
                                     <span className="font-medium text-slate-700">
                                       {msg.isStaff
                                         ? "Nhân viên"
-                                        : review?.user?.fullName ?? "Khách hàng"}
+                                        : (review?.user?.fullName ??
+                                          "Khách hàng")}
                                     </span>
                                     <span>{formatDate(msg.createdAt)}</span>
                                   </div>

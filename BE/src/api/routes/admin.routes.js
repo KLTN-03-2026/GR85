@@ -9,6 +9,7 @@ import {
   getAdminDashboard,
   listReviewsForAdmin,
   moderateReviewByAdmin,
+  resolveReviewThreadByAdmin,
   replyReviewByAdmin,
   getWarehouseOverviewByAdmin,
   getUserDetailByAdmin,
@@ -161,6 +162,10 @@ const reviewReplySchema = z.object({
   reply: z.string().min(1).max(2000),
 });
 
+const reviewResolveSchema = z.object({
+  resolved: z.boolean().default(true),
+});
+
 function isAdminRole(role) {
   const normalizedRole = String(role ?? "")
     .trim()
@@ -279,6 +284,43 @@ router.patch("/reviews/:reviewId/reply", requireAuth, async (req, res) => {
   }
 });
 
+router.patch("/reviews/:reviewId/resolve", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_reviews_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const parsed = reviewResolveSchema.parse(req.body ?? {});
+    const data = await resolveReviewThreadByAdmin(
+      Number(req.auth?.sub),
+      req.params.reviewId,
+      parsed,
+    );
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
+    }
+
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
 router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
@@ -301,12 +343,10 @@ router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {

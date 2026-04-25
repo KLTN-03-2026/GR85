@@ -1675,6 +1675,20 @@ export default function ProfilePage() {
                                     </p>
                                   )}
 
+                                  {Array.isArray(review?.images) &&
+                                  review.images.length > 0 ? (
+                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                      {review.images.map((image) => (
+                                        <img
+                                          key={image.id}
+                                          src={image.imageUrl}
+                                          alt="Ảnh đánh giá"
+                                          className="h-24 w-full rounded-md border border-border/60 object-cover"
+                                        />
+                                      ))}
+                                    </div>
+                                  ) : null}
+
                                   {review?.adminReply ? (
                                     <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
                                       <p className="text-xs font-semibold text-sky-700">

@@ -262,6 +262,13 @@ export async function listReviewsForAdmin() {
           email: true,
         },
       },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
       replies: {
         orderBy: { createdAt: "asc" },
         take: 200,
@@ -274,6 +281,9 @@ export async function listReviewsForAdmin() {
             },
           },
         },
+      },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -352,6 +362,13 @@ export async function moderateReviewByAdmin(
           email: true,
         },
       },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
       replies: {
         orderBy: { createdAt: "asc" },
         take: 200,
@@ -364,6 +381,9 @@ export async function moderateReviewByAdmin(
             },
           },
         },
+      },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -413,6 +433,9 @@ export async function replyReviewByAdmin(
         adminReply,
         adminRepliedBy: replierId,
         adminRepliedAt: new Date(),
+        threadStatus: "WAITING_CUSTOMER",
+        threadResolvedBy: null,
+        threadResolvedAt: null,
       },
       include: {
         user: {
@@ -443,6 +466,13 @@ export async function replyReviewByAdmin(
             email: true,
           },
         },
+        resolver: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
         replies: {
           orderBy: { createdAt: "asc" },
           take: 200,
@@ -455,6 +485,9 @@ export async function replyReviewByAdmin(
               },
             },
           },
+        },
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
         },
       },
     });
@@ -498,6 +531,13 @@ export async function replyReviewByAdmin(
             email: true,
           },
         },
+        resolver: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
         replies: {
           orderBy: { createdAt: "asc" },
           take: 200,
@@ -511,6 +551,9 @@ export async function replyReviewByAdmin(
             },
           },
         },
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        },
       },
     });
   });
@@ -520,6 +563,95 @@ export async function replyReviewByAdmin(
     reviewId: updated.id,
     product: updated.product,
     replyPreview: truncateText(adminReply, 160),
+  });
+
+  return serializeData(mapAdminReview(updated));
+}
+
+export async function resolveReviewThreadByAdmin(
+  adminUserId,
+  reviewIdInput,
+  input = {},
+) {
+  const reviewId = Number(reviewIdInput);
+  const resolverId = Number(adminUserId);
+  const resolved = Boolean(input.resolved);
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+  if (!Number.isFinite(resolverId) || resolverId <= 0) {
+    throw new Error("Invalid admin id");
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!existing) {
+    throw new Error("Review not found");
+  }
+
+  const updated = await prisma.review.update({
+    where: { id: reviewId },
+    data: resolved
+      ? {
+          threadStatus: "RESOLVED",
+          threadResolvedBy: resolverId,
+          threadResolvedAt: new Date(),
+        }
+      : {
+          threadStatus: "OPEN",
+          threadResolvedBy: null,
+          threadResolvedAt: null,
+        },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      moderator: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   return serializeData(mapAdminReview(updated));
@@ -1608,6 +1740,15 @@ function mapAdminReview(review) {
     moderatedAt: review.moderatedAt,
     adminReply: review.adminReply ? String(review.adminReply) : "",
     adminRepliedAt: review.adminRepliedAt,
+    threadStatus: String(review.threadStatus ?? "OPEN"),
+    threadResolvedAt: review.threadResolvedAt,
+    images: Array.isArray(review.images)
+      ? review.images.map((image) => ({
+          id: image.id,
+          imageUrl: String(image.imageUrl ?? ""),
+          sortOrder: Number(image.sortOrder ?? 0),
+        }))
+      : [],
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
     thread: buildReviewThread(review, reviewUserId),
@@ -1641,6 +1782,14 @@ function mapAdminReview(review) {
           fullName:
             String(review.replier.fullName ?? "").trim() ||
             String(review.replier.email ?? "Admin"),
+        }
+      : null,
+    resolver: review.resolver
+      ? {
+          id: review.resolver.id,
+          fullName:
+            String(review.resolver.fullName ?? "").trim() ||
+            String(review.resolver.email ?? "Admin"),
         }
       : null,
   };

@@ -35,6 +35,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
@@ -725,7 +726,11 @@ export default function AdminPage() {
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
+  const [resolvingReviewId, setResolvingReviewId] = useState(null);
   const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
+  const [deleteReviewDialogOpen, setDeleteReviewDialogOpen] = useState(false);
+  const [deleteReviewTarget, setDeleteReviewTarget] = useState(null);
+  const [deleteReviewReason, setDeleteReviewReason] = useState("");
 
   useEffect(() => {
     const tabIdFromUrl = resolveTabIdFromLocation();
@@ -1297,20 +1302,69 @@ export default function AdminPage() {
     }
   }
 
+  async function resolveReviewThread(reviewId, resolved = true) {
+    if (!token || !reviewId) {
+      return;
+    }
+
+    const numericReviewId = Number(reviewId);
+    setResolvingReviewId(numericReviewId);
+    try {
+      const response = await fetch(
+        `/api/admin/reviews/${numericReviewId}/resolve`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ resolved: Boolean(resolved) }),
+        },
+      );
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.message ?? "Không thể cập nhật trạng thái xử lý",
+        );
+      }
+
+      setAdminReviews((prev) =>
+        prev.map((item) =>
+          Number(item.id) === numericReviewId ? payload : item,
+        ),
+      );
+
+      toast({
+        title: resolved ? "Đã đánh dấu xử lý xong" : "Đã mở lại hội thoại",
+      });
+    } catch (error) {
+      toast({
+        title: "Cập nhật trạng thái xử lý thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setResolvingReviewId(null);
+    }
+  }
+
   async function removeReview(review) {
     if (!token || !review?.id) {
       return;
     }
 
-    const reason = window.prompt(
-      `Nhập lý do xóa đánh giá #${review.id} (bắt buộc):`,
-      "Đánh giá vi phạm quy định của cửa hàng",
-    );
-    if (reason === null) {
+    setDeleteReviewTarget(review);
+    setDeleteReviewReason("Đánh giá vi phạm quy định của cửa hàng");
+    setDeleteReviewDialogOpen(true);
+  }
+
+  async function confirmDeleteReview() {
+    if (!token || !deleteReviewTarget?.id) {
       return;
     }
 
-    const normalizedReason = String(reason ?? "").trim();
+    const normalizedReason = String(deleteReviewReason ?? "").trim();
     if (!normalizedReason) {
       toast({
         title: "Thiếu lý do",
@@ -1320,7 +1374,7 @@ export default function AdminPage() {
       return;
     }
 
-    const reviewId = Number(review.id);
+    const reviewId = Number(deleteReviewTarget.id);
     setDeletingReviewId(reviewId);
     try {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
@@ -1340,6 +1394,9 @@ export default function AdminPage() {
       setAdminReviews((prev) =>
         prev.filter((item) => Number(item.id) !== reviewId),
       );
+      setDeleteReviewDialogOpen(false);
+      setDeleteReviewTarget(null);
+      setDeleteReviewReason("");
       toast({ title: "Đã xóa đánh giá" });
     } catch (error) {
       toast({
@@ -3053,19 +3110,108 @@ export default function AdminPage() {
     return filtered;
   }, [dashboard, voucherSearchKeyword, voucherStatusFilter]);
 
+  const getReviewThread = useCallback((review) => {
+    return Array.isArray(review?.thread) ? review.thread : [];
+  }, []);
+
+  const getReviewThreadStatus = useCallback(
+    (review) => {
+      const normalized = String(review?.threadStatus ?? "")
+        .trim()
+        .toUpperCase();
+
+      if (
+        normalized === "OPEN" ||
+        normalized === "WAITING_ADMIN" ||
+        normalized === "WAITING_CUSTOMER" ||
+        normalized === "RESOLVED"
+      ) {
+        return normalized;
+      }
+
+      const thread = getReviewThread(review);
+      if (thread.length === 0) {
+        return "OPEN";
+      }
+
+      const lastMessage = thread[thread.length - 1];
+      return lastMessage?.isStaff ? "WAITING_CUSTOMER" : "WAITING_ADMIN";
+    },
+    [getReviewThread],
+  );
+
+  const formatThreadStatusLabel = useCallback((status) => {
+    if (status === "RESOLVED") {
+      return "Đã xử lý";
+    }
+    if (status === "WAITING_CUSTOMER") {
+      return "Chờ khách phản hồi";
+    }
+    if (status === "WAITING_ADMIN") {
+      return "Chờ admin phản hồi";
+    }
+    return "Open";
+  }, []);
+
+  const hasStaffReply = useCallback(
+    (review) => {
+      const thread = getReviewThread(review);
+      if (thread.some((item) => Boolean(item?.isStaff))) {
+        return true;
+      }
+
+      return Boolean(String(review?.adminReply ?? "").trim());
+    },
+    [getReviewThread],
+  );
+
+  const isWaitingForAdminReply = useCallback(
+    (review) => {
+      const status = getReviewThreadStatus(review);
+      if (status === "WAITING_ADMIN" || status === "OPEN") {
+        return true;
+      }
+      if (status === "WAITING_CUSTOMER" || status === "RESOLVED") {
+        return false;
+      }
+
+      const thread = getReviewThread(review);
+      if (thread.length === 0) {
+        return !hasStaffReply(review);
+      }
+
+      const lastMessage = thread[thread.length - 1];
+      return !Boolean(lastMessage?.isStaff);
+    },
+    [getReviewThread, getReviewThreadStatus, hasStaffReply],
+  );
+
   const filteredReviews = useMemo(() => {
     let filtered = Array.isArray(adminReviews) ? [...adminReviews] : [];
 
     if (reviewSearchKeyword.trim()) {
       const keyword = reviewSearchKeyword.toLowerCase().trim();
-      filtered = filtered.filter(
-        (item) =>
+      filtered = filtered.filter((item) => {
+        const thread = getReviewThread(item);
+        const hasMatchedThread = thread.some(
+          (message) =>
+            String(message?.message ?? "")
+              .toLowerCase()
+              .includes(keyword) ||
+            String(message?.senderName ?? "")
+              .toLowerCase()
+              .includes(keyword),
+        );
+
+        return (
           (item.user?.fullName ?? "").toLowerCase().includes(keyword) ||
           (item.user?.email ?? "").toLowerCase().includes(keyword) ||
           (item.product?.name ?? "").toLowerCase().includes(keyword) ||
           (item.comment ?? "").toLowerCase().includes(keyword) ||
-          (item.adminReply ?? "").toLowerCase().includes(keyword),
-      );
+          (item.adminReply ?? "").toLowerCase().includes(keyword) ||
+          hasMatchedThread
+        );
+      });
     }
 
     if (reviewStatusFilter === "visible") {
@@ -3076,8 +3222,14 @@ export default function AdminPage() {
     }
 
     if (reviewQuickFilter === "needs-reply") {
+      filtered = filtered.filter((item) => isWaitingForAdminReply(item));
+    } else if (reviewQuickFilter === "waiting-customer") {
       filtered = filtered.filter(
-        (item) => !String(item.adminReply ?? "").trim(),
+        (item) => getReviewThreadStatus(item) === "WAITING_CUSTOMER",
+      );
+    } else if (reviewQuickFilter === "resolved") {
+      filtered = filtered.filter(
+        (item) => getReviewThreadStatus(item) === "RESOLVED",
       );
     } else if (reviewQuickFilter === "low-rating") {
       filtered = filtered.filter((item) => Number(item.rating ?? 0) <= 2);
@@ -3088,9 +3240,10 @@ export default function AdminPage() {
         return Number.isFinite(createdAt) && createdAt >= cutoff;
       });
     } else if (reviewQuickFilter === "replied") {
-      filtered = filtered.filter((item) =>
-        Boolean(String(item.adminReply ?? "").trim()),
-      );
+      filtered = filtered.filter((item) => {
+        const status = getReviewThreadStatus(item);
+        return status === "WAITING_CUSTOMER" || status === "RESOLVED";
+      });
     }
 
     if (reviewSortBy === "newest") {
@@ -3106,6 +3259,9 @@ export default function AdminPage() {
     return filtered;
   }, [
     adminReviews,
+    getReviewThread,
+    getReviewThreadStatus,
+    isWaitingForAdminReply,
     reviewQuickFilter,
     reviewSearchKeyword,
     reviewSortBy,
@@ -3120,16 +3276,14 @@ export default function AdminPage() {
     return {
       total: items.length,
       hidden: items.filter((item) => Boolean(item.isHidden)).length,
-      waitingReply: items.filter(
-        (item) => !String(item.adminReply ?? "").trim(),
-      ).length,
+      waitingReply: items.filter((item) => isWaitingForAdminReply(item)).length,
       lowRating: items.filter((item) => Number(item.rating ?? 0) <= 2).length,
       recent24h: items.filter((item) => {
         const createdAt = new Date(item.createdAt).getTime();
         return Number.isFinite(createdAt) && now - createdAt <= oneDay;
       }).length,
     };
-  }, [adminReviews]);
+  }, [adminReviews, isWaitingForAdminReply]);
 
   const selectedReview = useMemo(
     () =>
@@ -3139,6 +3293,56 @@ export default function AdminPage() {
       filteredReviews[0] ??
       null,
     [filteredReviews, selectedReviewId],
+  );
+
+  const selectedReviewThread = useMemo(
+    () => getReviewThread(selectedReview),
+    [getReviewThread, selectedReview],
+  );
+
+  const selectedReviewNeedsReply = useMemo(
+    () => (selectedReview ? isWaitingForAdminReply(selectedReview) : false),
+    [isWaitingForAdminReply, selectedReview],
+  );
+
+  const selectedReviewThreadStatus = useMemo(
+    () => (selectedReview ? getReviewThreadStatus(selectedReview) : "OPEN"),
+    [getReviewThreadStatus, selectedReview],
+  );
+
+  const hasActiveReviewFilters = useMemo(
+    () =>
+      reviewQuickFilter !== "all" ||
+      reviewSortBy !== "newest" ||
+      reviewStatusFilter !== "all" ||
+      Boolean(reviewSearchKeyword.trim()),
+    [reviewQuickFilter, reviewSearchKeyword, reviewSortBy, reviewStatusFilter],
+  );
+
+  const reviewReplyTemplates = useMemo(
+    () => [
+      {
+        id: "thanks",
+        label: "Cảm ơn",
+        text: "Cảm ơn bạn đã mua hàng và dành thời gian đánh giá. Team đã ghi nhận góp ý của bạn.",
+      },
+      {
+        id: "sorry",
+        label: "Xin lỗi & hỗ trợ",
+        text: "Shop xin lỗi vì trải nghiệm chưa tốt. Mình đã chuyển kỹ thuật kiểm tra và sẽ liên hệ bạn sớm để hỗ trợ dứt điểm.",
+      },
+      {
+        id: "resolved",
+        label: "Đã xử lý",
+        text: "Vấn đề đã được team xử lý xong. Nếu bạn cần hỗ trợ thêm, bạn phản hồi trực tiếp tại đây để shop hỗ trợ ngay.",
+      },
+      {
+        id: "warranty",
+        label: "Hướng dẫn bảo hành",
+        text: "Bạn vui lòng gửi mã đơn hàng + video/lỗi thực tế để shop hỗ trợ bảo hành nhanh trong ngày.",
+      },
+    ],
+    [],
   );
 
   useEffect(() => {
@@ -6205,7 +6409,7 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="mb-4 grid gap-3 md:grid-cols-5">
                   <div className="grid gap-2">
                     <label className="text-xs font-medium">Tìm kiếm</label>
                     <input
@@ -6241,11 +6445,24 @@ export default function AdminPage() {
                       <option value="hidden">Đã ẩn</option>
                     </select>
                   </div>
-                  <div className="flex items-end">
+                  <div className="flex items-end justify-between gap-2 md:col-span-2">
                     <span className="text-xs text-muted-foreground">
                       Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
                       giá
                     </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!hasActiveReviewFilters}
+                      onClick={() => {
+                        setReviewSearchKeyword("");
+                        setReviewSortBy("newest");
+                        setReviewStatusFilter("all");
+                        setReviewQuickFilter("all");
+                      }}
+                    >
+                      Xóa bộ lọc
+                    </Button>
                   </div>
                 </div>
 
@@ -6253,7 +6470,9 @@ export default function AdminPage() {
                   {[
                     { id: "all", label: "Tất cả" },
                     { id: "needs-reply", label: "Chờ phản hồi" },
+                    { id: "waiting-customer", label: "Chờ khách phản hồi" },
                     { id: "replied", label: "Đã phản hồi" },
+                    { id: "resolved", label: "Đã xử lý" },
                     { id: "low-rating", label: "Sao thấp (<=2)" },
                     { id: "recent-24h", label: "Mới trong 24h" },
                   ].map((chip) => (
@@ -6281,11 +6500,13 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
+                    <div className="space-y-3">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
+                        const waitingReply = isWaitingForAdminReply(item);
+                        const threadStatus = getReviewThreadStatus(item);
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
@@ -6316,6 +6537,16 @@ export default function AdminPage() {
                               <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
                               <span>•</span>
                               <span>{formatDate(item.createdAt)}</span>
+                              <span>•</span>
+                              <span
+                                className={
+                                  waitingReply
+                                    ? "text-amber-700"
+                                    : "text-emerald-700"
+                                }
+                              >
+                                {formatThreadStatusLabel(threadStatus)}
+                              </span>
                             </div>
                             <p className="mt-2 line-clamp-2 text-sm text-slate-700">
                               {item.comment || "Không có nội dung"}
@@ -6328,99 +6559,251 @@ export default function AdminPage() {
                     <div className="rounded-2xl border border-border/60 bg-background p-4">
                       {selectedReview ? (
                         <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h4 className="text-base font-semibold">
-                                {selectedReview.product?.name ?? "Sản phẩm"}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                {selectedReview.user?.fullName ??
-                                  selectedReview.user?.email ??
-                                  "Ẩn danh"}
+                          <div className="space-y-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h4 className="text-base font-semibold">
+                                  {selectedReview.product?.name ?? "Sản phẩm"}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {selectedReview.user?.fullName ??
+                                    selectedReview.user?.email ??
+                                    "Ẩn danh"}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                {statusBadge(
+                                  selectedReview.isHidden
+                                    ? "Đã ẩn"
+                                    : "Đang hiển thị",
+                                )}
+                                <span
+                                  className={`text-xs font-medium ${
+                                    selectedReviewNeedsReply
+                                      ? "text-amber-700"
+                                      : "text-emerald-700"
+                                  }`}
+                                >
+                                  {formatThreadStatusLabel(
+                                    selectedReviewThreadStatus,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
+                              <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
+                              <p className="mt-1 whitespace-pre-wrap">
+                                {selectedReview.comment ||
+                                  "Không có nội dung đánh giá"}
                               </p>
                             </div>
-                            {statusBadge(
-                              selectedReview.isHidden
-                                ? "Đã ẩn"
-                                : "Đang hiển thị",
-                            )}
-                          </div>
 
-                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
-                            <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
-                            <p className="mt-1 whitespace-pre-wrap">
-                              {selectedReview.comment ||
-                                "Không có nội dung đánh giá"}
-                            </p>
-                          </div>
+                            <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                              <div>
+                                Tạo lúc: {formatDate(selectedReview.createdAt)}
+                              </div>
+                              <div>
+                                Cập nhật: {formatDate(selectedReview.updatedAt)}
+                              </div>
+                              <div>
+                                Kiểm duyệt:{" "}
+                                {selectedReview.moderatedAt
+                                  ? formatDate(selectedReview.moderatedAt)
+                                  : "Chưa"}
+                              </div>
+                              <div>
+                                Người kiểm duyệt:{" "}
+                                {selectedReview.moderator?.fullName ?? "-"}
+                              </div>
+                              <div>
+                                Trạng thái thread:{" "}
+                                {formatThreadStatusLabel(
+                                  selectedReviewThreadStatus,
+                                )}
+                              </div>
+                              <div>
+                                Người xử lý:{" "}
+                                {selectedReview.resolver?.fullName ?? "-"}
+                              </div>
+                              <div>
+                                Xử lý lúc:{" "}
+                                {selectedReview.threadResolvedAt
+                                  ? formatDate(selectedReview.threadResolvedAt)
+                                  : "-"}
+                              </div>
+                            </div>
 
-                          <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                            <div>
-                              Tạo lúc: {formatDate(selectedReview.createdAt)}
-                            </div>
-                            <div>
-                              Cập nhật: {formatDate(selectedReview.updatedAt)}
-                            </div>
-                            <div>
-                              Kiểm duyệt:{" "}
-                              {selectedReview.moderatedAt
-                                ? formatDate(selectedReview.moderatedAt)
-                                : "Chưa"}
-                            </div>
-                            <div>
-                              Người kiểm duyệt:{" "}
-                              {selectedReview.moderator?.fullName ?? "-"}
-                            </div>
-                          </div>
+                            {selectedReview.hiddenReason ? (
+                              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                Lý do ẩn: {selectedReview.hiddenReason}
+                              </div>
+                            ) : null}
 
-                          {selectedReview.hiddenReason ? (
-                            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                              Lý do ẩn: {selectedReview.hiddenReason}
-                            </div>
-                          ) : null}
+                            {Array.isArray(selectedReview.images) &&
+                            selectedReview.images.length > 0 ? (
+                              <div className="space-y-2">
+                                <label className="text-xs font-semibold">
+                                  Ảnh đính kèm
+                                </label>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                  {selectedReview.images.map((image) => (
+                                    <a
+                                      key={image.id}
+                                      href={image.imageUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="overflow-hidden rounded-lg border border-border/60 bg-secondary/20"
+                                    >
+                                      <img
+                                        src={image.imageUrl}
+                                        alt="Ảnh đánh giá"
+                                        className="h-24 w-full object-cover"
+                                      />
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold">
-                              Phản hồi quản trị
-                            </label>
-                            <textarea
-                              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                              rows={4}
-                              placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
-                              value={
-                                reviewReplyDraftById[selectedReview.id] ?? ""
-                              }
-                              onChange={(event) =>
-                                setReviewReplyDraftById((prev) => ({
-                                  ...prev,
-                                  [selectedReview.id]: event.target.value,
-                                }))
-                              }
-                            />
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {selectedReview.adminRepliedAt
-                                  ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
-                                  : "Chưa có phản hồi"}
-                              </span>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  replyingReviewId === Number(selectedReview.id)
+                            <div className="space-y-2">
+                              <label className="text-xs font-semibold">
+                                Hội thoại phản hồi
+                              </label>
+
+                              {selectedReviewThread.length > 0 ? (
+                                <div className="min-h-[260px] max-h-[34rem] space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-secondary/20 p-3">
+                                  {selectedReviewThread.map((message) => (
+                                    <div
+                                      key={`${selectedReview.id}-${message.id}`}
+                                      className={`rounded-xl border px-3 py-2 text-sm ${
+                                        message.isStaff
+                                          ? "ml-6 border-sky-200 bg-sky-50/80"
+                                          : "mr-6 border-emerald-200 bg-emerald-50/80"
+                                      }`}
+                                    >
+                                      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                        <span className="font-medium text-slate-700">
+                                          {message.isStaff
+                                            ? "Nhân viên"
+                                            : "Khách hàng"}
+                                          {message.senderName
+                                            ? ` • ${message.senderName}`
+                                            : ""}
+                                        </span>
+                                        <span>
+                                          {formatDate(message.createdAt)}
+                                        </span>
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-slate-800">
+                                        {message.message}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                                  Chưa có phản hồi hai chiều cho đánh giá này.
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-xs font-semibold">
+                                Phản hồi quản trị
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                {reviewReplyTemplates.map((template) => (
+                                  <Button
+                                    key={template.id}
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 rounded-full px-3 text-xs"
+                                    onClick={() =>
+                                      setReviewReplyDraftById((prev) => ({
+                                        ...prev,
+                                        [selectedReview.id]: template.text,
+                                      }))
+                                    }
+                                  >
+                                    {template.label}
+                                  </Button>
+                                ))}
+                              </div>
+                              <textarea
+                                className="min-h-[170px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                rows={6}
+                                placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
+                                value={
+                                  reviewReplyDraftById[selectedReview.id] ?? ""
                                 }
-                                onClick={() =>
-                                  saveReviewReply(Number(selectedReview.id))
+                                onChange={(event) =>
+                                  setReviewReplyDraftById((prev) => ({
+                                    ...prev,
+                                    [selectedReview.id]: event.target.value,
+                                  }))
                                 }
-                              >
-                                {replyingReviewId === Number(selectedReview.id)
-                                  ? "Đang lưu..."
-                                  : "Lưu phản hồi"}
-                              </Button>
+                              />
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {selectedReview.adminRepliedAt
+                                    ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
+                                    : "Chưa có phản hồi"}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {
+                                    String(
+                                      reviewReplyDraftById[selectedReview.id] ??
+                                        "",
+                                    ).trim().length
+                                  }
+                                  /2000 ký tự
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    replyingReviewId ===
+                                    Number(selectedReview.id)
+                                  }
+                                  onClick={() =>
+                                    saveReviewReply(Number(selectedReview.id))
+                                  }
+                                >
+                                  {replyingReviewId ===
+                                  Number(selectedReview.id)
+                                    ? "Đang lưu..."
+                                    : "Lưu phản hồi"}
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
                           <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+                            <Button
+                              size="sm"
+                              variant={
+                                selectedReviewThreadStatus === "RESOLVED"
+                                  ? "outline"
+                                  : "default"
+                              }
+                              disabled={
+                                resolvingReviewId === Number(selectedReview.id)
+                              }
+                              onClick={() =>
+                                resolveReviewThread(
+                                  Number(selectedReview.id),
+                                  selectedReviewThreadStatus !== "RESOLVED",
+                                )
+                              }
+                            >
+                              {resolvingReviewId === Number(selectedReview.id)
+                                ? "Đang cập nhật..."
+                                : selectedReviewThreadStatus === "RESOLVED"
+                                  ? "Mở lại hội thoại"
+                                  : "Đánh dấu đã xử lý"}
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -6461,6 +6844,67 @@ export default function AdminPage() {
               </Panel>
             </div>
           </section>
+
+          <Dialog
+            open={deleteReviewDialogOpen}
+            onOpenChange={(open) => {
+              setDeleteReviewDialogOpen(open);
+              if (!open) {
+                setDeleteReviewTarget(null);
+                setDeleteReviewReason("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Xóa đánh giá</DialogTitle>
+                <DialogDescription>
+                  Nhập lý do xóa để lưu lại log và thông báo cho khách hàng.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div className="rounded-md border border-border/60 bg-secondary/20 px-3 py-2 text-sm">
+                  <p className="font-medium">
+                    {deleteReviewTarget?.product?.name ?? "Sản phẩm"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    #{deleteReviewTarget?.id ?? "-"} •{" "}
+                    {deleteReviewTarget?.user?.fullName ??
+                      deleteReviewTarget?.user?.email ??
+                      "Ẩn danh"}
+                  </p>
+                </div>
+
+                <Textarea
+                  value={deleteReviewReason}
+                  onChange={(event) =>
+                    setDeleteReviewReason(event.target.value)
+                  }
+                  placeholder="Nhập lý do xóa đánh giá..."
+                  className="min-h-[120px]"
+                />
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDeleteReviewDialogOpen(false)}
+                  >
+                    Hủy
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={Boolean(deletingReviewId)}
+                    onClick={confirmDeleteReview}
+                  >
+                    {deletingReviewId ? "Đang xóa..." : "Xác nhận xóa"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <section id="chat" className={sectionClassName("chat")}>
             <SectionHeader
