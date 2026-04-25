@@ -55,6 +55,8 @@ export function initializeChatSocket(httpServer) {
 
   io.on("connection", (socket) => {
     const connectedUser = socket.data.user;
+    socket.join(getUserKey(connectedUser.id));
+
     if (connectedUser?.isAdmin) {
       socket.join("admin_chat_monitor");
     }
@@ -181,6 +183,35 @@ export function emitMessagesRead(roomId, messageIds, userId) {
   });
 }
 
+export function emitOrderStatusUpdated(payload) {
+  const io = ioInstance;
+  if (!io) {
+    return;
+  }
+
+  const normalizedOrderId = Number(payload?.orderId);
+  if (!Number.isFinite(normalizedOrderId) || normalizedOrderId <= 0) {
+    return;
+  }
+
+  const normalizedUserId = Number(payload?.userId);
+  const eventPayload = {
+    orderId: normalizedOrderId,
+    userId: Number.isFinite(normalizedUserId) && normalizedUserId > 0 ? normalizedUserId : null,
+    status: payload?.status ?? null,
+    orderStatus: payload?.orderStatus ?? null,
+    paymentStatus: payload?.paymentStatus ?? null,
+    updatedAt: payload?.updatedAt ?? new Date().toISOString(),
+    time: new Date().toISOString(),
+  };
+
+  io.to("admin_chat_monitor").emit("order_status_updated", eventPayload);
+
+  if (eventPayload.userId) {
+    io.to(getUserKey(eventPayload.userId)).emit("order_status_updated", eventPayload);
+  }
+}
+
 export function getRoomPresence(roomId) {
   const state = roomState.get(Number(roomId));
   if (!state) {
@@ -261,6 +292,10 @@ function ensureRoomState(roomId) {
 
 function getRoomKey(roomId) {
   return `chat_room_${Number(roomId)}`;
+}
+
+function getUserKey(userId) {
+  return `user_${Number(userId)}`;
 }
 
 function extractBearerToken(socket) {

@@ -38,6 +38,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
+import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
   Bar,
@@ -1082,6 +1083,47 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isHydrated, token, toast]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token) {
+      return;
+    }
+
+    const socket = connectChatSocket(token);
+    if (!socket) {
+      return;
+    }
+
+    const handleOrderStatusUpdated = async (payload) => {
+      const changedOrderId = Number(payload?.orderId);
+      if (!Number.isFinite(changedOrderId) || changedOrderId <= 0) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/orders", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const ordersPayload = await response.json();
+          setAdminOrders(Array.isArray(ordersPayload) ? ordersPayload : []);
+        }
+      } catch {
+        // Keep silent to avoid noisy toasts on background sync.
+      }
+
+      if (Number(selectedOrderDetail?.id) === changedOrderId) {
+        loadOrderDetail(changedOrderId);
+      }
+    };
+
+    socket.on("order_status_updated", handleOrderStatusUpdated);
+
+    return () => {
+      socket.off("order_status_updated", handleOrderStatusUpdated);
+    };
+  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id]);
 
   const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
