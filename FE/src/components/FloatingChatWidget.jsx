@@ -143,6 +143,21 @@ export function FloatingChatWidget({ isOpen, onClose }) {
             }
           });
 
+          socket.on("messages_read", (payload) => {
+            if (Number(payload?.roomId) === Number(room.roomId)) {
+              const messageIds = Array.isArray(payload?.messageIds) ? payload.messageIds : [];
+              if (messageIds.length > 0) {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    messageIds.includes(msg.id)
+                      ? { ...msg, readByUserIds: [...(msg.readByUserIds || []), payload.userId] }
+                      : msg
+                  )
+                );
+              }
+            }
+          });
+
           socket.on("chat_room_presence", (payload) => {
             if (Number(payload?.roomId) === Number(room.roomId)) {
               setPresence({
@@ -293,6 +308,7 @@ export function FloatingChatWidget({ isOpen, onClose }) {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
+                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Chưa xem") : ""}
                       </div>
                     </div>
                   </div>
