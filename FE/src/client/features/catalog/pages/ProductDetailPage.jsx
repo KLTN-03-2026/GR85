@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
@@ -29,6 +29,40 @@ export default function ProductDetailPage() {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
+
+  const refreshReviewEligibility = useCallback(async (productSlug, authToken, isCancelled = () => false) => {
+    if (!productSlug || !authToken || !isAuthenticated) {
+      setCanReview(false);
+      setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/products/${productSlug}/review-eligibility`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        },
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (isCancelled()) {
+        return;
+      }
+
+      setCanReview(Boolean(payload?.canReview));
+      setReviewEligibilityMessage(String(payload?.reason ?? ""));
+    } catch {
+      if (isCancelled()) {
+        return;
+      }
+
+      setCanReview(false);
+      setReviewEligibilityMessage("Không thể kiểm tra quyền đánh giá lúc này");
+    }
+  }, [isAuthenticated]);
 
   const loadReviews = async (productSlug, isCancelled = () => false) => {
     try {
@@ -106,50 +140,14 @@ export default function ProductDetailPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadReviewEligibility() {
-      if (!product?.slug || !token || !isAuthenticated) {
-        setCanReview(false);
-        setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/products/${product.slug}/review-eligibility`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        const payload = await response.json();
-        if (cancelled) {
-          return;
-        }
-
-        setCanReview(Boolean(payload?.canReview));
-        setReviewEligibilityMessage(String(payload?.reason ?? ""));
-      } catch {
-        if (cancelled) {
-          return;
-        }
-
-        setCanReview(false);
-        setReviewEligibilityMessage(
-          "Không thể kiểm tra quyền đánh giá lúc này",
-        );
-      }
-    }
-
     if (isHydrated) {
-      loadReviewEligibility();
+      refreshReviewEligibility(product?.slug, token, () => cancelled);
     }
 
     return () => {
       cancelled = true;
     };
-  }, [product?.slug, token, isAuthenticated, isHydrated]);
+  }, [product?.slug, token, isHydrated, refreshReviewEligibility]);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,6 +279,7 @@ export default function ProductDetailPage() {
       setReviewMessage("Đánh giá của bạn đã được ghi nhận");
       setReviewComment("");
       await loadReviews(product.slug);
+      await refreshReviewEligibility(product.slug, token);
     } catch (error) {
       setReviewError(
         error instanceof Error ? error.message : "Gửi đánh giá thất bại",
@@ -548,7 +547,39 @@ export default function ProductDetailPage() {
                         {review.comment && (
                           <p className="mt-2 text-sm">{review.comment}</p>
                         )}
-                        {review.adminReply ? (
+
+
+                        {Array.isArray(review?.thread) && review.thread.length > 0 ? (
+                          <div className="mt-3 rounded-md border border-border/60 bg-secondary/30 px-3 py-2">
+                            <p className="text-xs font-semibold text-muted-foreground">
+                              Phản hồi từ cửa hàng & trao đổi
+                            </p>
+                            <div className="mt-2 space-y-2">
+                              {review.thread.map((msg) => (
+                                <div
+                                  key={String(msg.id)}
+                                  className={`rounded-md border px-3 py-2 text-sm ${
+                                    msg.isStaff
+                                      ? "border-sky-200 bg-sky-50"
+                                      : "border-emerald-200 bg-emerald-50"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                    <span className="font-medium text-slate-700">
+                                      {msg.isStaff
+                                        ? "Nhân viên"
+                                        : review?.user?.fullName ?? "Khách hàng"}
+                                    </span>
+                                    <span>{formatDate(msg.createdAt)}</span>
+                                  </div>
+                                  <p className="mt-1 text-slate-700 whitespace-pre-wrap">
+                                    {String(msg.message ?? "")}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : review.adminReply ? (
                           <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
                             <p className="text-xs font-semibold text-sky-700">
                               Phản hồi từ cửa hàng

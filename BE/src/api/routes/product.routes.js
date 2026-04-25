@@ -267,13 +267,14 @@ function handleRouteError(error, res) {
   }
 
   if (error instanceof Error) {
+    const message = String(error.message || "");
     const status =
-      error.message.includes("not found")
+      message.includes("not found")
         ? 404
-        : error.message.includes("already exists")
+        : message.includes("already exists")
           ? 409
           : 400;
-    return res.status(status).json({ message: error.message });
+    return res.status(status).json({ message });
   }
 
   return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
