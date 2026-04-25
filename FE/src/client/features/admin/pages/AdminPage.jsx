@@ -1187,14 +1187,22 @@ export default function AdminPage() {
     }
 
     const reviewId = Number(review.id);
-    const hiddenReason = shouldHide
-      ? window.prompt(
-          "Nhập lý do ẩn đánh giá (không bắt buộc):",
-          String(review.hiddenReason ?? ""),
-        )
-      : "";
+    const promptText = shouldHide
+      ? "Nhập lý do ẩn đánh giá (không bắt buộc):"
+      : "Nhập lý do hiện lại đánh giá (bắt buộc):";
+    const promptDefault = shouldHide ? String(review.hiddenReason ?? "") : "";
+    const reasonInput = window.prompt(promptText, promptDefault);
+    if (reasonInput === null) {
+      return;
+    }
 
-    if (hiddenReason === null) {
+    const normalizedReason = String(reasonInput ?? "").trim();
+    if (!shouldHide && !normalizedReason) {
+      toast({
+        title: "Thiếu lý do",
+        description: "Vui lòng nhập lý do để hiện lại đánh giá",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -1208,7 +1216,8 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           isHidden: Boolean(shouldHide),
-          hiddenReason: String(hiddenReason ?? "").trim() || undefined,
+          hiddenReason: shouldHide ? normalizedReason || undefined : undefined,
+          reason: shouldHide ? undefined : normalizedReason,
         }),
       });
 
@@ -1293,10 +1302,21 @@ export default function AdminPage() {
       return;
     }
 
-    const shouldDelete = window.confirm(
-      `Bạn có chắc muốn xóa đánh giá #${review.id}? Hành động này không thể hoàn tác.`,
+    const reason = window.prompt(
+      `Nhập lý do xóa đánh giá #${review.id} (bắt buộc):`,
+      "Đánh giá vi phạm quy định của cửa hàng",
     );
-    if (!shouldDelete) {
+    if (reason === null) {
+      return;
+    }
+
+    const normalizedReason = String(reason ?? "").trim();
+    if (!normalizedReason) {
+      toast({
+        title: "Thiếu lý do",
+        description: "Vui lòng nhập lý do xóa để gửi log cho khách",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -1306,8 +1326,10 @@ export default function AdminPage() {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
         method: "DELETE",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ reason: normalizedReason }),
       });
 
       const payload = await response.json().catch(() => null);
