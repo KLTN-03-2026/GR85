@@ -128,9 +128,7 @@ export function Navbar() {
     { href: "/", label: "Trang chủ" },
     { href: "/builder", label: "Tự ráp PC" },
     { href: "/components", label: "Linh kiện" },
-    { href: "/profile", label: "Đơn hàng" },
     { href: "/ai-recommend", label: "AI tư vấn", icon: Sparkles },
-    { href: "/ai-chat", label: "AI Chat" },
   ];
 
   return (
