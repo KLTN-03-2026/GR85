@@ -68,8 +68,8 @@ export async function sendPaymentCodeEmail(
     await transporter.sendMail(mailOptions);
     return { success: true };
   } catch (error) {
-    console.error("Error sending email:", error);
-    throw new Error(`Failed to send payment email: ${error.message}`);
+    console.error("Lỗi khi gửi email:", error);
+    throw new Error(`Không thể gửi email thanh toán: ${error.message}`);
   }
 }
 
@@ -101,8 +101,8 @@ export async function sendOrderConfirmationEmail(userEmail, { orderId, totalAmou
     await transporter.sendMail(mailOptions);
     return { success: true };
   } catch (error) {
-    console.error("Error sending confirmation email:", error);
-    throw new Error(`Failed to send confirmation email: ${error.message}`);
+    console.error("Lỗi khi gửi email xác nhận:", error);
+    throw new Error(`Không thể gửi email xác nhận: ${error.message}`);
   }
 }
 
@@ -144,7 +144,7 @@ export async function sendWalletTopUpEmail(userEmail, { fullName, amount, balanc
     await transporter.sendMail(mailOptions);
     return { success: true };
   } catch (error) {
-    console.error("Error sending wallet top-up email:", error);
-    throw new Error(`Failed to send wallet top-up email: ${error.message}`);
+    console.error("Lỗi khi gửi email nạp tiền ví:", error);
+    throw new Error(`Không thể gửi email nạp tiền ví: ${error.message}`);
   }
 }

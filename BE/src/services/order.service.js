@@ -31,6 +31,7 @@ export async function listOrdersForAdmin() {
       id: order.id,
       orderStatus: order.orderStatus,
       paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
       totalAmount: order.totalAmount,
       discountAmount: order.discountAmount,
       shippingAddress: order.shippingAddress,
@@ -52,7 +53,7 @@ export async function getOrderDetailForAdmin(orderId) {
 
   const id = Number(orderId);
   if (!Number.isFinite(id)) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   const order = await prisma.order.findUnique({
@@ -78,13 +79,14 @@ export async function getOrderDetailForAdmin(orderId) {
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   return serializeData({
     id: order.id,
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
     totalAmount: order.totalAmount,
     discountAmount: order.discountAmount,
     shippingAddress: order.shippingAddress,
@@ -116,12 +118,12 @@ export async function getOrderDetailForAdmin(orderId) {
 export async function updateOrderStatusForAdmin(orderId, nextStatusInput, changedBy, note) {
   const id = Number(orderId);
   if (!Number.isFinite(id)) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   const nextStatus = String(nextStatusInput ?? "").trim().toUpperCase();
   if (!ALLOWED_STATUS_TRANSITIONS.has(nextStatus)) {
-    throw new Error("Invalid order status");
+    throw new Error("Trạng thái đơn hàng không hợp lệ");
   }
 
   const current = await prisma.order.findUnique({
@@ -131,11 +133,11 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
     },
   });
   if (!current) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (current.orderStatus === OrderStatus.DELIVERED) {
-    throw new Error("Completed order cannot be modified");
+    throw new Error("Đơn hàng đã hoàn tất không thể chỉnh sửa");
   }
 
   assertOrderTransitionAllowed(current.orderStatus, nextStatus);
@@ -181,7 +183,54 @@ export async function updateOrderStatusForAdmin(orderId, nextStatusInput, change
   // Create notification for order status change
   await createOrderStatusChangeNotification(id, current.userId, nextStatus);
 
+  console.info(`[AdminOrder] order=${id} status ${current.orderStatus} -> ${nextStatus} by=${changedBy}`);
+
   return getOrderDetailForAdmin(id);
+}
+
+export async function deleteOrderForAdmin(orderId, changedBy) {
+  const id = Number(orderId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("ID đơn hàng không hợp lệ");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      orderItems: true,
+    },
+  });
+
+  if (!order) {
+    throw new Error("Không tìm thấy đơn hàng");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      for (const item of order.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              increment: item.quantity,
+            },
+          },
+        });
+      }
+    }
+
+    await tx.orderStatusHistory.deleteMany({ where: { orderId: id } });
+    await tx.orderItem.deleteMany({ where: { orderId: id } });
+    await tx.order.delete({ where: { id } });
+  });
+
+  console.info(`[AdminOrder] order=${id} deleted by=${changedBy}`);
+
+  return serializeData({
+    success: true,
+    orderId: id,
+    message: "Đã xóa đơn hàng",
+  });
 }
 
 function assertOrderTransitionAllowed(currentStatus, nextStatus) {
@@ -201,7 +250,7 @@ function assertOrderTransitionAllowed(currentStatus, nextStatus) {
   };
 
   if (!(allowedByCurrent[current] ?? []).includes(next)) {
-    throw new Error("Invalid status flow. Vui lòng thao tác theo thứ tự xử lý đơn hàng");
+    throw new Error("Luồng trạng thái không hợp lệ. Vui lòng thao tác theo thứ tự xử lý đơn hàng");
   }
 }
 

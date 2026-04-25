@@ -13,12 +13,20 @@ export async function listProducts(query = {}) {
     Math.max(1, Number(query.pageSize ?? DEFAULT_PAGE_SIZE)),
   );
   const keyword = String(query.keyword ?? "").trim();
-  const category = String(query.category ?? "").trim().toLowerCase();
+  const category = String(query.category ?? "")
+    .trim()
+    .toLowerCase();
   const brand = String(query.brand ?? "").trim();
-  const sort = String(query.sort ?? "display_order").trim().toLowerCase();
-  const stockStatus = String(query.stockStatus ?? "all").trim().toLowerCase();
+  const sort = String(query.sort ?? "display_order")
+    .trim()
+    .toLowerCase();
+  const stockStatus = String(query.stockStatus ?? "all")
+    .trim()
+    .toLowerCase();
   const featuredOnly =
-    String(query.featuredOnly ?? "").trim().toLowerCase() === "true";
+    String(query.featuredOnly ?? "")
+      .trim()
+      .toLowerCase() === "true";
   const minPrice =
     query.minPrice === undefined || query.minPrice === ""
       ? undefined
@@ -72,7 +80,9 @@ export async function listProducts(query = {}) {
 }
 
 export async function getProductDetailBySlug(slug) {
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
   if (!normalizedSlug) {
     throw new Error("Product slug is required");
   }
@@ -124,7 +134,9 @@ export async function getProductDetailBySlug(slug) {
 }
 
 export async function listProductReviewsBySlug(slug) {
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
   if (!normalizedSlug) {
     throw new Error("Product slug is required");
   }
@@ -139,7 +151,10 @@ export async function listProductReviewsBySlug(slug) {
   }
 
   const reviews = await prisma.review.findMany({
-    where: { productId: product.id },
+    where: {
+      productId: product.id,
+      isHidden: false,
+    },
     include: {
       user: {
         select: {
@@ -154,7 +169,8 @@ export async function listProductReviewsBySlug(slug) {
 
   const averageRating =
     reviews.length > 0
-      ? reviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) / reviews.length
+      ? reviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) /
+        reviews.length
       : 0;
 
   return serializeData({
@@ -163,9 +179,13 @@ export async function listProductReviewsBySlug(slug) {
       rating: Number(review.rating ?? 0),
       comment: review.comment ? String(review.comment) : "",
       createdAt: review.createdAt,
+      adminReply: review.adminReply ? String(review.adminReply) : "",
+      adminRepliedAt: review.adminRepliedAt,
       user: {
         id: review.user.id,
-        fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+        fullName:
+          String(review.user.fullName ?? "").trim() ||
+          String(review.user.email ?? "Ẩn danh"),
       },
     })),
     summary: {
@@ -177,7 +197,9 @@ export async function listProductReviewsBySlug(slug) {
 
 export async function getProductReviewEligibilityBySlug(userId, slug) {
   const normalizedUserId = Number(userId);
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
 
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     throw new Error("ID người dùng không hợp lệ");
@@ -230,7 +252,11 @@ export async function listMyWishlistProducts(userId) {
           category: true,
           supplier: true,
           images: {
-            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+            orderBy: [
+              { isPrimary: "desc" },
+              { sortOrder: "asc" },
+              { id: "asc" },
+            ],
             take: 1,
           },
         },
@@ -252,7 +278,9 @@ export async function listMyWishlistProducts(userId) {
 
 export async function addProductToWishlistBySlug(userId, slug) {
   const normalizedUserId = Number(userId);
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
 
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     throw new Error("Invalid user id");
@@ -290,7 +318,9 @@ export async function addProductToWishlistBySlug(userId, slug) {
 
 export async function removeProductFromWishlistBySlug(userId, slug) {
   const normalizedUserId = Number(userId);
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
 
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     throw new Error("Invalid user id");
@@ -321,7 +351,9 @@ export async function removeProductFromWishlistBySlug(userId, slug) {
 
 export async function getWishlistStatusBySlug(userId, slug) {
   const normalizedUserId = Number(userId);
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
 
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     throw new Error("Invalid user id");
@@ -357,7 +389,9 @@ export async function getWishlistStatusBySlug(userId, slug) {
 
 export async function createProductReviewBySlug(userId, slug, input = {}) {
   const normalizedUserId = Number(userId);
-  const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const normalizedSlug = String(slug ?? "")
+    .trim()
+    .toLowerCase();
   const rating = Number(input.rating);
   const comment = String(input.comment ?? "").trim();
 
@@ -455,13 +489,15 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
     createdAt: review.createdAt,
     user: {
       id: review.user.id,
-      fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
+      fullName:
+        String(review.user.fullName ?? "").trim() ||
+        String(review.user.email ?? "Ẩn danh"),
     },
   });
 }
 
 export async function getCatalogOverview() {
-  const [categories, products] = await Promise.all([
+  const [categories, products, topBuyerAggregates] = await Promise.all([
     prisma.category.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -488,7 +524,37 @@ export async function getCatalogOverview() {
         },
       },
     }),
+    prisma.order.groupBy({
+      by: ["userId"],
+      where: { orderStatus: OrderStatus.DELIVERED },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+      orderBy: { _sum: { totalAmount: "desc" } },
+      take: 5,
+    }),
   ]);
+
+  // Resolve top buyer user details
+  let topBuyers = [];
+  if (topBuyerAggregates.length > 0) {
+    const userIds = topBuyerAggregates.map((agg) => agg.userId);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fullName: true, email: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    topBuyers = topBuyerAggregates.map((agg) => {
+      const user = userMap.get(agg.userId);
+      const fullName = String(user?.fullName ?? "").trim();
+      return {
+        id: `u${agg.userId}`,
+        name: fullName || String(user?.email ?? "Ẩn danh").split("@")[0],
+        orders: agg._count._all,
+        spend: Number(agg._sum.totalAmount ?? 0),
+      };
+    });
+  }
 
   const productsWithRating = await attachProductRatings(products);
 
@@ -500,6 +566,7 @@ export async function getCatalogOverview() {
       productCount: category._count.products,
     })),
     products: productsWithRating.map(mapProductDetail),
+    topBuyers,
   });
 }
 
@@ -548,7 +615,10 @@ export async function createProduct(input) {
     throw new Error("Sale price must be lower than base price");
   }
 
-  if ((saleStartAt && Number.isNaN(saleStartAt.getTime())) || (saleEndAt && Number.isNaN(saleEndAt.getTime()))) {
+  if (
+    (saleStartAt && Number.isNaN(saleStartAt.getTime())) ||
+    (saleEndAt && Number.isNaN(saleEndAt.getTime()))
+  ) {
     throw new Error("Invalid sale time range");
   }
 
@@ -587,23 +657,26 @@ export async function createProduct(input) {
       displayOrder: Number.isFinite(Number(input.displayOrder))
         ? Math.max(0, Number(input.displayOrder))
         : 9999,
-      specifications: input.specifications && typeof input.specifications === "object"
-        ? input.specifications
-        : {},
+      specifications:
+        input.specifications && typeof input.specifications === "object"
+          ? input.specifications
+          : {},
       images: input.imageUrl
         ? {
-          create: {
-            imageUrl: input.imageUrl,
-            isPrimary: true,
-            sortOrder: 0,
-          },
-        }
+            create: {
+              imageUrl: input.imageUrl,
+              isPrimary: true,
+              sortOrder: 0,
+            },
+          }
         : undefined,
     },
     include: {
       category: true,
       supplier: true,
-      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+      },
     },
   });
 
@@ -633,7 +706,9 @@ export async function createProduct(input) {
       category: true,
       supplier: true,
       detail: true,
-      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+      },
     },
   });
 
@@ -770,13 +845,22 @@ export async function updateProductById(productId, input) {
 
   const updated = await prisma.$transaction(async (tx) => {
     const nextPrice = data.price ?? current.price;
-    const nextSalePrice = Object.prototype.hasOwnProperty.call(data, "salePrice")
+    const nextSalePrice = Object.prototype.hasOwnProperty.call(
+      data,
+      "salePrice",
+    )
       ? data.salePrice
       : current.salePrice;
-    const nextSaleStartAt = Object.prototype.hasOwnProperty.call(data, "saleStartAt")
+    const nextSaleStartAt = Object.prototype.hasOwnProperty.call(
+      data,
+      "saleStartAt",
+    )
       ? data.saleStartAt
       : current.saleStartAt;
-    const nextSaleEndAt = Object.prototype.hasOwnProperty.call(data, "saleEndAt")
+    const nextSaleEndAt = Object.prototype.hasOwnProperty.call(
+      data,
+      "saleEndAt",
+    )
       ? data.saleEndAt
       : current.saleEndAt;
 
@@ -819,7 +903,11 @@ export async function updateProductById(productId, input) {
     }
 
     // Handle ProductDetail
-    if (input.detail !== undefined && input.detail && typeof input.detail === "object") {
+    if (
+      input.detail !== undefined &&
+      input.detail &&
+      typeof input.detail === "object"
+    ) {
       await tx.productDetail.upsert({
         where: { productId: id },
         create: {
@@ -842,7 +930,11 @@ export async function updateProductById(productId, input) {
   });
 
   const updatedEffectivePrice = resolveEffectivePrice(updated);
-  await createWishlistPriceDropNotifications(updated, previousEffectivePrice, updatedEffectivePrice);
+  await createWishlistPriceDropNotifications(
+    updated,
+    previousEffectivePrice,
+    updatedEffectivePrice,
+  );
 
   const updatedWithDetail = await prisma.product.findUnique({
     where: { id },
@@ -850,9 +942,17 @@ export async function updateProductById(productId, input) {
       category: true,
       supplier: true,
       detail: true,
-      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }] },
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+      },
     },
   });
+
+  console.info(
+    `[ProductUpdate] id=${id} stock ${Number(current.stockQuantity ?? 0)} -> ${Number(
+      updatedWithDetail?.stockQuantity ?? current.stockQuantity ?? 0,
+    )} price ${Number(current.price ?? 0)} -> ${Number(updatedWithDetail?.price ?? current.price ?? 0)}`,
+  );
 
   return serializeData(mapProductDetail(updatedWithDetail));
 }
@@ -1010,10 +1110,7 @@ function resolveProductOrderBy(sort) {
         { createdAt: "desc" },
       ];
     case "display_order":
-      return [
-        { displayOrder: "asc" },
-        { createdAt: "desc" },
-      ];
+      return [{ displayOrder: "asc" }, { createdAt: "desc" }];
     case "price_asc":
       return [{ price: "asc" }, { createdAt: "desc" }];
     case "price_desc":
@@ -1038,7 +1135,8 @@ function mapProductListItem(product) {
     : 5;
 
   const reviewCountRaw = Number(product.reviewCount ?? 0);
-  const reviewCount = Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
+  const reviewCount =
+    Number.isFinite(reviewCountRaw) && reviewCountRaw > 0 ? reviewCountRaw : 0;
 
   return {
     id: product.id,
@@ -1053,7 +1151,9 @@ function mapProductListItem(product) {
     isFlashSaleActive: saleState.isActive,
     stockQuantity: product.stockQuantity,
     lowStockThreshold: Number(product.lowStockThreshold ?? 5),
-    isLowStock: Number(product.stockQuantity ?? 0) <= Number(product.lowStockThreshold ?? 5),
+    isLowStock:
+      Number(product.stockQuantity ?? 0) <=
+      Number(product.lowStockThreshold ?? 5),
     isHomepageFeatured: Boolean(product.isHomepageFeatured),
     displayOrder: Number(product.displayOrder ?? 9999),
     isOutOfStock: Number(product.stockQuantity ?? 0) <= 0,
@@ -1063,7 +1163,8 @@ function mapProductListItem(product) {
     supplier: product.supplier,
     rating: Number(normalizedRating.toFixed(1)),
     reviewCount,
-    imageUrl: product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+    imageUrl:
+      product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
   };
 }
 
@@ -1097,7 +1198,11 @@ async function attachProductRatings(products) {
     .filter((id) => Number.isFinite(id));
 
   if (productIds.length === 0) {
-    return productList.map((product) => ({ ...product, averageRating: 5, reviewCount: 0 }));
+    return productList.map((product) => ({
+      ...product,
+      averageRating: 5,
+      reviewCount: 0,
+    }));
   }
 
   const aggregates = await prisma.review.groupBy({
@@ -1106,6 +1211,7 @@ async function attachProductRatings(products) {
       productId: {
         in: productIds,
       },
+      isHidden: false,
     },
     _avg: {
       rating: true,
@@ -1120,7 +1226,8 @@ async function attachProductRatings(products) {
       Number(aggregate.productId),
       {
         averageRating:
-          aggregate._avg?.rating === null || aggregate._avg?.rating === undefined
+          aggregate._avg?.rating === null ||
+          aggregate._avg?.rating === undefined
             ? 5
             : Number(aggregate._avg.rating),
         reviewCount: Number(aggregate._count?._all ?? 0),
@@ -1140,13 +1247,17 @@ async function attachProductRatings(products) {
 
 function resolveSaleState(product, now = new Date()) {
   const basePrice = Number(product?.price ?? 0);
-  const salePrice = product?.salePrice === null || product?.salePrice === undefined
-    ? null
-    : Number(product.salePrice);
-  const saleStartAt = product?.saleStartAt ? new Date(product.saleStartAt) : null;
+  const salePrice =
+    product?.salePrice === null || product?.salePrice === undefined
+      ? null
+      : Number(product.salePrice);
+  const saleStartAt = product?.saleStartAt
+    ? new Date(product.saleStartAt)
+    : null;
   const saleEndAt = product?.saleEndAt ? new Date(product.saleEndAt) : null;
 
-  const hasValidSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
+  const hasValidSalePrice =
+    Number.isFinite(salePrice) && salePrice > 0 && salePrice < basePrice;
   const hasValidStart = !saleStartAt || !Number.isNaN(saleStartAt.getTime());
   const hasValidEnd = !saleEndAt || !Number.isNaN(saleEndAt.getTime());
 
@@ -1154,7 +1265,9 @@ function resolveSaleState(product, now = new Date()) {
     (!saleStartAt || now >= saleStartAt) && (!saleEndAt || now <= saleEndAt);
 
   return {
-    isActive: Boolean(hasValidSalePrice && hasValidStart && hasValidEnd && inWindow),
+    isActive: Boolean(
+      hasValidSalePrice && hasValidStart && hasValidEnd && inWindow,
+    ),
     salePrice,
   };
 }

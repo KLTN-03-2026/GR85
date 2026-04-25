@@ -11,6 +11,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addComponent } = useBuild();
   const navigate = useNavigate();
   const fallbackImage = "/images/component-placeholder.svg";
+  const isBuilderMode = mode === "builder";
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -73,16 +74,16 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
 
   return (
       <Card
-        className={`group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.2)] ${compact ? "shadow-sm" : ""}`}
+        className={`group gradient-card border-border/50 overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_24px_hsl(var(--primary)/0.18)] ${compact ? "shadow-sm" : ""}`}
         data-aos="flip-right"
         data-aos-duration="1000"
       >
         {/* Image */}
-        <div className={`relative ${compact ? "aspect-[4/3]" : "aspect-square"} bg-secondary/50 overflow-hidden`}>
+        <div className={`relative ${isBuilderMode ? "aspect-[16/10]" : compact ? "aspect-[16/11]" : "aspect-[4/3]"} bg-secondary/50 overflow-hidden`}>
           <img
             src={component.image || fallbackImage}
             alt={component.name}
-            className="w-full h-full object-contain p-4 group-hover:scale-110 transition-transform duration-500"
+            className={`h-full w-full object-contain transition-transform duration-500 group-hover:scale-105 ${isBuilderMode ? "p-2" : compact ? "p-2.5" : "p-3"}`}
             onError={(event) => {
               if (event.currentTarget.src.includes(fallbackImage)) {
                 return;
@@ -92,34 +93,35 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           />
 
           {/* Badges */}
-          <div className="absolute top-3 left-3 flex flex-col gap-2">
-            <Badge className={getCategoryColor(component.category)}>
+          <div className="absolute left-2 top-2 flex flex-col gap-1.5">
+            <Badge className={`text-[11px] ${getCategoryColor(component.category)}`}>
               {getCategoryName(component.category)}
             </Badge>
             {component.isNew && (
-              <Badge className="bg-accent text-accent-foreground">Mới</Badge>
+              <Badge className="bg-accent text-[11px] text-accent-foreground">Mới</Badge>
             )}
             {Number(component.stock ?? 0) <= 0 && (
-              <Badge className="bg-rose-100 text-rose-700">Hết hàng</Badge>
+              <Badge className="bg-rose-100 text-[11px] text-rose-700">Hết hàng</Badge>
             )}
           </div>
 
           {/* Quick Actions */}
-          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
             <Button
               asChild
               variant="glass"
               size="icon"
+              className="h-8 w-8"
             >
               <Link to={`/components/${component.slug || component.id}`}>
-                <Eye className="w-4 h-4" />
+                <Eye className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </div>
 
           {/* Used Price Badge */}
           {component.usedPrice && (
-            <div className="absolute bottom-3 right-3 glass rounded-lg px-2 py-1 text-xs">
+            <div className="absolute bottom-2 right-2 glass rounded-lg px-2 py-1 text-[11px]">
               <span className="text-muted-foreground">Đồ cũ: </span>
               <span className="text-storage font-semibold">
                 {formatPrice(component.usedPrice)}
@@ -129,20 +131,20 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
         </div>
 
         {/* Content */}
-        <div className={`${compact ? "p-3 space-y-2.5" : "p-4 space-y-3"}`}>
+        <div className={`${isBuilderMode ? "space-y-1.5 p-2" : compact ? "space-y-2 p-2.5" : "space-y-2.5 p-3"}`}>
           {/* Brand & Rating */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
               {component.brand}
             </span>
             <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 fill-accent text-accent" />
-              <span className="text-sm font-medium">{component.rating}</span>
+              <Star className="h-3.5 w-3.5 fill-accent text-accent" />
+              <span className="text-xs font-medium">{component.rating}</span>
             </div>
           </div>
 
           {/* Name */}
-          <h3 className={`font-semibold text-foreground line-clamp-2 ${compact ? "min-h-[2.25rem] text-[0.98rem]" : "min-h-[2.5rem]"}`}>
+          <h3 className={`line-clamp-2 font-semibold text-foreground ${isBuilderMode ? "min-h-[1.9rem] text-[0.84rem]" : compact ? "min-h-[2rem] text-sm" : "min-h-[2.2rem] text-[0.95rem]"}`}>
             <Link
               to={`/components/${component.slug || component.id}`}
               className="text-left hover:underline"
@@ -154,11 +156,11 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           {/* Key Specs */}
           <div className="flex flex-wrap gap-1">
             {Object.entries(component.specs)
-              .slice(0, 3)
+              .slice(0, isBuilderMode ? 1 : compact ? 2 : 3)
               .map(([key, value]) => (
                 <span
                   key={key}
-                  className="text-xs px-2 py-1 rounded-md bg-secondary text-muted-foreground"
+                  className="rounded-md bg-secondary px-2 py-1 text-[11px] text-muted-foreground"
                 >
                   {String(value)}
                 </span>
@@ -166,8 +168,8 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           </div>
 
           {/* Price */}
-          <div className={`pt-2 border-t border-border/50 ${compact ? "pt-1.5" : ""}`}>
-            <p className={`font-bold text-primary ${compact ? "text-lg" : "text-xl"}`}>
+          <div className="border-t border-border/50 pt-1.5">
+            <p className={`font-bold text-primary ${isBuilderMode ? "text-sm" : compact ? "text-base" : "text-lg"}`}>
               {formatPrice(component.price)}
             </p>
           </div>
@@ -177,17 +179,17 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
             {mode === "builder" ? (
               <Button
                 variant="default"
-                className="flex-1 gap-2"
+                className={`flex-1 gap-1 text-xs ${isBuilderMode ? "h-7" : "h-8"}`}
                 onClick={() => addComponent(component.category, component)}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-3.5 w-3.5" />
                 Thêm vào cấu hình
               </Button>
             ) : (
               <>
                 <Button
                   variant="default"
-                  className="flex-1 gap-1"
+                  className="h-8 flex-1 gap-1 text-xs"
                   onClick={async () => {
                     try {
                       await addToCart(component);
@@ -201,12 +203,12 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                   }}
                   disabled={Number(component.stock ?? 0) <= 0}
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="h-3.5 w-3.5" />
                   {Number(component.stock ?? 0) <= 0 ? "Hết hàng" : "Thêm vào giỏ hàng"}
                 </Button>
                 <Button
                   variant="hero"
-                  className="flex-1 gap-0.8"
+                  className="h-8 flex-1 gap-1 text-xs"
                   onClick={async () => {
                     try {
                       await addToCart(component);
@@ -223,7 +225,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                   }}
                   disabled={Number(component.stock ?? 0) <= 0}
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-3.5 w-3.5" />
                   Mua ngay
                 </Button>
               </>

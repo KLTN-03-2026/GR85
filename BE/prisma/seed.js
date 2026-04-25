@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 async function main() {
   const hashedPassword = await hash("123456", 10);
 
-  const [adminRole, userRole] = await Promise.all([
+  const [adminRole, userRole, employeeRole] = await Promise.all([
     prisma.role.upsert({
       where: { name: "Admin" },
       update: { description: "System administrator" },
@@ -17,6 +17,11 @@ async function main() {
       where: { name: "User" },
       update: { description: "Default customer role" },
       create: { name: "User", description: "Default customer role" },
+    }),
+    prisma.role.upsert({
+      where: { name: "Employee" },
+      update: { description: "Store employee role" },
+      create: { name: "Employee", description: "Store employee role" },
     }),
   ]);
 
@@ -45,6 +50,33 @@ async function main() {
     where: { userId: adminUser.id },
     update: {},
     create: { userId: adminUser.id },
+  });
+
+  const employeeUser = await prisma.user.upsert({
+    where: { email: "employee@gmail.com" },
+    update: {
+      fullName: "System Employee",
+      passwordHash: hashedPassword,
+      status: UserStatus.ACTIVE,
+      roleId: employeeRole.id,
+      phone: "0900000001",
+      address: "TP.HCM",
+    },
+    create: {
+      email: "employee@gmail.com",
+      fullName: "System Employee",
+      passwordHash: hashedPassword,
+      status: UserStatus.ACTIVE,
+      roleId: employeeRole.id,
+      phone: "0900000001",
+      address: "TP.HCM",
+    },
+  });
+
+  await prisma.cart.upsert({
+    where: { userId: employeeUser.id },
+    update: {},
+    create: { userId: employeeUser.id },
   });
 
   const categoriesInput = [

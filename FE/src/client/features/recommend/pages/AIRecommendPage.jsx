@@ -146,7 +146,7 @@ export default function AIRecommendPage() {
       window.alert(
         error instanceof Error
           ? error.message
-          : "Khong the them combo AI vao gio hang",
+          : "Không thể thêm combo AI vào giỏ hàng",
       );
     } finally {
       setIsAddingCombo(false);
@@ -212,11 +212,10 @@ export default function AIRecommendPage() {
                       <button
                         key={type.id}
                         onClick={() => setUsage(type.id)}
-                        className={`p-3 rounded-lg border text-left transition-all ${
-                          usage === type.id
+                        className={`p-3 rounded-lg border text-left transition-all ${usage === type.id
                             ? "border-primary bg-primary/10"
                             : "border-border/50 hover:border-primary/50"
-                        }`}
+                          }`}
                       >
                         <p className="font-medium text-sm">{type.name}</p>
                         <p className="text-xs text-muted-foreground">

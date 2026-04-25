@@ -195,7 +195,34 @@ export async function createOrderStatusChangeNotification(orderId, userId, newSt
       },
     });
   } catch (error) {
-    console.error("Failed to create order status notification:", error);
+    console.error("Không thể tạo thông báo trạng thái đơn hàng:", error);
+  }
+}
+
+export async function createSystemNotification({ userId, title, message, payload = {} }) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+
+  const normalizedTitle = String(title ?? "").trim();
+  const normalizedMessage = String(message ?? "").trim();
+  if (!normalizedTitle || !normalizedMessage) {
+    return;
+  }
+
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: normalizedUserId,
+        type: "SYSTEM",
+        title: normalizedTitle,
+        message: normalizedMessage,
+        payload,
+      },
+    });
+  } catch (_error) {
+    // Silent fail for notification delivery edge-cases.
   }
 }
 

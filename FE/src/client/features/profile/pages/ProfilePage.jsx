@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,10 @@ import {
   Pencil,
   Trash2,
   Navigation,
+  Package,
+  Truck,
+  House,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileApi } from "@/client/features/profile/data/profile.api";
@@ -60,6 +64,8 @@ const passwordValidation = {
   },
 };
 
+const ORDERS_PER_PAGE = 4;
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { token, isAuthenticated, isHydrated, setSession } = useAuth();
@@ -68,8 +74,9 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showPendingOrders, setShowPendingOrders] = useState(false);
+  const [showPendingOrders, setShowPendingOrders] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
+  const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
@@ -217,6 +224,31 @@ export default function ProfilePage() {
             String(order?.orderStatus ?? "").toUpperCase() === "PENDING"
           ),
       );
+
+  const sortedVisibleOrders = useMemo(
+    () =>
+      [...visibleOrders].sort(
+        (a, b) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime(),
+      ),
+    [visibleOrders],
+  );
+
+  const totalOrderPages = Math.max(1, Math.ceil(sortedVisibleOrders.length / ORDERS_PER_PAGE));
+
+  const pagedOrders = useMemo(() => {
+    const startIndex = (currentOrderPage - 1) * ORDERS_PER_PAGE;
+    return sortedVisibleOrders.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+  }, [sortedVisibleOrders, currentOrderPage]);
+
+  useEffect(() => {
+    if (currentOrderPage > totalOrderPages) {
+      setCurrentOrderPage(totalOrderPages);
+    }
+  }, [currentOrderPage, totalOrderPages]);
+
+  useEffect(() => {
+    setCurrentOrderPage(1);
+  }, [showPendingOrders]);
 
   async function loadOrderDetail(orderId) {
     try {
@@ -453,11 +485,10 @@ export default function ProfilePage() {
         {/* Message Alert */}
         {message && (
           <Alert
-            className={`mb-6 ${
-              message.type === "success"
-                ? "border-green-500 bg-green-500/10"
-                : "border-red-500 bg-red-500/10"
-            }`}
+            className={`mb-6 ${message.type === "success"
+              ? "border-green-500 bg-green-500/10"
+              : "border-red-500 bg-red-500/10"
+              }`}
           >
             {message.type === "success" ? (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -556,175 +587,175 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 <Card className="p-6">
                   <form onSubmit={handleUpdateProfile} className="space-y-6">
-                  {/* Full Name */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Họ và tên *
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Nhập họ và tên"
-                      value={formData.fullName}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          fullName: e.target.value,
-                        });
-                        if (errors.fullName) {
-                          const error = profileValidation.fullName(
-                            e.target.value
-                          );
-                          setErrors({
-                            ...errors,
-                            fullName: error,
+                    {/* Full Name */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Họ và tên *
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="Nhập họ và tên"
+                        value={formData.fullName}
+                        onChange={(e) => {
+                          setFormData({
+                            ...formData,
+                            fullName: e.target.value,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.fullName) {
-                          const error = profileValidation.fullName(
-                            formData.fullName
-                          );
-                          if (error) {
-                            setErrors({ ...errors, fullName: error });
+                          if (errors.fullName) {
+                            const error = profileValidation.fullName(
+                              e.target.value
+                            );
+                            setErrors({
+                              ...errors,
+                              fullName: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.fullName ? "border-red-500" : ""}
-                    />
-                    {errors.fullName && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.fullName}
-                      </p>
-                    )}
-                  </div>
+                        }}
+                        onBlur={() => {
+                          if (!errors.fullName) {
+                            const error = profileValidation.fullName(
+                              formData.fullName
+                            );
+                            if (error) {
+                              setErrors({ ...errors, fullName: error });
+                            }
+                          }
+                        }}
+                        className={errors.fullName ? "border-red-500" : ""}
+                      />
+                      {errors.fullName && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.fullName}
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Phone */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Số điện thoại
-                    </label>
-                    <Input
-                      type="tel"
-                      placeholder="Nhập số điện thoại (không bắt buộc)"
-                      value={formData.phone}
-                      onChange={(e) => {
-                        const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
-                        setFormData({
-                          ...formData,
-                          phone: nextPhone,
-                        });
-                        if (errors.phone) {
-                          const error = profileValidation.phone(nextPhone);
-                          setErrors({
-                            ...errors,
-                            phone: error,
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Số điện thoại
+                      </label>
+                      <Input
+                        type="tel"
+                        placeholder="Nhập số điện thoại (không bắt buộc)"
+                        value={formData.phone}
+                        onChange={(e) => {
+                          const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          setFormData({
+                            ...formData,
+                            phone: nextPhone,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.phone) {
-                          const error = profileValidation.phone(
-                            formData.phone
-                          );
-                          if (error) {
-                            setErrors({ ...errors, phone: error });
+                          if (errors.phone) {
+                            const error = profileValidation.phone(nextPhone);
+                            setErrors({
+                              ...errors,
+                              phone: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.phone ? "border-red-500" : ""}
-                    />
-                    {errors.phone && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.phone}
-                      </p>
-                    )}
-                  </div>
+                        }}
+                        onBlur={() => {
+                          if (!errors.phone) {
+                            const error = profileValidation.phone(
+                              formData.phone
+                            );
+                            if (error) {
+                              setErrors({ ...errors, phone: error });
+                            }
+                          }
+                        }}
+                        className={errors.phone ? "border-red-500" : ""}
+                      />
+                      {errors.phone && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.phone}
+                        </p>
+                      )}
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Địa chỉ
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Nhập địa chỉ nhận hàng"
-                      value={formData.address}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          address: e.target.value,
-                        });
-                        if (errors.address) {
-                          const error = profileValidation.address(e.target.value);
-                          setErrors({
-                            ...errors,
-                            address: error,
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Địa chỉ
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="Nhập địa chỉ nhận hàng"
+                        value={formData.address}
+                        onChange={(e) => {
+                          setFormData({
+                            ...formData,
+                            address: e.target.value,
                           });
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!errors.address) {
-                          const error = profileValidation.address(
-                            formData.address,
-                          );
-                          if (error) {
-                            setErrors({ ...errors, address: error });
+                          if (errors.address) {
+                            const error = profileValidation.address(e.target.value);
+                            setErrors({
+                              ...errors,
+                              address: error,
+                            });
                           }
-                        }
-                      }}
-                      className={errors.address ? "border-red-500" : ""}
-                    />
-                    {errors.address && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {errors.address}
+                        }}
+                        onBlur={() => {
+                          if (!errors.address) {
+                            const error = profileValidation.address(
+                              formData.address,
+                            );
+                            if (error) {
+                              setErrors({ ...errors, address: error });
+                            }
+                          }
+                        }}
+                        className={errors.address ? "border-red-500" : ""}
+                      />
+                      {errors.address && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {errors.address}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Email (Read-only) */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Email
+                      </label>
+                      <Input
+                        type="email"
+                        value={profileData?.email || ""}
+                        disabled
+                        className="bg-muted"
+                      />
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay đổi.
                       </p>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* Email (Read-only) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Email
-                    </label>
-                    <Input
-                      type="email"
-                      value={profileData?.email || ""}
-                      disabled
-                      className="bg-muted"
-                    />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay đổi.
-                    </p>
-                  </div>
+                    {/* Role (Read-only) */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Vai trò
+                      </label>
+                      <Input
+                        type="text"
+                        value={profileData?.role || "User"}
+                        disabled
+                        className="bg-muted"
+                      />
+                    </div>
 
-                  {/* Role (Read-only) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Vai trò
-                    </label>
-                    <Input
-                      type="text"
-                      value={profileData?.role || "User"}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
-
-                  {/* Submit Button */}
-                  <Button
-                    type="submit"
-                    disabled={updatingProfile}
-                    className="w-full"
-                  >
-                    {updatingProfile ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Đang cập nhật...
-                      </>
-                    ) : (
-                      "Lưu thay đổi"
-                    )}
-                  </Button>
+                    {/* Submit Button */}
+                    <Button
+                      type="submit"
+                      disabled={updatingProfile}
+                      className="w-full"
+                    >
+                      {updatingProfile ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang cập nhật...
+                        </>
+                      ) : (
+                        "Lưu thay đổi"
+                      )}
+                    </Button>
                   </form>
                 </Card>
               </div>
@@ -941,11 +972,12 @@ export default function ProfilePage() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Đang tải đơn hàng...
                     </div>
-                  ) : visibleOrders.length === 0 ? (
+                  ) : sortedVisibleOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Bạn chưa có đơn hàng nào phù hợp bộ lọc hiện tại.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[700px] text-left text-sm">
+                    <div className="space-y-4">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[700px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-border/70 text-muted-foreground">
                             <th className="px-3 py-3 font-medium">Mã đơn</th>
@@ -958,14 +990,16 @@ export default function ProfilePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {visibleOrders.map((order) => (
+                          {pagedOrders.map((order) => (
                             <tr key={order.id} className="border-b border-border/40">
                               <td className="px-3 py-3">#{order.id}</td>
                               <td className="px-3 py-3">{formatDate(order.createdAt)}</td>
                               <td className="px-3 py-3">{formatMoney(order.totalAmount)}</td>
-                              <td className="px-3 py-3">{formatEnum(order.paymentStatus)}</td>
                               <td className="px-3 py-3">
-                                <Badge variant="outline">{formatEnum(order.orderStatus)}</Badge>
+                                {formatPaymentMethod(order.paymentMethod)} - {formatPaymentStatus(order.paymentStatus)}
+                              </td>
+                              <td className="px-3 py-3">
+                                <Badge variant="outline">{formatOrderStatus(order.orderStatus, order.paymentStatus)}</Badge>
                               </td>
                               <td className="px-3 py-3">
                                 <Button
@@ -993,18 +1027,90 @@ export default function ProfilePage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs text-muted-foreground">
+                          Hiển thị {pagedOrders.length} / {sortedVisibleOrders.length} đơn hàng
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {Array.from({ length: totalOrderPages }, (_, index) => {
+                            const page = index + 1;
+                            const isActive = page === currentOrderPage;
+                            return (
+                              <Button
+                                key={`order-page-${page}`}
+                                variant={isActive ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setCurrentOrderPage(page)}
+                                className="min-w-9"
+                              >
+                                {page}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {selectedOrderDetail && (
-                    <div className="rounded-xl border border-border p-4">
+                    <div className="rounded-xl border border-border p-4 space-y-4">
                       <h4 className="text-base font-semibold">
                         Theo dõi đơn #{selectedOrderDetail.id}
                       </h4>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Giao tới: {selectedOrderDetail.shippingAddress || "-"} · SĐT: {selectedOrderDetail.phoneNumber || "-"}
                       </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Thanh toán: {formatPaymentMethod(selectedOrderDetail.paymentMethod)} - {formatPaymentStatus(selectedOrderDetail.paymentStatus)}
+                        {" "}· Trạng thái: {formatOrderStatus(selectedOrderDetail.orderStatus, selectedOrderDetail.paymentStatus)}
+                      </p>
+
+                      <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-emerald-900">Hành trình đơn hàng</p>
+                          <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                            {getTrackingHeadline(selectedOrderDetail)}
+                          </Badge>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-4">
+                          {buildTrackingSteps(selectedOrderDetail).map((step) => (
+                            <div
+                              key={`tracking-step-${step.key}`}
+                              className={`rounded-lg border p-3 text-xs ${
+                                step.state === "done"
+                                  ? "border-emerald-300 bg-emerald-100/70"
+                                  : step.state === "active"
+                                    ? "border-sky-300 bg-sky-100/70"
+                                    : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <p className="font-semibold text-slate-900">{step.title}</p>
+                              <p className="mt-1 text-slate-600">{step.description}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-lg border border-sky-200 bg-white p-3">
+                          <div className="flex items-center justify-center gap-4 text-sky-700">
+                            <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-amber-700">
+                              <Package className="h-4 w-4 animate-pulse" />
+                              <span className="text-xs font-medium">Người bán đang gói hàng</span>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sky-700">
+                              <Truck className="h-4 w-4 animate-bounce" />
+                              <span className="text-xs font-medium">Xe giao hàng đang di chuyển</span>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-emerald-700">
+                              <House className="h-4 w-4" />
+                              <span className="text-xs font-medium">Đang hướng tới địa chỉ của bạn</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
                       <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div>
@@ -1027,10 +1133,10 @@ export default function ProfilePage() {
                             {(selectedOrderDetail.statusHistory ?? []).map((entry) => (
                               <div key={entry.id} className="rounded-lg border p-2 text-sm">
                                 <p className="font-medium">
-                                  {formatEnum(entry.fromStatus)} → {formatEnum(entry.toStatus)}
+                                  {formatHistoryStatus(entry.fromStatus)} → {formatHistoryStatus(entry.toStatus)}
                                 </p>
                                 <p className="text-muted-foreground">{formatDate(entry.createdAt)}</p>
-                                {entry.note ? <p className="text-xs">{entry.note}</p> : null}
+                                {entry.note ? <p className="text-xs">{formatOrderHistoryNote(entry.note)}</p> : null}
                               </div>
                             ))}
                           </div>
@@ -1059,11 +1165,10 @@ export default function ProfilePage() {
 
                 {addressFeedback && (
                   <Alert
-                    className={`mb-4 ${
-                      addressFeedback.type === "success"
-                        ? "border-green-500 bg-green-500/10"
-                        : "border-red-500 bg-red-500/10"
-                    }`}
+                    className={`mb-4 ${addressFeedback.type === "success"
+                      ? "border-green-500 bg-green-500/10"
+                      : "border-red-500 bg-red-500/10"
+                      }`}
                   >
                     <AlertDescription
                       className={
@@ -1220,6 +1325,190 @@ function formatEnum(value) {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function formatPaymentMethod(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "COD") {
+    return "COD";
+  }
+  if (normalized === "VNPAY" || normalized === "PAYOS") {
+    return "QR";
+  }
+  return normalized || "UNKNOWN";
+}
+
+function formatPaymentStatus(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "PAID") {
+    return "Đã thanh toán";
+  }
+  if (normalized === "PENDING") {
+    return "Chờ thanh toán";
+  }
+  if (normalized === "FAILED") {
+    return "Thanh toán thất bại";
+  }
+  if (normalized === "REFUNDED") {
+    return "Đã hoàn tiền";
+  }
+  return formatEnum(normalized);
+}
+
+function formatOrderStatus(orderStatusValue, paymentStatusValue) {
+  const orderStatus = String(orderStatusValue ?? "").trim().toUpperCase();
+  const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
+
+  if (orderStatus === "PENDING") {
+    return paymentStatus === "PAID" ? "Đã thanh toán, đang chuẩn bị hàng" : "Chờ thanh toán";
+  }
+  if (orderStatus === "PROCESSING") {
+    return "Đang chuẩn bị hàng";
+  }
+  if (orderStatus === "SHIPPING") {
+    return "Đang giao hàng";
+  }
+  if (orderStatus === "DELIVERED") {
+    return "Đã nhận hàng";
+  }
+  if (orderStatus === "CANCELLED" && paymentStatus === "FAILED") {
+    return "Thanh toán thất bại";
+  }
+  if (orderStatus === "CANCELLED") {
+    return "Đã hủy";
+  }
+
+  return formatEnum(orderStatus);
+}
+
+function formatHistoryStatus(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+
+  if (normalized === "PENDING") {
+    return "Chờ xác nhận";
+  }
+  if (normalized === "PROCESSING") {
+    return "Đang chuẩn bị hàng";
+  }
+  if (normalized === "SHIPPING") {
+    return "Đang giao hàng";
+  }
+  if (normalized === "DELIVERED") {
+    return "Đã nhận hàng";
+  }
+  if (normalized === "CANCELLED") {
+    return "Đã hủy";
+  }
+
+  return formatEnum(normalized);
+}
+
+function formatOrderHistoryNote(note) {
+  const normalized = String(note ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.includes("Order created and waiting for PayOS payment")) {
+    return "Đơn hàng đã được tạo, hệ thống đang chờ bạn hoàn tất thanh toán QR.";
+  }
+  if (normalized.includes("Order placed with COD and waiting for delivery")) {
+    return "Đơn hàng COD đã ghi nhận thành công, shop bắt đầu xử lý đóng gói.";
+  }
+  if (normalized.includes("PayOS confirmed via")) {
+    return "Thanh toán QR đã xác nhận thành công, đơn đang được chuyển sang đóng gói.";
+  }
+  if (normalized.includes("VNPAY confirmed via")) {
+    return "Thanh toán VNPAY đã xác nhận thành công.";
+  }
+  if (normalized.includes("Cancelled: stock changed during payment confirmation")) {
+    return "Đơn bị hủy do tồn kho thay đổi trong lúc xác nhận thanh toán.";
+  }
+
+  return normalized;
+}
+
+function getTrackingStage(order) {
+  const paymentStatus = String(order?.paymentStatus ?? "").trim().toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "").trim().toUpperCase();
+
+  if (orderStatus === "CANCELLED") {
+    return "cancelled";
+  }
+  if (orderStatus === "DELIVERED") {
+    return "delivered";
+  }
+  if (orderStatus === "SHIPPING") {
+    return "shipping";
+  }
+  if (paymentStatus === "PAID" || orderStatus === "PROCESSING") {
+    return "preparing";
+  }
+
+  return "awaiting_payment";
+}
+
+function buildTrackingSteps(order) {
+  const stage = getTrackingStage(order);
+  const indexMap = {
+    awaiting_payment: 0,
+    preparing: 1,
+    shipping: 2,
+    delivered: 3,
+  };
+
+  const activeIndex = indexMap[stage] ?? 0;
+
+  const steps = [
+    {
+      key: "awaiting_payment",
+      title: "Chờ thanh toán",
+      description: "Đơn đã tạo thành công, chờ xác nhận thanh toán.",
+    },
+    {
+      key: "preparing",
+      title: "Đang chuẩn bị hàng",
+      description: "Shop xác nhận đơn, kiểm kho và đóng gói sản phẩm.",
+    },
+    {
+      key: "shipping",
+      title: "Đang giao hàng",
+      description: "Đơn đã bàn giao vận chuyển, tài xế đang giao tới bạn.",
+    },
+    {
+      key: "delivered",
+      title: "Đã nhận hàng",
+      description: "Đơn đã giao thành công. Bạn có thể đánh giá sản phẩm.",
+    },
+  ];
+
+  if (stage === "cancelled") {
+    return steps.map((step) => ({ ...step, state: "pending" }));
+  }
+
+  return steps.map((step, index) => ({
+    ...step,
+    state: index < activeIndex ? "done" : index === activeIndex ? "active" : "pending",
+  }));
+}
+
+function getTrackingHeadline(order) {
+  const stage = getTrackingStage(order);
+
+  if (stage === "awaiting_payment") {
+    return "Đơn đang chờ bạn thanh toán";
+  }
+  if (stage === "preparing") {
+    return "Đã thanh toán, shop đang chuẩn bị hàng";
+  }
+  if (stage === "shipping") {
+    return "Đơn đang được giao tới bạn";
+  }
+  if (stage === "delivered") {
+    return "Bạn đã nhận hàng thành công";
+  }
+
+  return "Đơn hàng đã bị hủy";
 }
 
 function canRequestReturn(order) {

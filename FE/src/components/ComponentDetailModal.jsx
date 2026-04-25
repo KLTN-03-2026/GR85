@@ -44,7 +44,7 @@ export function ComponentDetailModal({
         setDetailLoading(true);
         const response = await fetch(`/api/products/${component.slug}`);
         if (!response.ok) {
-          throw new Error("Khong tai duoc chi tiet san pham");
+          throw new Error("Không tải được chi tiết sản phẩm");
         }
 
         const payload = await response.json();
@@ -215,11 +215,10 @@ export function ComponentDetailModal({
               {[1, 2, 3, 4, 5].map((star) => (
                 <Star
                   key={star}
-                  className={`w-5 h-5 ${
-                    star <= Math.floor(activeComponent?.rating ?? 0)
+                  className={`w-5 h-5 ${star <= Math.floor(activeComponent?.rating ?? 0)
                       ? "fill-accent text-accent"
                       : "text-muted-foreground"
-                  }`}
+                    }`}
                 />
               ))}
               <span className="text-sm text-muted-foreground">
@@ -292,9 +291,9 @@ export function ComponentDetailModal({
                     {activeComponent.manualUrl && (
                       <div>
                         <p className="text-muted-foreground font-medium mb-1">Tài liệu:</p>
-                        <a 
-                          href={activeComponent.manualUrl} 
-                          target="_blank" 
+                        <a
+                          href={activeComponent.manualUrl}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-primary hover:underline"
                         >
