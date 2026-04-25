@@ -219,9 +219,199 @@ export async function getAdminDashboard() {
     })),
     emailVerifications,
     lowStockProducts: lowStockProducts.filter(
-      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+      (item) =>
+        Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
     ),
   });
+}
+
+export async function listReviewsForAdmin() {
+  const reviews = await prisma.review.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      moderator: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return serializeData({
+    items: reviews.map(mapAdminReview),
+  });
+}
+
+export async function moderateReviewByAdmin(
+  adminUserId,
+  reviewIdInput,
+  input = {},
+) {
+  const reviewId = Number(reviewIdInput);
+  const moderatorId = Number(adminUserId);
+  const isHidden = Boolean(input.isHidden);
+  const hiddenReason = String(input.hiddenReason ?? "").trim();
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+  if (!Number.isFinite(moderatorId) || moderatorId <= 0) {
+    throw new Error("Invalid admin id");
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!existing) {
+    throw new Error("Review not found");
+  }
+
+  const updated = await prisma.review.update({
+    where: { id: reviewId },
+    data: {
+      isHidden,
+      hiddenReason: isHidden ? hiddenReason || null : null,
+      moderatedBy: moderatorId,
+      moderatedAt: new Date(),
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      moderator: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return serializeData(mapAdminReview(updated));
+}
+
+export async function replyReviewByAdmin(
+  adminUserId,
+  reviewIdInput,
+  input = {},
+) {
+  const reviewId = Number(reviewIdInput);
+  const replierId = Number(adminUserId);
+  const adminReply = String(input.reply ?? "").trim();
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+  if (!Number.isFinite(replierId) || replierId <= 0) {
+    throw new Error("Invalid admin id");
+  }
+  if (!adminReply) {
+    throw new Error("Reply content is required");
+  }
+  if (adminReply.length > 2000) {
+    throw new Error("Reply is too long");
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!existing) {
+    throw new Error("Review not found");
+  }
+
+  const updated = await prisma.review.update({
+    where: { id: reviewId },
+    data: {
+      adminReply,
+      adminRepliedBy: replierId,
+      adminRepliedAt: new Date(),
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      moderator: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return serializeData(mapAdminReview(updated));
+}
+
+export async function deleteReviewByAdmin(reviewIdInput) {
+  const reviewId = Number(reviewIdInput);
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!existing) {
+    throw new Error("Review not found");
+  }
+
+  await prisma.review.delete({ where: { id: reviewId } });
+  return serializeData({ id: reviewId, deleted: true });
 }
 
 export async function updateRolePermissionsByAdmin(roleIdInput, input = {}) {
@@ -299,7 +489,9 @@ export async function updateRolePermissionsByAdmin(roleIdInput, input = {}) {
     name: updatedRole.name,
     description: updatedRole.description,
     userCount: updatedRole.users.length,
-    permissions: updatedRole.permissions.map((item) => item.permission.actionName),
+    permissions: updatedRole.permissions.map(
+      (item) => item.permission.actionName,
+    ),
   });
 }
 
@@ -337,7 +529,8 @@ export async function listPermissionTargetsForAdmin() {
           }
         : null,
       permissions: resolveEffectivePermissionsFromUser(user),
-      rolePermissions: user.role?.permissions.map((item) => item.permission.actionName) ?? [],
+      rolePermissions:
+        user.role?.permissions.map((item) => item.permission.actionName) ?? [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     })),
@@ -371,7 +564,11 @@ export async function updateUserPermissionsByAdmin(userIdInput, input = {}) {
     throw new Error("User not found");
   }
 
-  if (String(user.email ?? "").trim().toLowerCase() === "admin@gmail.com") {
+  if (
+    String(user.email ?? "")
+      .trim()
+      .toLowerCase() === "admin@gmail.com"
+  ) {
     return serializeData({
       id: user.id,
       email: user.email,
@@ -474,7 +671,9 @@ export async function updateUserPermissionsByAdmin(userIdInput, input = {}) {
         }
       : null,
     permissions: resolveEffectivePermissionsFromUser(updatedUser),
-    rolePermissions: updatedUser.role?.permissions.map((item) => item.permission.actionName) ?? [],
+    rolePermissions:
+      updatedUser.role?.permissions.map((item) => item.permission.actionName) ??
+      [],
   });
 }
 
@@ -704,7 +903,6 @@ export async function createCouponByAdmin(input) {
     throw new Error("Invalid coupon scope");
   }
 
-
   if (!code) {
     throw new Error("Coupon code is required");
   }
@@ -772,10 +970,10 @@ export async function createCouponByAdmin(input) {
       status,
       ...(assignedUserIds.length > 0
         ? {
-          couponUsers: {
-            create: assignedUserIds.map((userId) => ({ userId })),
-          },
-        }
+            couponUsers: {
+              create: assignedUserIds.map((userId) => ({ userId })),
+            },
+          }
         : {}),
     },
     include: {
@@ -839,8 +1037,12 @@ export async function updateCouponByAdmin(couponId, input) {
     data.discountValue = discountValue;
   }
 
-  const finalDiscountType = String(data.discountType ?? current.discountType).toUpperCase();
-  const finalDiscountValue = Number(data.discountValue ?? current.discountValue);
+  const finalDiscountType = String(
+    data.discountType ?? current.discountType,
+  ).toUpperCase();
+  const finalDiscountValue = Number(
+    data.discountValue ?? current.discountValue,
+  );
   if (finalDiscountType === "PERCENT" && finalDiscountValue > 100) {
     throw new Error("Percent discount cannot exceed 100");
   }
@@ -922,8 +1124,8 @@ export async function updateCouponByAdmin(couponId, input) {
       deleteMany: {},
       ...(assignedUserIds.length > 0
         ? {
-          create: assignedUserIds.map((userId) => ({ userId })),
-        }
+            create: assignedUserIds.map((userId) => ({ userId })),
+          }
         : {}),
     };
   }
@@ -1075,7 +1277,8 @@ export async function getWarehouseOverviewByAdmin() {
     suppliers,
     products,
     lowStockProducts: products.filter(
-      (item) => Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
+      (item) =>
+        Number(item.stockQuantity ?? 0) <= Number(item.lowStockThreshold ?? 0),
     ),
   });
 }
@@ -1161,9 +1364,18 @@ export async function createBatchImportByAdmin(input) {
   }
 
   const [warehouse, product, supplier] = await Promise.all([
-    prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { id: true } }),
-    prisma.product.findUnique({ where: { id: productId }, select: { id: true } }),
-    prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } }),
+    prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+      select: { id: true },
+    }),
+    prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true },
+    }),
+    prisma.supplier.findUnique({
+      where: { id: supplierId },
+      select: { id: true },
+    }),
   ]);
 
   if (!warehouse) {
@@ -1221,6 +1433,53 @@ function buildBatchCode(productId, warehouseId) {
   return `B${dateText}-P${productId}-W${warehouseId}-${randomPart}`;
 }
 
+function mapAdminReview(review) {
+  return {
+    id: review.id,
+    rating: Number(review.rating ?? 0),
+    comment: review.comment ? String(review.comment) : "",
+    isHidden: Boolean(review.isHidden),
+    hiddenReason: review.hiddenReason ? String(review.hiddenReason) : "",
+    moderatedAt: review.moderatedAt,
+    adminReply: review.adminReply ? String(review.adminReply) : "",
+    adminRepliedAt: review.adminRepliedAt,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+    user: review.user
+      ? {
+          id: review.user.id,
+          fullName:
+            String(review.user.fullName ?? "").trim() ||
+            String(review.user.email ?? "Ẩn danh"),
+          email: review.user.email ?? "",
+        }
+      : null,
+    product: review.product
+      ? {
+          id: review.product.id,
+          name: review.product.name ?? "",
+          slug: review.product.slug ?? "",
+        }
+      : null,
+    moderator: review.moderator
+      ? {
+          id: review.moderator.id,
+          fullName:
+            String(review.moderator.fullName ?? "").trim() ||
+            String(review.moderator.email ?? "Admin"),
+        }
+      : null,
+    replier: review.replier
+      ? {
+          id: review.replier.id,
+          fullName:
+            String(review.replier.fullName ?? "").trim() ||
+            String(review.replier.email ?? "Admin"),
+        }
+      : null,
+  };
+}
+
 function mapCoupon(coupon) {
   return {
     id: coupon.id,
@@ -1240,7 +1499,9 @@ function mapCoupon(coupon) {
       fullName: item.user?.fullName ?? null,
       email: item.user?.email ?? null,
     })),
-    assignedUserIds: (coupon.couponUsers ?? []).map((item) => item.user?.id ?? item.userId),
+    assignedUserIds: (coupon.couponUsers ?? []).map(
+      (item) => item.user?.id ?? item.userId,
+    ),
   };
 }
 
@@ -1287,7 +1548,11 @@ function resolveEffectivePermissionsFromUser(user) {
   const rolePermissions =
     user?.role?.permissions?.map((item) => item.permission.actionName) ?? [];
 
-  if (String(user?.email ?? "").trim().toLowerCase() === "admin@gmail.com") {
+  if (
+    String(user?.email ?? "")
+      .trim()
+      .toLowerCase() === "admin@gmail.com"
+  ) {
     return adminPermissionCatalog.map((item) => item.actionName);
   }
 
