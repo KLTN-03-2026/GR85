@@ -178,6 +178,9 @@ export async function listProductReviewsBySlug(slug) {
           },
         },
       },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      },
     },
     orderBy: [{ createdAt: "desc" }],
     take: 500,
@@ -208,6 +211,13 @@ export async function listProductReviewsBySlug(slug) {
       createdAt: review.createdAt,
       adminReply: review.adminReply ? String(review.adminReply) : "",
       adminRepliedAt: review.adminRepliedAt,
+      images: Array.isArray(review.images)
+        ? review.images.map((image) => ({
+            id: image.id,
+            imageUrl: String(image.imageUrl ?? ""),
+            sortOrder: Number(image.sortOrder ?? 0),
+          }))
+        : [],
       thread: mapPublicReviewThread(review),
       user: {
         id: review.user.id,
@@ -262,7 +272,8 @@ function mapPublicReviewThread(review) {
       senderName: "Nhân viên",
       isStaff: true,
       message: fallbackAdminReply,
-      createdAt: fallbackAdminRepliedAt || review?.updatedAt || review?.createdAt,
+      createdAt:
+        fallbackAdminRepliedAt || review?.updatedAt || review?.createdAt,
     });
   }
 
@@ -472,7 +483,12 @@ export async function getWishlistStatusBySlug(userId, slug) {
   });
 }
 
-export async function createProductReviewBySlug(userId, slug, input = {}) {
+export async function createProductReviewBySlug(
+  userId,
+  slug,
+  input = {},
+  reviewImageUrls = [],
+) {
   const normalizedUserId = Number(userId);
   const normalizedSlug = String(slug ?? "")
     .trim()
@@ -495,6 +511,15 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
   if (comment.length > 1000) {
     throw new Error("Bình luận quá dài");
   }
+
+  const normalizedReviewImages = Array.isArray(reviewImageUrls)
+    ? reviewImageUrls
+        .map((imageUrl, index) => ({
+          imageUrl: String(imageUrl ?? "").trim(),
+          sortOrder: index,
+        }))
+        .filter((item) => Boolean(item.imageUrl))
+    : [];
 
   const product = await prisma.product.findUnique({
     where: { slug: normalizedSlug },
@@ -531,27 +556,57 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
 
   let review;
   try {
-    review = await prisma.review.create({
-      data: {
-        userId: normalizedUserId,
-        productId: product.id,
-        orderItemId: eligibleOrderItem.id,
-        rating,
-        comment: comment || null,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
+    review = await prisma.$transaction(async (tx) => {
+      const createdReview = await tx.review.create({
+        data: {
+          userId: normalizedUserId,
+          productId: product.id,
+          orderItemId: eligibleOrderItem.id,
+          rating,
+          comment: comment || null,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
           },
         },
-      },
+      });
+
+      if (normalizedReviewImages.length > 0) {
+        await tx.reviewImage.createMany({
+          data: normalizedReviewImages.map((item) => ({
+            reviewId: createdReview.id,
+            imageUrl: item.imageUrl,
+            sortOrder: item.sortOrder,
+          })),
+        });
+      }
+
+      return tx.review.findUnique({
+        where: { id: createdReview.id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+          images: {
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          },
+        },
+      });
     });
   } catch (error) {
     if (error && typeof error === "object" && error.code === "P2002") {
-      throw new Error("Đơn hàng này đã được đánh giá rồi (review already exists)");
+      throw new Error(
+        "Đơn hàng này đã được đánh giá rồi (review already exists)",
+      );
     }
     throw error;
   }
@@ -561,6 +616,13 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
     rating: Number(review.rating ?? 0),
     comment: review.comment ? String(review.comment) : "",
     createdAt: review.createdAt,
+    images: Array.isArray(review.images)
+      ? review.images.map((image) => ({
+          id: image.id,
+          imageUrl: String(image.imageUrl ?? ""),
+          sortOrder: Number(image.sortOrder ?? 0),
+        }))
+      : [],
     user: {
       id: review.user.id,
       fullName:

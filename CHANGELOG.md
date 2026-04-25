@@ -59,3 +59,98 @@ Mục mới nhất luôn được thêm ở cuối file.
 
 - Prisma Client đã được regenerate để nhận thay đổi schema (`npx prisma generate`).
 - Nếu gặp lỗi `EPERM` trên Windows khi generate: dừng BE đang chạy rồi generate lại.
+
+---
+
+## 2026-04-25 — Review UX nâng cấp: trạng thái thread, ảnh đánh giá, modal xóa
+
+### Thay đổi đã thực hiện
+
+- **BE/prisma/schema.prisma**
+  - **Thay đổi gì:**
+    - Thêm `ReviewThreadStatus` với các trạng thái `OPEN`, `WAITING_ADMIN`, `WAITING_CUSTOMER`, `RESOLVED`.
+    - Thêm metadata xử lý thread cho `Review`: `threadStatus`, `threadResolvedBy`, `threadResolvedAt`.
+    - Thêm quan hệ `resolver` để lưu người xử lý thread.
+    - Thêm quan hệ `images` cho `Review` để gắn ảnh đánh giá.
+  - **Lý do:**
+    - Team cần theo dõi rõ vòng đời xử lý review.
+    - Review cần lưu ảnh đính kèm để hiển thị đầy đủ trên UI.
+
+- **BE/prisma/migrations/20260425183000_review_thread_status_tracking/migration.sql**
+  - **Thay đổi gì:**
+    - Tạo cột trạng thái thread, người xử lý, thời điểm xử lý.
+    - Backfill trạng thái dựa trên dữ liệu review/reply hiện có.
+    - Tạo index và FK cho metadata thread.
+  - **Lý do:**
+    - Đồng bộ dữ liệu cũ sang mô hình thread mới mà không mất lịch sử.
+
+- **BE/prisma/migrations/20260425190000_review_images/migration.sql**
+  - **Thay đổi gì:**
+    - Tạo bảng `Review_Images` để lưu ảnh review.
+    - Thêm FK và index theo review.
+  - **Lý do:**
+    - Cho phép khách đính kèm nhiều ảnh cho một đánh giá.
+
+- **BE/src/api/routes/product.routes.js**
+  - **Thay đổi gì:**
+    - Nhận upload ảnh review qua multipart form-data (`images`).
+    - Cho phép tối đa 6 ảnh, lưu vào `uploads/reviews`.
+    - Parse `rating` bằng `z.coerce.number()` để hỗ trợ form-data.
+  - **Lý do:**
+    - FE có thể gửi ảnh đánh giá cùng lúc với text review.
+
+- **BE/src/services/product.service.js**
+  - **Thay đổi gì:**
+    - Lưu ảnh review vào `ReviewImage` khi tạo review.
+    - Trả `images` trong payload review public.
+  - **Lý do:**
+    - Để trang sản phẩm và lịch sử review hiển thị ảnh đính kèm.
+
+- **BE/src/services/admin.service.js**
+  - **Thay đổi gì:**
+    - Trả thêm `threadStatus`, `threadResolvedAt`, `resolver`, `images` trong payload review admin.
+    - Thêm service `resolveReviewThreadByAdmin` để đánh dấu / mở lại review thread.
+    - Khi admin reply, tự chuyển trạng thái sang `WAITING_CUSTOMER`.
+  - **Lý do:**
+    - Admin có thể xử lý rõ review nào đang chờ khách, đang chờ admin, hoặc đã resolved.
+
+- **BE/src/api/routes/admin.routes.js**
+  - **Thay đổi gì:**
+    - Thêm endpoint `PATCH /api/admin/reviews/:reviewId/resolve`.
+  - **Lý do:**
+    - FE có API chính thức để gắn nhãn đã xử lý / mở lại.
+
+- **BE/src/services/auth.service.js**
+  - **Thay đổi gì:**
+    - Khi khách reply lại review đã resolved, tự chuyển thread sang `WAITING_ADMIN`.
+    - Bỏ `threadResolvedBy/threadResolvedAt` khi reopen.
+  - **Lý do:**
+    - Đúng nghiệp vụ: khách phản hồi lại thì thread phải quay về trạng thái chờ admin.
+
+- **FE/src/client/features/admin/pages/AdminPage.jsx**
+  - **Thay đổi gì:**
+    - Thêm nút `Đánh dấu đã xử lý` / `Mở lại hội thoại`.
+    - Hiển thị trạng thái thread và người xử lý trong detail panel.
+    - Hiển thị ảnh review ở panel kiểm duyệt.
+    - Thay prompt xóa đánh giá bằng modal UI có textarea nhập lý do.
+  - **Lý do:**
+    - Tối ưu UX admin, tránh prompt browser và giúp kiểm duyệt đủ ngữ cảnh.
+
+- **FE/src/client/features/catalog/pages/ProductDetailPage.jsx**
+  - **Thay đổi gì:**
+    - Thêm chọn nhiều ảnh, preview ảnh trước khi gửi review.
+    - Submit review bằng `FormData` thay vì JSON thuần.
+    - Render ảnh review ở lịch sử đánh giá.
+  - **Lý do:**
+    - Người dùng có thể chứng minh vấn đề bằng ảnh ngay khi đánh giá.
+
+- **FE/src/client/features/profile/pages/ProfilePage.jsx**
+  - **Thay đổi gì:**
+    - Render ảnh đánh giá trong phần lịch sử đánh giá cá nhân.
+  - **Lý do:**
+    - Người dùng xem lại đầy đủ review của mình, gồm cả ảnh đã gửi.
+
+### Ghi chú vận hành
+
+- Đã sync Prisma schema bằng `db push` và regenerate Prisma Client.
+- Nếu chạy trên Windows và gặp `EPERM` khi generate, cần dừng tiến trình Node trước rồi generate lại.

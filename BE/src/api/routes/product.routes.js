@@ -25,8 +25,11 @@ import {
 const router = Router();
 
 const uploadsDir = path.resolve(process.cwd(), "uploads", "products");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+const reviewUploadsDir = path.resolve(process.cwd(), "uploads", "reviews");
+for (const dir of [uploadsDir, reviewUploadsDir]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 const storage = multer.diskStorage({
@@ -50,6 +53,27 @@ const upload = multer({
   },
 });
 
+const reviewUploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, reviewUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`);
+  },
+});
+
+const reviewUpload = multer({
+  storage: reviewUploadStorage,
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpg", "image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.mimetype)) {
+      cb(new Error("Chỉ chấp nhận file ảnh JPG, JPEG, PNG hoặc WEBP"));
+      return;
+    }
+
+    cb(null, true);
+  },
+});
+
 const productSchema = z.object({
   name: z.string().min(1),
   productCode: z.string().min(1),
@@ -66,27 +90,31 @@ const productSchema = z.object({
   displayOrder: z.number().int().min(0).optional(),
   imageUrl: z.string().optional(),
   specifications: z.record(z.any()).optional(),
-  detail: z.object({
-    fullDescription: z.string().optional(),
-    inTheBox: z.string().optional(),
-    manualUrl: z.string().optional().nullable(),
-    warrantyPolicy: z.string().optional(),
-  }).optional(),
+  detail: z
+    .object({
+      fullDescription: z.string().optional(),
+      inTheBox: z.string().optional(),
+      manualUrl: z.string().optional().nullable(),
+      warrantyPolicy: z.string().optional(),
+    })
+    .optional(),
 });
 
 const updateProductSchema = productSchema.partial();
 
 const updateDisplayOrderSchema = z.object({
-  items: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      displayOrder: z.number().int().min(0),
-    }),
-  ).min(1),
+  items: z
+    .array(
+      z.object({
+        id: z.number().int().positive(),
+        displayOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1),
 });
 
 const reviewSchema = z.object({
-  rating: z.number().int().min(1).max(5),
+  rating: z.coerce.number().int().min(1).max(5),
   comment: z.string().max(1000).optional(),
 });
 
@@ -150,7 +178,10 @@ router.get("/wishlist/me", requireAuth, async (req, res) => {
 
 router.get("/:slug/wishlist-status", requireAuth, async (req, res) => {
   try {
-    const data = await getWishlistStatusBySlug(Number(req.auth?.sub), req.params.slug);
+    const data = await getWishlistStatusBySlug(
+      Number(req.auth?.sub),
+      req.params.slug,
+    );
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
@@ -159,7 +190,10 @@ router.get("/:slug/wishlist-status", requireAuth, async (req, res) => {
 
 router.post("/:slug/wishlist", requireAuth, async (req, res) => {
   try {
-    const data = await addProductToWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    const data = await addProductToWishlistBySlug(
+      Number(req.auth?.sub),
+      req.params.slug,
+    );
     return res.status(201).json(data);
   } catch (error) {
     return handleRouteError(error, res);
@@ -168,7 +202,10 @@ router.post("/:slug/wishlist", requireAuth, async (req, res) => {
 
 router.delete("/:slug/wishlist", requireAuth, async (req, res) => {
   try {
-    const data = await removeProductFromWishlistBySlug(Number(req.auth?.sub), req.params.slug);
+    const data = await removeProductFromWishlistBySlug(
+      Number(req.auth?.sub),
+      req.params.slug,
+    );
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
@@ -177,30 +214,52 @@ router.delete("/:slug/wishlist", requireAuth, async (req, res) => {
 
 router.get("/:slug/review-eligibility", requireAuth, async (req, res) => {
   try {
-    const data = await getProductReviewEligibilityBySlug(Number(req.auth?.sub), req.params.slug);
+    const data = await getProductReviewEligibilityBySlug(
+      Number(req.auth?.sub),
+      req.params.slug,
+    );
     return res.json(data);
   } catch (error) {
     return handleRouteError(error, res);
   }
 });
-router.post("/:slug/reviews", requireAuth, async (req, res) => {
-  try {
-    const parsed = reviewSchema.parse(req.body ?? {});
-    const data = await createProductReviewBySlug(Number(req.auth?.sub), req.params.slug, parsed);
-    return res.status(201).json(data);
-  } catch (error) {
-    return handleRouteError(error, res);
-  }
-});
+router.post(
+  "/:slug/reviews",
+  requireAuth,
+  reviewUpload.array("images", 6),
+  async (req, res) => {
+    try {
+      const parsed = reviewSchema.parse(req.body ?? {});
+      const uploadedImages = Array.isArray(req.files)
+        ? req.files.map((file) => `/uploads/reviews/${file.filename}`)
+        : [];
+      const data = await createProductReviewBySlug(
+        Number(req.auth?.sub),
+        req.params.slug,
+        parsed,
+        uploadedImages,
+      );
+      return res.status(201).json(data);
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  },
+);
 
-router.post("/upload-image", requireAuth, requireAdmin, upload.single("image"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "File ảnh là bắt buộc" });
-  }
+router.post(
+  "/upload-image",
+  requireAuth,
+  requireAdmin,
+  upload.single("image"),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "File ảnh là bắt buộc" });
+    }
 
-  const imagePath = `/uploads/products/${req.file.filename}`;
-  return res.status(201).json({ imageUrl: imagePath });
-});
+    const imagePath = `/uploads/products/${req.file.filename}`;
+    return res.status(201).json({ imageUrl: imagePath });
+  },
+);
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -249,13 +308,21 @@ function requireAdmin(req, res, next) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d");
 
-  const isAdmin = normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
+  const isAdmin =
+    normalizedRole.includes("admin") || normalizedRole.includes("quan tri");
   if (!isAdmin) {
-    return res.status(403).json({ message: "Chỉ admin mới được phép thực hiện thao tác này" });
+    return res
+      .status(403)
+      .json({ message: "Chỉ admin mới được phép thực hiện thao tác này" });
   }
 
-  if (!Array.isArray(req.auth?.permissions) || !req.auth.permissions.includes("admin_products_manage")) {
-    return res.status(403).json({ message: "Bạn không có quyền quản lý sản phẩm" });
+  if (
+    !Array.isArray(req.auth?.permissions) ||
+    !req.auth.permissions.includes("admin_products_manage")
+  ) {
+    return res
+      .status(403)
+      .json({ message: "Bạn không có quyền quản lý sản phẩm" });
   }
 
   return next();
@@ -263,17 +330,21 @@ function requireAdmin(req, res, next) {
 
 function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
-    return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+    return res
+      .status(400)
+      .json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
   }
 
   if (error instanceof Error) {
     const message = String(error.message || "");
-    const status =
-      message.includes("not found")
-        ? 404
-        : message.includes("already exists")
-          ? 409
-          : 400;
+    const status = message.includes("not found")
+      ? 404
+      : message.includes("already exists")
+        ? 409
+        : 400;
     return res.status(status).json({ message });
   }
 

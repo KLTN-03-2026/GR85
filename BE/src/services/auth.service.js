@@ -649,12 +649,23 @@ export async function replyToMyReview(userId, reviewIdInput, input = {}) {
     throw new Error("Không tìm thấy đánh giá");
   }
 
-  await prisma.reviewReply.create({
-    data: {
-      reviewId,
-      senderId: normalizedUserId,
-      message,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.reviewReply.create({
+      data: {
+        reviewId,
+        senderId: normalizedUserId,
+        message,
+      },
+    });
+
+    await tx.review.update({
+      where: { id: reviewId },
+      data: {
+        threadStatus: "WAITING_ADMIN",
+        threadResolvedBy: null,
+        threadResolvedAt: null,
+      },
+    });
   });
 
   return getMyReviewThread(normalizedUserId, reviewId);
@@ -670,6 +681,8 @@ function mapMyReview(review, userId) {
     hiddenReason: review.hiddenReason ? String(review.hiddenReason) : "",
     adminReply: review.adminReply ? String(review.adminReply) : "",
     adminRepliedAt: review.adminRepliedAt,
+    threadStatus: String(review.threadStatus ?? "OPEN"),
+    threadResolvedAt: review.threadResolvedAt,
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
     product: review.product
