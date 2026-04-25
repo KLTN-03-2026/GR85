@@ -17,6 +17,7 @@ import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
 import { estimateShippingFromCartItems } from "./shipping.service.js";
 import { payos } from "../config/payos.config.js";
+import { createSystemNotification } from "./notification.service.js";
 
 function resolveFrontendBaseUrl() {
   const candidate = String(env.FE_DOMAIN ?? env.FRONTEND_URL ?? "").trim();
@@ -122,7 +123,10 @@ export async function listAvailableCoupons(userId, input = {}) {
       status: "ACTIVE",
       startDate: { lte: now },
       endDate: { gte: now },
-      couponUsers: { some: { userId } },
+      OR: [
+        { couponUsers: { none: {} } },
+        { couponUsers: { some: { userId } } },
+      ],
     },
     orderBy: [{ createdAt: "desc" }],
   });
@@ -307,7 +311,7 @@ export async function checkoutCart(userId, input) {
     });
 
     if (!savedAddress) {
-      throw new Error("Address not found");
+      throw new Error("Không tìm thấy địa chỉ");
     }
 
     shippingAddress = savedAddress.addressLine;
@@ -484,10 +488,28 @@ export async function checkoutCart(userId, input) {
         });
       }
 
-      await removePurchasedCartItems(tx, cart.id, cartItems);
     }
 
+    await removePurchasedCartItems(tx, cart.id, cartItems);
+
     return createdOrder;
+  });
+
+  console.info(
+    `[Checkout] order=${result.id} user=${userId} paymentMethod=${paymentMethod} paymentStatus=${
+      isFullyPaidByWallet ? PaymentStatus.PAID : PaymentStatus.PENDING
+    } orderStatus=${initialOrderStatus}`,
+  );
+
+  await createSystemNotification({
+    userId,
+    title: "Cảm ơn bạn đã đặt hàng",
+    message: "Đơn hàng của bạn đã được tạo và đang chờ xác nhận.",
+    payload: {
+      orderId: result.id,
+      paymentMethod,
+      orderStatus: initialOrderStatus,
+    },
   });
 
   if (isFullyPaidByWallet) {
@@ -571,6 +593,7 @@ export async function checkoutCart(userId, input) {
       userEmail = String(userEmail || "").trim();
     } catch (error) {
       console.error("Error fetching user email:", error);
+      console.error("Lỗi khi lấy email người dùng:", error);
     }
 
     // Send payment code email (non-blocking)
@@ -584,13 +607,13 @@ export async function checkoutCart(userId, input) {
           bankTransfer: mockQrData.bankTransfer,
         });
       } catch (error) {
-        console.error("Failed to send payment email:", error);
+        console.error("Không thể gửi email thanh toán:", error);
         // Don't throw - payment flow should continue even if email fails
       }
     }
 
     return serializeData({
-      message: "Mock VNPAY payment initialized",
+      message: "Đã khởi tạo thanh toán VNPAY giả lập",
       paymentMethod,
       paymentProvider: "VNPAY",
       orderId: result.id,
@@ -613,12 +636,12 @@ export async function checkoutCart(userId, input) {
 export async function handleVnpayIpn(query) {
   const { isValidSignature, payload } = verifyVnpayCallback(query);
   if (!isValidSignature) {
-    return { RspCode: "97", Message: "Invalid checksum" };
+    return { RspCode: "97", Message: "Checksum không hợp lệ" };
   }
 
   const orderId = parseOrderIdFromTxnRef(payload.vnp_TxnRef);
   if (!orderId) {
-    return { RspCode: "01", Message: "Order not found" };
+    return { RspCode: "01", Message: "Không tìm thấy đơn hàng" };
   }
 
   await finalizeVnpayPayment({
@@ -629,7 +652,7 @@ export async function handleVnpayIpn(query) {
     source: "IPN",
   });
 
-  return { RspCode: "00", Message: "Confirm Success" };
+  return { RspCode: "00", Message: "Xác nhận thành công" };
 }
 
 export async function handleVnpayReturn(query) {
@@ -677,7 +700,7 @@ export async function confirmMockVnpayPayment(userId, input) {
   const paymentCode = String(input.paymentCode ?? "").trim();
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
-    throw new Error("Invalid order id");
+    throw new Error("ID đơn hàng không hợp lệ");
   }
 
   const order = await prisma.order.findUnique({
@@ -691,16 +714,16 @@ export async function confirmMockVnpayPayment(userId, input) {
   });
 
   if (!order || Number(order.userId) !== Number(userId)) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (order.paymentMethod !== PaymentMethod.VNPAY) {
-    throw new Error("Order is not transfer payment");
+    throw new Error("Đơn hàng không thuộc phương thức chuyển khoản");
   }
 
   if (order.paymentStatus === PaymentStatus.PAID) {
     return serializeData({
-      message: "Payment already confirmed",
+      message: "Thanh toán đã được xác nhận",
       orderId,
       paymentStatus: PaymentStatus.PAID,
       status: "success",
@@ -737,7 +760,7 @@ export async function estimateCartShipping(userId, input = {}) {
     });
 
     if (!savedAddress) {
-      throw new Error("Address not found");
+      throw new Error("Không tìm thấy địa chỉ");
     }
 
     shippingAddress = savedAddress.addressLine;
@@ -767,7 +790,7 @@ export async function estimateCartShipping(userId, input = {}) {
   });
 
   if (cartItems.length === 0) {
-    throw new Error("Cannot estimate shipping for empty cart");
+    throw new Error("Không thể ước tính phí vận chuyển cho giỏ hàng trống");
   }
 
   return estimateShippingFromCartItems({
@@ -793,20 +816,20 @@ async function finalizeVnpayPayment({
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (order.paymentMethod !== PaymentMethod.VNPAY) {
     return {
       isSuccess: false,
-      message: "Order is not transfer payment",
+      message: "Đơn hàng không thuộc phương thức chuyển khoản",
     };
   }
 
   if (order.paymentStatus === PaymentStatus.PAID) {
     return {
       isSuccess: true,
-      message: "Payment already confirmed",
+      message: "Thanh toán đã được xác nhận",
     };
   }
 
@@ -828,11 +851,24 @@ async function finalizeVnpayPayment({
           fromStatus: order.orderStatus,
           toStatus: OrderStatus.CANCELLED,
           changedBy: order.userId,
-          note: `VNPAY payment failed via ${source}`,
+          note: `Thanh toán VNPAY thất bại qua ${source}`,
         },
       });
 
-      await refundWalletDebitForOrder(tx, order.id, order.userId, "Payment failed");
+      await refundWalletDebitForOrder(tx, order.id, order.userId, "Thanh toán thất bại");
+    });
+
+    console.info(`[VNPAY] order=${orderId} failed via ${source}`);
+
+    await createSystemNotification({
+      userId: order.userId,
+      title: "Thanh toán chưa thành công",
+      message: "Thanh toán VNPAY không thành công. Đơn hàng đã được hủy.",
+      payload: {
+        orderId,
+        paymentMethod: PaymentMethod.VNPAY,
+        paymentStatus: PaymentStatus.FAILED,
+      },
     });
 
     return {
@@ -963,6 +999,20 @@ async function finalizeVnpayPayment({
 
     throw error;
   }
+
+  console.info(`[VNPAY] order=${orderId} paid via ${source}`);
+
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán thành công",
+    message: "Thanh toán của bạn đã được xác nhận. Đơn hàng đang được xử lý.",
+    payload: {
+      orderId,
+      paymentMethod: PaymentMethod.VNPAY,
+      paymentStatus: PaymentStatus.PAID,
+      orderStatus: OrderStatus.PROCESSING,
+    },
+  });
 
   return {
     isSuccess: true,
@@ -1292,11 +1342,11 @@ async function resolveCouponOrThrow({ code, scope, userId, baseAmount }) {
     throw new Error("Voucher usage limit reached");
   }
 
-  if (
-    !Array.isArray(coupon.couponUsers) ||
-    coupon.couponUsers.length === 0 ||
-    !coupon.couponUsers.some((item) => Number(item.userId) === Number(userId))
-  ) {
+  const assignedUsers = Array.isArray(coupon.couponUsers) ? coupon.couponUsers : [];
+  const isGlobalCoupon = assignedUsers.length === 0;
+  const isAssignedToUser = assignedUsers.some((item) => Number(item.userId) === Number(userId));
+
+  if (!isGlobalCoupon && !isAssignedToUser) {
     throw new Error("Bạn không được phép sử dụng voucher này");
   }
 

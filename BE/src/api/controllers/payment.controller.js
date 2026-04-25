@@ -1,6 +1,7 @@
 import { prisma } from "../../db/prisma.js";
 import { payos } from "../../config/payos.config.js";
 import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { createSystemNotification } from "../../services/notification.service.js";
 
 function buildFrontendBaseUrl() {
   const baseUrl = String(process.env.FE_DOMAIN ?? "").trim();
@@ -16,7 +17,7 @@ function toSafeAmount(value) {
   const amount = Math.round(Number(value));
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Invalid order amount");
+    throw new Error("Số tiền đơn hàng không hợp lệ");
   }
 
   return amount;
@@ -58,7 +59,7 @@ export async function createPaymentLink(req, res) {
       checkoutUrl: paymentLink?.checkoutUrl,
     });
   } catch (error) {
-    console.error("[PayOS] createPaymentLink error:", error);
+    console.error("[PayOS] Lỗi createPaymentLink:", error);
     return res.status(500).json({ message: "Không thể tạo link thanh toán" });
   }
 }
@@ -72,7 +73,7 @@ async function markOrderPaid(orderId, note) {
   });
 
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (order.paymentStatus === PaymentStatus.PAID) {
@@ -83,7 +84,7 @@ async function markOrderPaid(orderId, note) {
     for (const item of order.orderItems) {
       const product = await tx.product.findUnique({ where: { id: item.productId } });
       if (!product || product.stockQuantity < item.quantity) {
-        throw new Error("INSUFFICIENT_STOCK_WHILE_CONFIRMING_PAYOS");
+        throw new Error("Không đủ tồn kho khi xác nhận thanh toán PayOS");
       }
     }
 
@@ -163,12 +164,25 @@ async function markOrderPaid(orderId, note) {
       }
     }
   });
+
+  console.info(`[PayOS] order=${orderId} paid`);
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán thành công",
+    message: "Thanh toán QR thành công. Đơn hàng đang được xử lý.",
+    payload: {
+      orderId,
+      paymentMethod: "QR",
+      paymentStatus: PaymentStatus.PAID,
+      orderStatus: OrderStatus.PROCESSING,
+    },
+  });
 }
 
 async function markOrderFailed(orderId, note) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) {
-    throw new Error("Order not found");
+    throw new Error("Không tìm thấy đơn hàng");
   }
 
   if (order.paymentStatus === PaymentStatus.PAID) {
@@ -197,6 +211,19 @@ async function markOrderFailed(orderId, note) {
         note,
       },
     });
+  });
+
+  console.info(`[PayOS] order=${orderId} failed`);
+  await createSystemNotification({
+    userId: order.userId,
+    title: "Thanh toán chưa thành công",
+    message: "Thanh toán QR chưa thành công. Đơn hàng đã chuyển sang trạng thái hủy.",
+    payload: {
+      orderId,
+      paymentMethod: "QR",
+      paymentStatus: PaymentStatus.FAILED,
+      orderStatus: OrderStatus.CANCELLED,
+    },
   });
 }
 
@@ -273,7 +300,7 @@ export async function getPayosStatus(req, res) {
       orderId,
     });
   } catch (error) {
-    console.error("[PayOS] getPayosStatus error:", error);
+    console.error("[PayOS] Lỗi getPayosStatus:", error);
     return res.status(500).json({ message: "Không thể lấy trạng thái thanh toán" });
   }
 }
@@ -292,7 +319,7 @@ export async function confirmPayosReturn(req, res) {
       orderId,
     });
   } catch (error) {
-    console.error("[PayOS] confirmPayosReturn error:", error);
+    console.error("[PayOS] Lỗi confirmPayosReturn:", error);
 
     return res.status(500).json({ message: "Không thể xác nhận trạng thái thanh toán" });
   }
@@ -317,7 +344,7 @@ export async function receiveWebhook(req, res) {
 
     return res.status(200).json({ success: true });
   } catch (error) {
-    console.error("[PayOS] receiveWebhook error:", error);
+    console.error("[PayOS] Lỗi receiveWebhook:", error);
     return res.status(400).json({ success: false, message: "Webhook không hợp lệ" });
   }
 }

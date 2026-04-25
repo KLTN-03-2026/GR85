@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 const POLL_INTERVAL_MS = 5000;
+const PAYOS_PAYMENT_EVENT_KEY = "payos-payment-event";
+const PAYOS_PAYMENT_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 
 export default function PayOSCheckoutPage() {
   const location = useLocation();
@@ -23,6 +25,50 @@ export default function PayOSCheckoutPage() {
 
     return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrValue)}`;
   }, [qrValue]);
+
+  useEffect(() => {
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return undefined;
+    }
+
+    function handlePaymentEvent(rawValue) {
+      if (!rawValue) {
+        return;
+      }
+
+      try {
+        const event = JSON.parse(rawValue);
+        if (Number(event?.orderId) !== orderId) {
+          return;
+        }
+        if (Date.now() - Number(event?.timestamp ?? 0) > PAYOS_PAYMENT_EVENT_MAX_AGE_MS) {
+          return;
+        }
+
+        setIsPolling(false);
+        navigate(String(event?.redirectUrl ?? "/payment-result?status=failed"), {
+          replace: true,
+        });
+      } catch (_error) {
+        // Ignore malformed cross-tab events.
+      }
+    }
+
+    function handleStorage(event) {
+      if (event.key !== PAYOS_PAYMENT_EVENT_KEY) {
+        return;
+      }
+
+      handlePaymentEvent(event.newValue);
+    }
+
+    window.addEventListener("storage", handleStorage);
+    handlePaymentEvent(window.localStorage.getItem(PAYOS_PAYMENT_EVENT_KEY));
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [navigate, orderId]);
 
   useEffect(() => {
     if (!Number.isFinite(orderId) || orderId <= 0) {

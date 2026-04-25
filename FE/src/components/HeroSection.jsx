@@ -5,15 +5,14 @@ import heroImage from "@/assets/hero-pc.jpg";
 
 export function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+    <section className="relative flex min-h-[70vh] items-center justify-center overflow-hidden pt-16">
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img
           src={heroImage}
           alt="Gaming PC"
-          className="w-full h-full object-cover opacity-40"
+          className="h-full w-full object-cover opacity-40"
         />
-
         <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_hsl(var(--primary)/0.15)_0%,_transparent_70%)]" />
       </div>
@@ -29,8 +28,8 @@ export function HeroSection() {
       />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 text-center">
-        <div className="max-w-4xl mx-auto space-y-8">
+      <div className="relative z-10 container mx-auto px-4">
+        <div className="mx-auto w-full max-w-4xl space-y-8 text-center">
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/30"
@@ -93,14 +92,12 @@ export function HeroSection() {
               title="Build thủ công"
               description="Tự chọn từng linh kiện theo ý thích"
             />
-
             <FeatureCard
               icon={Sparkles}
               delay={90}
               title="AI thông minh"
               description="Gợi ý cấu hình tối ưu theo ngân sách"
             />
-
             <FeatureCard
               icon={ShoppingBag}
               delay={180}

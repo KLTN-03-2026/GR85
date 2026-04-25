@@ -16,6 +16,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
+import { FloatingChatWidget } from "@/components/FloatingChatWidget";
 
 const ADMIN_NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan" },
@@ -77,6 +78,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
   const permissionSet = useMemo(
@@ -109,10 +111,6 @@ export function Navbar() {
         return false;
       }
 
-      if (item.id === "roles" && isAdmin) {
-        return true;
-      }
-
       const requiredPermission = ADMIN_TAB_PERMISSION_MAP[item.id];
       if (!requiredPermission) {
         return true;
@@ -130,7 +128,9 @@ export function Navbar() {
     { href: "/", label: "Trang chủ" },
     { href: "/builder", label: "Tự ráp PC" },
     { href: "/components", label: "Linh kiện" },
+    { href: "/profile", label: "Đơn hàng" },
     { href: "/ai-recommend", label: "AI tư vấn", icon: Sparkles },
+    { href: "/ai-chat", label: "AI Chat" },
   ];
 
   return (
@@ -221,11 +221,21 @@ export function Navbar() {
             ) : null}
 
             {(!isAdminPage || !canAccessAdmin) && (
-              <Link to="/chat">
-                <Button variant="ghost" size="icon" className="relative">
-                  <MessageCircle className="h-5 w-5" />
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    navigate("/login");
+                    return;
+                  }
+
+                  setChatOpen((open) => !open);
+                }}
+              >
+                <MessageCircle className="h-5 w-5" />
+              </Button>
             )}
 
             {(!isAdminPage || !canAccessAdmin) && (
@@ -382,6 +392,7 @@ export function Navbar() {
           </div>
         )}
       </div>
+      <FloatingChatWidget isOpen={chatOpen && (!isAdminPage || !canAccessAdmin)} onClose={() => setChatOpen(false)} />
     </nav>
   );
 }

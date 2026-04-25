@@ -64,7 +64,7 @@ const updateProfileSchema = z.object({
     .min(2)
     .max(100)
     .refine((value) => !/\d/.test(value), {
-      message: "Full name cannot contain numbers",
+      message: "Họ và tên không được chứa số",
     })
     .optional(),
   phone: z.string().regex(/^\d{10}$/).optional(),
@@ -79,7 +79,7 @@ const changePasswordSchema = z.object({
 const addressSchema = z.object({
   label: z.string().max(100).optional(),
   receiverName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
-    message: "Receiver name cannot contain numbers",
+    message: "Tên người nhận không được chứa số",
   }),
   phoneNumber: z.string().regex(/^\d{10}$/),
   addressLine: z.string().min(5).max(500),
@@ -350,28 +350,24 @@ function handleRouteError(error, res) {
       error.message === "Email đã tồn tại"
         ? 409
         : error.message === "Email không tồn tại"
-                ? 502
-                : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
+        ? 404
+        : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
+          ? 502
+          : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
+            ? 502
+            : error.message === "Người dùng không tồn tại"
+              ? 404
+              : error.message === "Vui lòng xác nhận email trước khi đăng nhập"
+                ? 403
+                : error.message === "Không thể gửi email xác nhận"
                   ? 502
-                  : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
-          ? 404
-          : error.message === "Người dùng không tồn tại"
-            ? 404
-            : error.message === "Vui lòng xác nhận email trước khi đăng nhập"
-              ? 403
-              : error.message === "Không thể gửi email xác nhận"
-                ? 502
-                : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
-                  ? 502
-                  : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
-                ? 502
-                : error.message === "Mã xac minh không hợp lệ hoặc đã hết hạn"
-                  ? 400
-                  : error.message === "Mật khẩu hiện tại không chính xác"
-                    ? 401
-                    : error.message.includes("Không hợp lệ")
+                  : error.message === "Mã xác minh không hợp lệ hoặc đã hết hạn"
+                    ? 400
+                    : error.message === "Mật khẩu hiện tại không chính xác"
                       ? 401
-                      : 400;
+                      : error.message.includes("Không hợp lệ")
+                        ? 401
+                        : 400;
     return res.status(status).json({ message: error.message });
   }
 

@@ -75,6 +75,13 @@
 
   html {
     scroll-behavior: smooth;
+    font-size: 87.5%;
+  }
+
+  @media (max-width: 768px) {
+    html {
+      font-size: 100%;
+    }
   }
 
   h1,
@@ -357,4 +364,17 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary));
+}
+
+.homepage-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.homepage-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.homepage-sidebar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 999px;
 }

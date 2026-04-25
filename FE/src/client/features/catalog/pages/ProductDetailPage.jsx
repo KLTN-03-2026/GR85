@@ -14,7 +14,10 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [reviews, setReviews] = useState([]);
-  const [reviewSummary, setReviewSummary] = useState({ totalReviews: 0, averageRating: 0 });
+  const [reviewSummary, setReviewSummary] = useState({
+    totalReviews: 0,
+    averageRating: 0,
+  });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState("");
@@ -78,7 +81,9 @@ export default function ProductDetailPage() {
       } catch (error) {
         if (!cancelled) {
           setProduct(null);
-          setErrorMessage(error instanceof Error ? error.message : "Có lỗi xảy ra");
+          setErrorMessage(
+            error instanceof Error ? error.message : "Có lỗi xảy ra",
+          );
           setReviews([]);
           setReviewSummary({ totalReviews: 0, averageRating: 0 });
         }
@@ -109,11 +114,14 @@ export default function ProductDetailPage() {
       }
 
       try {
-        const response = await fetch(`/api/products/${product.slug}/review-eligibility`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
+        const response = await fetch(
+          `/api/products/${product.slug}/review-eligibility`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           },
-        });
+        );
 
         const payload = await response.json();
         if (cancelled) {
@@ -128,7 +136,9 @@ export default function ProductDetailPage() {
         }
 
         setCanReview(false);
-        setReviewEligibilityMessage("Không thể kiểm tra quyền đánh giá lúc này");
+        setReviewEligibilityMessage(
+          "Không thể kiểm tra quyền đánh giá lúc này",
+        );
       }
     }
 
@@ -151,11 +161,14 @@ export default function ProductDetailPage() {
       }
 
       try {
-        const response = await fetch(`/api/products/${product.slug}/wishlist-status`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
+        const response = await fetch(
+          `/api/products/${product.slug}/wishlist-status`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           },
-        });
+        );
 
         const payload = await response.json();
         if (cancelled) {
@@ -207,9 +220,13 @@ export default function ProductDetailPage() {
       }
 
       setIsWishlisted((prev) => !prev);
-      setWishlistMessage(isWishlisted ? "Đã bỏ khỏi wishlist" : "Đã thêm vào wishlist");
+      setWishlistMessage(
+        isWishlisted ? "Đã bỏ khỏi wishlist" : "Đã thêm vào wishlist",
+      );
     } catch (error) {
-      setWishlistMessage(error instanceof Error ? error.message : "Không thể cập nhật wishlist");
+      setWishlistMessage(
+        error instanceof Error ? error.message : "Không thể cập nhật wishlist",
+      );
     } finally {
       setIsUpdatingWishlist(false);
     }
@@ -265,7 +282,9 @@ export default function ProductDetailPage() {
       setReviewComment("");
       await loadReviews(product.slug);
     } catch (error) {
-      setReviewError(error instanceof Error ? error.message : "Gửi đánh giá thất bại");
+      setReviewError(
+        error instanceof Error ? error.message : "Gửi đánh giá thất bại",
+      );
     } finally {
       setIsSubmittingReview(false);
     }
@@ -275,13 +294,18 @@ export default function ProductDetailPage() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="container mx-auto px-4 pt-24 pb-12">
-        <Link to="/components" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <Link
+          to="/components"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+        >
           <ArrowLeft className="w-4 h-4" />
           Quay lại danh sách
         </Link>
 
         {isLoading ? (
-          <p className="mt-8 text-muted-foreground">Đang tải chi tiết sản phẩm...</p>
+          <p className="mt-8 text-muted-foreground">
+            Đang tải chi tiết sản phẩm...
+          </p>
         ) : errorMessage ? (
           <p className="mt-8 text-destructive">{errorMessage}</p>
         ) : product ? (
@@ -295,16 +319,25 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Mã sản phẩm: {product.productCode}</p>
-              <h1 className="text-3xl font-bold">{product.name}</h1>
-              <p className="text-sm text-muted-foreground">Danh mục: {product?.category?.name}</p>
-              <p className="text-2xl font-bold text-primary">{formatMoney(product.price)}</p>
               <p className="text-sm text-muted-foreground">
-                Đánh giá trung bình: {reviewSummary.averageRating.toFixed(1)}/5 ({reviewSummary.totalReviews} lượt)
+                Mã sản phẩm: {product.productCode}
+              </p>
+              <h1 className="text-3xl font-bold">{product.name}</h1>
+              <p className="text-sm text-muted-foreground">
+                Danh mục: {product?.category?.name}
+              </p>
+              <p className="text-2xl font-bold text-primary">
+                {formatMoney(product.price)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Đánh giá trung bình: {reviewSummary.averageRating.toFixed(1)}/5
+                ({reviewSummary.totalReviews} lượt)
               </p>
               <p className="text-sm">
                 {Number(product.stockQuantity) > 0 ? (
-                  <span className="text-emerald-600">Còn hàng ({product.stockQuantity})</span>
+                  <span className="text-emerald-600">
+                    Còn hàng ({product.stockQuantity})
+                  </span>
                 ) : (
                   <span className="text-rose-600">Hết hàng</span>
                 )}
@@ -313,11 +346,17 @@ export default function ProductDetailPage() {
               <div className="space-y-2">
                 <h2 className="font-semibold">Thông số chính</h2>
                 <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(product.specifications ?? {}).map(([key, value]) => (
-                    <div key={key} className="rounded-lg border bg-secondary/40 px-3 py-2 text-sm">
-                      <span className="font-medium">{key}:</span> {String(value)}
-                    </div>
-                  ))}
+                  {Object.entries(product.specifications ?? {}).map(
+                    ([key, value]) => (
+                      <div
+                        key={key}
+                        className="rounded-lg border bg-secondary/40 px-3 py-2 text-sm"
+                      >
+                        <span className="font-medium">{key}:</span>{" "}
+                        {String(value)}
+                      </div>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -326,18 +365,26 @@ export default function ProductDetailPage() {
                   {product.detail.inTheBox && (
                     <div>
                       <h3 className="font-semibold mb-2 text-sm">Trong hộp</h3>
-                      <p className="text-sm text-muted-foreground">{product.detail.inTheBox}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {product.detail.inTheBox}
+                      </p>
                     </div>
                   )}
                   {product.detail.warrantyPolicy && (
                     <div>
-                      <h3 className="font-semibold mb-2 text-sm">Chính sách bảo hành</h3>
-                      <p className="text-sm text-muted-foreground">{product.detail.warrantyPolicy}</p>
+                      <h3 className="font-semibold mb-2 text-sm">
+                        Chính sách bảo hành
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {product.detail.warrantyPolicy}
+                      </p>
                     </div>
                   )}
                   {product.detail.manualUrl && (
                     <div>
-                      <h3 className="font-semibold mb-2 text-sm">Tài liệu kỹ thuật</h3>
+                      <h3 className="font-semibold mb-2 text-sm">
+                        Tài liệu kỹ thuật
+                      </h3>
                       <a
                         href={product.detail.manualUrl}
                         target="_blank"
@@ -360,7 +407,9 @@ export default function ProductDetailPage() {
                       slug: product.slug,
                       name: product.name,
                       brand: product.specifications?.brand || "PC Perfect",
-                      image: product.primaryImage || "/images/component-placeholder.svg",
+                      image:
+                        product.primaryImage ||
+                        "/images/component-placeholder.svg",
                       price: Number(product.price ?? 0),
                       stock: Number(product.stockQuantity ?? 0),
                     });
@@ -373,7 +422,9 @@ export default function ProductDetailPage() {
                   }
                 }}
               >
-                {Number(product.stockQuantity) > 0 ? "Thêm vào giỏ" : "Hết hàng"}
+                {Number(product.stockQuantity) > 0
+                  ? "Thêm vào giỏ"
+                  : "Hết hàng"}
               </Button>
 
               <Button
@@ -387,24 +438,35 @@ export default function ProductDetailPage() {
                     ? "Đang theo dõi"
                     : "Theo dõi sản phẩm"}
               </Button>
-              {wishlistMessage && <p className="text-xs text-muted-foreground">{wishlistMessage}</p>}
+              {wishlistMessage && (
+                <p className="text-xs text-muted-foreground">
+                  {wishlistMessage}
+                </p>
+              )}
 
               <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
                 <h2 className="text-lg font-semibold">Đánh giá sản phẩm</h2>
 
                 {!isHydrated ? (
-                  <p className="text-sm text-muted-foreground">Đang kiểm tra trạng thái đăng nhập...</p>
+                  <p className="text-sm text-muted-foreground">
+                    Đang kiểm tra trạng thái đăng nhập...
+                  </p>
                 ) : isAuthenticated && canReview ? (
                   <form className="space-y-3" onSubmit={submitReview}>
                     <div className="space-y-1">
-                      <label className="block text-sm font-medium" htmlFor="review-rating">
+                      <label
+                        className="block text-sm font-medium"
+                        htmlFor="review-rating"
+                      >
                         Số sao
                       </label>
                       <select
                         id="review-rating"
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={reviewRating}
-                        onChange={(event) => setReviewRating(Number(event.target.value))}
+                        onChange={(event) =>
+                          setReviewRating(Number(event.target.value))
+                        }
                       >
                         <option value={5}>5 sao</option>
                         <option value={4}>4 sao</option>
@@ -415,7 +477,10 @@ export default function ProductDetailPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="block text-sm font-medium" htmlFor="review-comment">
+                      <label
+                        className="block text-sm font-medium"
+                        htmlFor="review-comment"
+                      >
                         Nhận xét
                       </label>
                       <textarea
@@ -423,7 +488,9 @@ export default function ProductDetailPage() {
                         className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..."
                         value={reviewComment}
-                        onChange={(event) => setReviewComment(event.target.value)}
+                        onChange={(event) =>
+                          setReviewComment(event.target.value)
+                        }
                         maxLength={1000}
                       />
                     </div>
@@ -432,31 +499,70 @@ export default function ProductDetailPage() {
                       {isSubmittingReview ? "Đang gửi..." : "Gửi đánh giá"}
                     </Button>
 
-                    {reviewMessage && <p className="text-sm text-emerald-600">{reviewMessage}</p>}
-                    {reviewError && <p className="text-sm text-destructive">{reviewError}</p>}
+                    {reviewMessage && (
+                      <p className="text-sm text-emerald-600">
+                        {reviewMessage}
+                      </p>
+                    )}
+                    {reviewError && (
+                      <p className="text-sm text-destructive">{reviewError}</p>
+                    )}
                   </form>
                 ) : isAuthenticated ? (
                   <p className="text-sm text-muted-foreground">
-                    {reviewEligibilityMessage || "Bạn chỉ có thể đánh giá sau khi đơn hàng đã giao thành công."}
+                    {reviewEligibilityMessage ||
+                      "Bạn chỉ có thể đánh giá sau khi đơn hàng đã giao thành công."}
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Vui lòng <Link to="/login" className="text-primary underline">đăng nhập</Link> để gửi đánh giá.
+                    Vui lòng{" "}
+                    <Link to="/login" className="text-primary underline">
+                      đăng nhập
+                    </Link>{" "}
+                    để gửi đánh giá.
                   </p>
                 )}
 
                 <div className="space-y-2">
                   {reviews.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Chưa có đánh giá nào.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có đánh giá nào.
+                    </p>
                   ) : (
                     reviews.map((review) => (
-                      <div key={review.id} className="rounded-lg border border-border/60 bg-background p-3">
+                      <div
+                        key={review.id}
+                        className="rounded-lg border border-border/60 bg-background p-3"
+                      >
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold">{review?.user?.fullName ?? "Ẩn danh"}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(review.createdAt)}</p>
+                          <p className="text-sm font-semibold">
+                            {review?.user?.fullName ?? "Ẩn danh"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(review.createdAt)}
+                          </p>
                         </div>
-                        <p className="mt-1 text-sm text-amber-600">{"★".repeat(Number(review.rating ?? 0))}</p>
-                        {review.comment && <p className="mt-2 text-sm">{review.comment}</p>}
+                        <p className="mt-1 text-sm text-amber-600">
+                          {"★".repeat(Number(review.rating ?? 0))}
+                        </p>
+                        {review.comment && (
+                          <p className="mt-2 text-sm">{review.comment}</p>
+                        )}
+                        {review.adminReply ? (
+                          <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-sky-700">
+                              Phản hồi từ cửa hàng
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700">
+                              {review.adminReply}
+                            </p>
+                            {review.adminRepliedAt ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatDate(review.adminRepliedAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   )}
@@ -470,35 +576,42 @@ export default function ProductDetailPage() {
         {product?.detail?.fullDescription && (
           <div className="mt-12 rounded-2xl border border-border/50 bg-secondary/30 p-8">
             <h2 className="text-2xl font-bold mb-6">Mô tả chi tiết</h2>
-            <div 
+            <div
               className="text-sm leading-relaxed text-foreground [&_p]:mb-3 [&_p]:last:mb-0 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
-              dangerouslySetInnerHTML={{ __html: product.detail.fullDescription }}
+              dangerouslySetInnerHTML={{
+                __html: product.detail.fullDescription,
+              }}
             />
           </div>
         )}
 
-        {Array.isArray(product?.relatedProducts) && product.relatedProducts.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold mb-4">Sản phẩm liên quan</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {product.relatedProducts.slice(0, 8).map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/products/${item.slug}`}
-                  className="rounded-xl border border-border/60 bg-background p-3 hover:shadow-md transition"
-                >
-                  <img
-                    src={item.imageUrl || "/images/component-placeholder.svg"}
-                    alt={item.name}
-                    className="h-32 w-full rounded-lg object-contain"
-                  />
-                  <p className="mt-2 line-clamp-2 text-sm font-medium">{item.name}</p>
-                  <p className="mt-1 text-sm text-primary font-semibold">{formatMoney(item.price)}</p>
-                </Link>
-              ))}
+        {Array.isArray(product?.relatedProducts) &&
+          product.relatedProducts.length > 0 && (
+            <div className="mt-12">
+              <h2 className="text-2xl font-bold mb-4">Sản phẩm liên quan</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {product.relatedProducts.slice(0, 8).map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/products/${item.slug}`}
+                    className="rounded-xl border border-border/60 bg-background p-3 hover:shadow-md transition"
+                  >
+                    <img
+                      src={item.imageUrl || "/images/component-placeholder.svg"}
+                      alt={item.name}
+                      className="h-32 w-full rounded-lg object-contain"
+                    />
+                    <p className="mt-2 line-clamp-2 text-sm font-medium">
+                      {item.name}
+                    </p>
+                    <p className="mt-1 text-sm text-primary font-semibold">
+                      {formatMoney(item.price)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {recentlyViewed.length > 0 && (
           <div className="mt-12">
@@ -515,8 +628,12 @@ export default function ProductDetailPage() {
                     alt={item.name}
                     className="h-32 w-full rounded-lg object-contain"
                   />
-                  <p className="mt-2 line-clamp-2 text-sm font-medium">{item.name}</p>
-                  <p className="mt-1 text-sm text-primary font-semibold">{formatMoney(item.price)}</p>
+                  <p className="mt-2 line-clamp-2 text-sm font-medium">
+                    {item.name}
+                  </p>
+                  <p className="mt-1 text-sm text-primary font-semibold">
+                    {formatMoney(item.price)}
+                  </p>
                 </Link>
               ))}
             </div>
@@ -541,7 +658,9 @@ function updateRecentlyViewed(product) {
   }
 
   const existing = readRecentlyViewed();
-  const withoutCurrent = existing.filter((item) => Number(item.id) !== entry.id);
+  const withoutCurrent = existing.filter(
+    (item) => Number(item.id) !== entry.id,
+  );
   const next = [entry, ...withoutCurrent].slice(0, 12);
   window.localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next));
   return next;

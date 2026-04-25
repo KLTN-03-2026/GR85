@@ -14,13 +14,17 @@ export function createServer() {
     }),
   );
   app.use(express.json());
+  app.use((req, _res, next) => {
+    console.info(`[API] ${req.method} ${req.originalUrl}`);
+    return next();
+  });
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
   app.use("/api", apiRouter);
 
   app.use((error, _req, res, _next) => {
     console.error(error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Lỗi máy chủ nội bộ" });
   });
 
   return app;
