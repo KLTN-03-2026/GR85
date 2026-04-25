@@ -167,6 +167,20 @@ export function emitRoomDone(roomId, payload) {
   });
 }
 
+export function emitMessagesRead(roomId, messageIds, userId) {
+  const io = ioInstance;
+  if (!io || !messageIds || messageIds.length === 0) {
+    return;
+  }
+
+  io.to(getRoomKey(roomId)).emit("messages_read", {
+    roomId: Number(roomId),
+    messageIds: Array.isArray(messageIds) ? messageIds : [],
+    userId: Number(userId),
+    time: new Date().toISOString(),
+  });
+}
+
 export function getRoomPresence(roomId) {
   const state = roomState.get(Number(roomId));
   if (!state) {
