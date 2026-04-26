@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
+import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import { profileApi } from "@/client/features/profile/data/profile.api";
 
 const profileValidation = {
@@ -81,6 +82,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const { token, isAuthenticated, isHydrated, setSession } = useAuth();
   const { addToCart } = useCart();
+  const { token, user, isAuthenticated, isHydrated, setSession } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
@@ -407,6 +409,53 @@ export default function ProfilePage() {
 
     loadMyOrders();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "reviews") {
+      return;
+    }
+
+    loadMyReviews();
+  }, [activeTab]);
+  
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "orders") {
+      return;
+    }
+
+    const currentUserId = Number(user?.id);
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0) {
+      return;
+    }
+
+    const socket = connectChatSocket(token);
+    if (!socket) {
+      return;
+    }
+
+    const handleOrderStatusUpdated = (payload) => {
+      if (Number(payload?.userId) !== currentUserId) {
+        return;
+      }
+
+      loadMyOrders();
+
+      const changedOrderId = Number(payload?.orderId);
+      if (
+        Number.isFinite(changedOrderId) &&
+        changedOrderId > 0 &&
+        Number(selectedOrderDetail?.id) === changedOrderId
+      ) {
+        loadOrderDetail(changedOrderId);
+      }
+    };
+
+    socket.on("order_status_updated", handleOrderStatusUpdated);
+
+    return () => {
+      socket.off("order_status_updated", handleOrderStatusUpdated);
+    };
+  }, [activeTab, isAuthenticated, isHydrated, token, user?.id, selectedOrderDetail?.id]);
 
   useEffect(() => {
     if (activeTab !== "reviews") {

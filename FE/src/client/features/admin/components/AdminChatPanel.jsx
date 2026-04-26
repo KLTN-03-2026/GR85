@@ -298,6 +298,21 @@ export function AdminChatPanel({ token, currentUser, toast }) {
         }
       };
 
+      const handleMessagesRead = (payload) => {
+        if (Number(payload?.roomId) === Number(selectedRoomIdRef.current)) {
+          const messageIds = Array.isArray(payload?.messageIds) ? payload.messageIds : [];
+          if (messageIds.length > 0) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                messageIds.includes(msg.id)
+                  ? { ...msg, readByUserIds: [...(msg.readByUserIds || []), payload.userId] }
+                  : msg
+              )
+            );
+          }
+        }
+      };
+
       const handlePresence = (payload) => {
         if (Number(payload?.roomId) === Number(selectedRoomIdRef.current)) {
           setPresence({
@@ -314,6 +329,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
       };
 
       socket.on("new_message", handleNewMessage);
+      socket.on("messages_read", handleMessagesRead);
       socket.on("chat_room_presence", handlePresence);
       socket.on("admin_room_changed", handleRoomChanged);
       socket.on("chat_room_done", handleRoomChanged);
@@ -321,6 +337,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
       return () => {
         cancelled = true;
         socket.off("new_message", handleNewMessage);
+        socket.off("messages_read", handleMessagesRead);
         socket.off("chat_room_presence", handlePresence);
         socket.off("admin_room_changed", handleRoomChanged);
         socket.off("chat_room_done", handleRoomChanged);
@@ -805,7 +822,7 @@ export function AdminChatPanel({ token, currentUser, toast }) {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
-                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Đã gửi") : ""}
+                        {isMine ? (message.readByUserIds?.length > 0 ? " • Đã xem" : " • Chưa xem") : (message.readByUserIds?.length > 0 ? " • Đã xem" : "")}
                       </div>
                     </div>
                   </div>
