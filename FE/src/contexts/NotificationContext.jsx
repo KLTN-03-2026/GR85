@@ -25,7 +25,9 @@ export function NotificationProvider({ children }) {
       setNotifications(items);
       setUnreadCount(items.filter((n) => !n.isRead).length);
     } catch (error) {
-      console.error("Không thể tải thông báo:", error);
+      // Silently fail if notifications can't be loaded (e.g., backend not running)
+      setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setIsLoading(false);
     }

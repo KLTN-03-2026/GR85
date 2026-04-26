@@ -129,7 +129,6 @@ export function Navbar() {
     { href: "/builder", label: "Tự ráp PC" },
     { href: "/components", label: "Linh kiện" },
     { href: "/ai-recommend", label: "AI tư vấn", icon: Sparkles },
-
   ];
 
   return (
