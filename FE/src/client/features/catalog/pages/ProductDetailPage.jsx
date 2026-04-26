@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
@@ -14,12 +14,14 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [reviews, setReviews] = useState([]);
-  const [reviewSummary, setReviewSummary] = useState({ totalReviews: 0, averageRating: 0 });
+  const [reviewSummary, setReviewSummary] = useState({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewFilterRating, setReviewFilterRating] = useState("ALL");
+  const [replyingReviewId, setReplyingReviewId] = useState(null);
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
   const [recentlyViewed, setRecentlyViewed] = useState([]);
@@ -43,6 +45,9 @@ export default function ProductDetailPage() {
       setReviewSummary({
         totalReviews: Number(payload?.summary?.totalReviews ?? 0),
         averageRating: Number(payload?.summary?.averageRating ?? 0),
+        ratingBreakdown: Array.isArray(payload?.summary?.ratingBreakdown)
+          ? payload.summary.ratingBreakdown
+          : [],
       });
     } catch {
       if (isCancelled()) {
@@ -271,6 +276,54 @@ export default function ProductDetailPage() {
     }
   }
 
+  const visibleReviews = useMemo(() => {
+    if (reviewFilterRating === "ALL") {
+      return reviews;
+    }
+
+    return reviews.filter((review) => Number(review.rating ?? 0) === Number(reviewFilterRating));
+  }, [reviewFilterRating, reviews]);
+
+  async function replyToReview(reviewId) {
+    if (!isHydrated || !isAuthenticated || !token) {
+      setReviewMessage("Vui lòng đăng nhập để phản hồi đánh giá");
+      return;
+    }
+
+    if (!product?.slug) {
+      return;
+    }
+
+    const message = window.prompt("Nhập phản hồi của bạn:");
+    if (!message || !message.trim()) {
+      return;
+    }
+
+    try {
+      setReplyingReviewId(reviewId);
+      const response = await fetch(`/api/products/${product.slug}/reviews/${reviewId}/replies`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: message.trim() }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Không thể gửi phản hồi");
+      }
+
+      setReviewMessage("Phản hồi của bạn đã được gửi");
+      await loadReviews(product.slug);
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Không thể gửi phản hồi");
+    } finally {
+      setReplyingReviewId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -389,8 +442,61 @@ export default function ProductDetailPage() {
               </Button>
               {wishlistMessage && <p className="text-xs text-muted-foreground">{wishlistMessage}</p>}
 
-              <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
+              <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-4">
                 <h2 className="text-lg font-semibold">Đánh giá sản phẩm</h2>
+
+                <div className="grid gap-3 rounded-xl border border-border/60 bg-background p-3 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Điểm trung bình</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {reviewSummary.averageRating.toFixed(1)}/5
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {reviewSummary.totalReviews} lượt đánh giá
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {(reviewSummary.ratingBreakdown ?? []).map((item) => (
+                      <button
+                        key={`rating-${item.rating}`}
+                        type="button"
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewFilterRating === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
+                        onClick={() => setReviewFilterRating(String(item.rating))}
+                      >
+                        <span className="w-10 font-medium">{item.rating}★</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${item.percent ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="w-12 text-right text-xs text-muted-foreground">{item.percent ?? 0}%</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={reviewFilterRating === "ALL" ? "default" : "outline"}
+                    onClick={() => setReviewFilterRating("ALL")}
+                  >
+                    Tất cả
+                  </Button>
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <Button
+                      key={`rating-filter-${rating}`}
+                      type="button"
+                      size="sm"
+                      variant={reviewFilterRating === String(rating) ? "default" : "outline"}
+                      onClick={() => setReviewFilterRating(String(rating))}
+                    >
+                      {rating} sao
+                    </Button>
+                  ))}
+                </div>
 
                 {!isHydrated ? (
                   <p className="text-sm text-muted-foreground">Đang kiểm tra trạng thái đăng nhập...</p>
@@ -445,18 +551,47 @@ export default function ProductDetailPage() {
                   </p>
                 )}
 
-                <div className="space-y-2">
-                  {reviews.length === 0 ? (
+                <div className="space-y-3">
+                  {visibleReviews.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Chưa có đánh giá nào.</p>
                   ) : (
-                    reviews.map((review) => (
+                    visibleReviews.map((review) => (
                       <div key={review.id} className="rounded-lg border border-border/60 bg-background p-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-sm font-semibold">{review?.user?.fullName ?? "Ẩn danh"}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(review.createdAt)}</p>
+                          <p className="text-xs text-muted-foreground">{formatRelativeTime(review.createdAt)}</p>
                         </div>
                         <p className="mt-1 text-sm text-amber-600">{"★".repeat(Number(review.rating ?? 0))}</p>
                         {review.comment && <p className="mt-2 text-sm">{review.comment}</p>}
+
+                        {Array.isArray(review.replies) && review.replies.length > 0 ? (
+                          <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                            {review.replies.map((reply) => (
+                              <div key={reply.id} className="rounded-md bg-muted/40 p-2 text-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium">
+                                    {reply.user?.fullName ?? "Ẩn danh"}
+                                    {reply.user?.role ? ` · ${reply.user.role}` : ""}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{formatRelativeTime(reply.createdAt)}</p>
+                                </div>
+                                <p className="mt-1">{reply.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => replyToReview(review.id)}
+                            disabled={replyingReviewId === review.id}
+                          >
+                            {replyingReviewId === review.id ? "Đang gửi..." : "Phản hồi"}
+                          </Button>
+                        </div>
                       </div>
                     ))
                   )}
@@ -574,6 +709,40 @@ function formatDate(value) {
   }
 
   return date.toLocaleString("vi-VN");
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  const units = [
+    [60, "giây"],
+    [60, "phút"],
+    [24, "giờ"],
+    [7, "ngày"],
+    [4.345, "tuần"],
+    [12, "tháng"],
+  ];
+
+  let valueCount = diffSeconds;
+  let unitLabel = "giây";
+
+  for (const [threshold, label] of units) {
+    unitLabel = label;
+    if (valueCount < threshold) {
+      break;
+    }
+    valueCount = Math.floor(valueCount / threshold);
+  }
+
+  if (unitLabel === "giây") {
+    return `${valueCount} giây trước`;
+  }
+
+  return `${valueCount} ${unitLabel} trước`;
 }
 
 const RECENTLY_VIEWED_KEY = "techbuiltai-recently-viewed";

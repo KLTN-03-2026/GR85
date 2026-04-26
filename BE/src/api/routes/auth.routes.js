@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   loginUser,
   listUserAddresses,
+  listMyReviews,
   listMyOrders,
   resendVerificationCode,
   requestPasswordReset,
@@ -208,6 +209,15 @@ router.get("/my-orders/:orderId", requireAuth, async (req, res) => {
       Number(req.auth?.sub),
       Number(req.params.orderId),
     );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/my-reviews", requireAuth, async (req, res) => {
+  try {
+    const result = await listMyReviews(Number(req.auth?.sub));
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);

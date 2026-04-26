@@ -88,7 +88,15 @@ enum NotificationType {
     WISHLIST_PRICE_DROP
     WISHLIST_NEW_COUPON
     ORDER_STATUS_CHANGED
+    REVIEW_REPLY
+    REVIEW_MODERATED
     SYSTEM
+}
+
+enum ReviewStatus {
+    VISIBLE
+    HIDDEN
+    DELETED
 }
 
 // ================= 1. NGƯỜI DÙNG & PHÂN QUYỀN =================
@@ -111,6 +119,9 @@ model User {
     cart          Cart?
     orders        Order[]
     reviews       Review[]
+    moderatedReviews Review[] @relation("ReviewModerator")
+    reviewReplies ReviewReply[]
+    reviewModerationLogs ReviewModerationLog[]
     chatRooms     ChatRoom[]
     messages      Message[]
     messageReads  MessageRead[]
@@ -420,17 +431,53 @@ model OrderItem {
 // ================= 6. TƯƠNG TÁC VÀ CHĂM SÓC KHÁCH HÀNG =================
 
 model Review {
-    id        Int      @id @default(autoincrement())
-    userId    Int      @map("user_id")
-    productId Int      @map("product_id")
-    rating    Int
-    comment   String?  @db.Text
-    createdAt DateTime @default(now()) @map("created_at")
+    id               Int           @id @default(autoincrement())
+    userId           Int           @map("user_id")
+    productId        Int           @map("product_id")
+    rating           Int
+    comment          String?       @db.Text
+    status           ReviewStatus  @default(VISIBLE)
+    moderationReason String?       @db.Text @map("moderation_reason")
+    moderatedBy      Int?          @map("moderated_by")
+    moderatedAt      DateTime?     @map("moderated_at")
+    createdAt        DateTime      @default(now()) @map("created_at")
 
-    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+    user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+    product        Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+    moderator      User?                @relation("ReviewModerator", fields: [moderatedBy], references: [id], onDelete: SetNull)
+    replies       ReviewReply[]
+    moderationLogs ReviewModerationLog[]
 
     @@map("Reviews")
+}
+
+model ReviewReply {
+    id        Int      @id @default(autoincrement())
+    reviewId  Int      @map("review_id")
+    userId    Int      @map("user_id")
+    message   String   @db.Text
+    createdAt DateTime @default(now()) @map("created_at")
+
+    review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([reviewId, createdAt])
+    @@map("Review_Replies")
+}
+
+model ReviewModerationLog {
+    id        Int      @id @default(autoincrement())
+    reviewId  Int      @map("review_id")
+    actorId   Int      @map("actor_id")
+    action    String
+    reason    String?  @db.Text
+    createdAt DateTime @default(now()) @map("created_at")
+
+    review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+    actor  User   @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+    @@index([reviewId, createdAt])
+    @@map("Review_Moderation_Logs")
 }
 
 model ChatRoom {

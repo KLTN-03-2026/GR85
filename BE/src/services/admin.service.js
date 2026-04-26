@@ -145,7 +145,16 @@ export async function getAdminDashboard() {
     prisma.review.findMany({
       take: 10,
       orderBy: { createdAt: "desc" },
-      include: { user: true, product: true },
+      include: {
+        user: true,
+        product: true,
+        replies: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            user: true,
+          },
+        },
+      },
     }),
     prisma.chatRoom.findMany({
       take: 10,

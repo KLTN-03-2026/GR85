@@ -2320,84 +2320,93 @@ export default function AdminPage() {
     return "";
   }
 
-  async function editVoucher(item) {
-    if (!token || !item?.id) {
-      return;
-    }
-
-    const discountValueInput = window.prompt(
-      "Giá trị giảm mới",
-      String(item.discountValue ?? ""),
-    );
-    if (discountValueInput === null) {
-      return;
-    }
-
-    const minOrderInput = window.prompt(
-      "Đơn tối thiểu mới",
-      String(item.minOrderValue ?? "0"),
-    );
-    if (minOrderInput === null) {
-      return;
-    }
-
-    const usageLimitInput = window.prompt(
-      "Số lượt dùng mới",
-      String(item.usageLimit ?? "100"),
-    );
-    if (usageLimitInput === null) {
-      return;
-    }
-
-    const startDateInput = window.prompt(
-      "Thời gian bắt đầu (ISO: 2026-04-18T10:00:00.000Z)",
-      new Date(item.startDate).toISOString(),
-    );
-    if (startDateInput === null) {
-      return;
-    }
-
-    const endDateInput = window.prompt(
-      "Thời gian kết thúc (ISO: 2026-04-30T23:59:59.000Z)",
-      new Date(item.endDate).toISOString(),
-    );
-    if (endDateInput === null) {
-      return;
-    }
-
-    const statusInput = window.prompt(
-      "Trạng thái (ACTIVE / DISABLED / EXPIRED)",
-      String(item.status ?? "ACTIVE"),
-    );
-    if (statusInput === null) {
+  function beginEditVoucher(item) {
+    if (!item?.id) {
       return;
     }
 
     setEditingVoucherId(item.id);
+    setVoucherForm({
+      code: String(item.code ?? ""),
+      couponScope: String(item.couponScope ?? "PRODUCT"),
+      discountType: String(item.discountType ?? "PERCENT"),
+      discountValue: String(item.discountValue ?? ""),
+      minOrderValue: String(item.minOrderValue ?? "0"),
+      usageLimit: String(item.usageLimit ?? "100"),
+      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
+      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
+      status: String(item.status ?? "ACTIVE"),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
+    });
+  }
+
+  async function updateVoucher() {
+    if (!token || !editingVoucherId) {
+      return;
+    }
+
+    setIsSavingVoucher(true);
     try {
-      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+      const normalizedCode = voucherForm.code.trim().toUpperCase();
+      const discountValue = Number(voucherForm.discountValue);
+      const minOrderValue = Number(voucherForm.minOrderValue || 0);
+      const usageLimit = Number(voucherForm.usageLimit || 100);
+      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
+      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+
+      if (!normalizedCode) {
+        throw new Error("Mã giảm giá không được để trống");
+      }
+      if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        throw new Error("Giá trị giảm phải lớn hơn 0");
+      }
+      if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+        throw new Error("Đơn tối thiểu phải >= 0");
+      }
+      if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+        throw new Error("Số lượt dùng phải lớn hơn 0");
+      }
+      if (!startDate || Number.isNaN(startDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian bắt đầu hợp lệ");
+      }
+      if (!endDate || Number.isNaN(endDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian kết thúc hợp lệ");
+      }
+      if (endDate <= startDate) {
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
+      }
+
+      const payload = {
+        code: normalizedCode,
+        couponScope: voucherForm.couponScope,
+        discountType: voucherForm.discountType,
+        discountValue,
+        minOrderValue,
+        usageLimit,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        status: voucherForm.status,
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
+      };
+
+      const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          discountValue: Number(discountValueInput),
-          minOrderValue: Number(minOrderInput),
-          usageLimit: Number(usageLimitInput),
-          startDate: startDateInput,
-          endDate: endDateInput,
-          status: String(statusInput).trim().toUpperCase(),
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const payload = await response.json().catch(() => null);
+      const result = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Cập nhật voucher thất bại");
+        const fieldMessage = extractIssueMessage(result?.issues);
+        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
       }
 
       await refreshDashboardSummary();
       toast({ title: "Đã cập nhật voucher" });
+      setEditingVoucherId(null);
     } catch (error) {
       toast({
         title: "Không thể cập nhật voucher",
@@ -2405,7 +2414,7 @@ export default function AdminPage() {
         variant: "destructive",
       });
     } finally {
-      setEditingVoucherId(null);
+      setIsSavingVoucher(false);
     }
   }
 
@@ -4673,9 +4682,9 @@ export default function AdminPage() {
             />
 
             <div className="grid gap-6 xl:grid-cols-5">
-              <div className="xl:col-span-2">
+              <div className="xl:col-span-2 space-y-6">
                 <Panel
-                  title="Tạo mã giảm giá"
+                  title="Thêm voucher"
                   description="Áp dụng cho thanh toán giỏ hàng"
                 >
                   <div className="space-y-3">
@@ -4915,9 +4924,192 @@ export default function AdminPage() {
                       className="gap-2"
                     >
                       <Plus className="h-4 w-4" />
-                      Tạo mã giảm giá
+                      Tạo voucher
                     </Button>
                   </div>
+                </Panel>
+
+                <Panel
+                  title="Sửa voucher"
+                  description="Chọn một voucher ở danh sách để chỉnh sửa"
+                >
+                  {editingVoucherId ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
+                      </p>
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Mã giảm giá</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.code}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              code: event.target.value.toUpperCase(),
+                            }))
+                          }
+                          placeholder="VD: GIAM50"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Phạm vi mã</label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.couponScope}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                couponScope: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="PRODUCT">Giảm giá sản phẩm</option>
+                            <option value="SHIPPING">Giảm phí vận chuyển</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Loại giảm</label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.discountType}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                discountType: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="PERCENT">%</option>
+                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Giá trị giảm</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.discountValue}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                discountValue: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Đơn tối thiểu</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.minOrderValue}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                minOrderValue: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Số lượt dùng</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.usageLimit}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                usageLimit: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                        <input
+                          type="datetime-local"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.startDate}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              startDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thời gian kết thúc</label>
+                        <input
+                          type="datetime-local"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.endDate}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              endDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Trạng thái</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.status}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              status: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="DISABLED">DISABLED</option>
+                          <option value="EXPIRED">EXPIRED</option>
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          onClick={updateVoucher}
+                          disabled={isSavingVoucher}
+                          className="gap-2"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Cập nhật voucher
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setEditingVoucherId(null)}
+                        >
+                          Hủy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Chọn nút Sửa ở danh sách bên phải để mở form chỉnh sửa.
+                    </p>
+                  )}
                 </Panel>
               </div>
 
@@ -4990,10 +5182,10 @@ export default function AdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => editVoucher(item)}
+                          onClick={() => beginEditVoucher(item)}
                           disabled={editingVoucherId === item.id || deletingVoucherId === item.id}
                         >
-                          {editingVoucherId === item.id ? "Đang lưu..." : "Sửa"}
+                          Sửa
                         </Button>
                         <Button
                           size="sm"
@@ -5491,12 +5683,142 @@ export default function AdminPage() {
               </div>
 
               <DataTable
-                columns={["Sản phẩm", "Rating", "Khách hàng", "Nội dung"]}
+                columns={["Sản phẩm", "Rating", "Khách hàng", "Trạng thái", "Phản hồi", "Nội dung", "Thao tác"]}
                 rows={(filteredReviews ?? []).map((item) => [
                   item.product?.name ?? "-",
                   `${item.rating} sao`,
                   item.user?.fullName ?? item.user?.email ?? "-",
+                  statusBadge(formatEnum(item.status ?? "VISIBLE")),
+                  `${Array.isArray(item.replies) ? item.replies.length : 0} phản hồi`,
                   item.comment ?? "-",
+                  <div key={`review-actions-${item.id}`} className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const message = window.prompt("Nhập phản hồi cho khách hàng:");
+                        if (!message) {
+                          return;
+                        }
+
+                        void (async () => {
+                          try {
+                            const response = await fetch(`/api/admin/reviews/${item.id}/replies`, {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({ message }),
+                            });
+
+                            if (!response.ok) {
+                              const payload = await response.json().catch(() => ({}));
+                              throw new Error(payload?.message || "Không thể gửi phản hồi");
+                            }
+
+                            toast({
+                              title: "Đã gửi phản hồi",
+                              description: "Phản hồi của admin đã được lưu và gửi thông báo cho user.",
+                            });
+                            await loadDashboard();
+                          } catch (error) {
+                            toast({
+                              title: "Không thể gửi phản hồi",
+                              description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+                              variant: "destructive",
+                            });
+                          }
+                        })();
+                      }}
+                    >
+                      Reply
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const reason = window.prompt("Nhập lý do ẩn đánh giá:");
+                        if (!reason) {
+                          return;
+                        }
+
+                        void (async () => {
+                          try {
+                            const response = await fetch(`/api/admin/reviews/${item.id}/moderation`, {
+                              method: "PATCH",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({ action: "HIDE", reason }),
+                            });
+
+                            if (!response.ok) {
+                              const payload = await response.json().catch(() => ({}));
+                              throw new Error(payload?.message || "Không thể ẩn đánh giá");
+                            }
+
+                            toast({
+                              title: "Đã ẩn đánh giá",
+                              description: "User sẽ nhận thông báo cùng lý do xử lý.",
+                            });
+                            await loadDashboard();
+                          } catch (error) {
+                            toast({
+                              title: "Không thể ẩn đánh giá",
+                              description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+                              variant: "destructive",
+                            });
+                          }
+                        })();
+                      }}
+                    >
+                      Ẩn
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        const reason = window.prompt("Nhập lý do xóa đánh giá:");
+                        if (!reason) {
+                          return;
+                        }
+
+                        void (async () => {
+                          try {
+                            const response = await fetch(`/api/admin/reviews/${item.id}/moderation`, {
+                              method: "PATCH",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({ action: "DELETE", reason }),
+                            });
+
+                            if (!response.ok) {
+                              const payload = await response.json().catch(() => ({}));
+                              throw new Error(payload?.message || "Không thể xóa đánh giá");
+                            }
+
+                            toast({
+                              title: "Đã xóa đánh giá",
+                              description: "Hệ thống đã ghi log và gửi thông báo cho user.",
+                            });
+                            await loadDashboard();
+                          } catch (error) {
+                            toast({
+                              title: "Không thể xóa đánh giá",
+                              description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+                              variant: "destructive",
+                            });
+                          }
+                        })();
+                      }}
+                    >
+                      Xóa
+                    </Button>
+                  </div>,
                 ])}
               />
             </Panel>
