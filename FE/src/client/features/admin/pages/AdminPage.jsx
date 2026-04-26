@@ -35,6 +35,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -720,6 +726,7 @@ export default function AdminPage() {
   const [reviewSortBy, setReviewSortBy] = useState("newest");
   const [reviewStatusFilter, setReviewStatusFilter] = useState("all");
   const [reviewQuickFilter, setReviewQuickFilter] = useState("all");
+  const [reviewDetailTab, setReviewDetailTab] = useState("overview");
   const [selectedReviewId, setSelectedReviewId] = useState(null);
   const [adminReviews, setAdminReviews] = useState([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
@@ -3186,6 +3193,25 @@ export default function AdminPage() {
     [getReviewThread, getReviewThreadStatus, hasStaffReply],
   );
 
+  const getLatestCustomerReplyMessage = useCallback(
+    (review) => {
+      const thread = getReviewThread(review);
+      for (let index = thread.length - 1; index >= 0; index -= 1) {
+        const message = thread[index];
+        const content = String(message?.message ?? "").trim();
+        if (!message?.isStaff && content) {
+          return {
+            text: content,
+            createdAt: message?.createdAt ?? null,
+          };
+        }
+      }
+
+      return null;
+    },
+    [getReviewThread],
+  );
+
   const filteredReviews = useMemo(() => {
     let filtered = Array.isArray(adminReviews) ? [...adminReviews] : [];
 
@@ -3309,6 +3335,20 @@ export default function AdminPage() {
     () => (selectedReview ? getReviewThreadStatus(selectedReview) : "OPEN"),
     [getReviewThreadStatus, selectedReview],
   );
+
+  const latestCustomerReply = useMemo(() => {
+    if (!Array.isArray(selectedReviewThread) || selectedReviewThread.length === 0) {
+      return null;
+    }
+
+    const customerMessages = selectedReviewThread.filter(
+      (message) => !message?.isStaff,
+    );
+
+    return customerMessages.length > 0
+      ? customerMessages[customerMessages.length - 1]
+      : null;
+  }, [selectedReviewThread]);
 
   const hasActiveReviewFilters = useMemo(
     () =>
@@ -6378,8 +6418,8 @@ export default function AdminPage() {
               title="Quản lý đánh giá"
               description="Theo dõi, kiểm duyệt và phản hồi đánh giá khách hàng"
             />
-            <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                 <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
                   <p className="text-2xl font-bold">{reviewOverview.total}</p>
                 </Panel>
@@ -6409,7 +6449,8 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-4 grid gap-3 md:grid-cols-5">
+                <div className="mb-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                  <div className="grid gap-3 md:grid-cols-5">
                   <div className="grid gap-2">
                     <label className="text-xs font-medium">Tìm kiếm</label>
                     <input
@@ -6464,9 +6505,10 @@ export default function AdminPage() {
                       Xóa bộ lọc
                     </Button>
                   </div>
+                  </div>
                 </div>
 
-                <div className="mb-4 flex flex-wrap gap-2">
+                <div className="mb-3 flex flex-wrap gap-2">
                   {[
                     { id: "all", label: "Tất cả" },
                     { id: "needs-reply", label: "Chờ phản hồi" },
@@ -6500,19 +6542,30 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-4 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
-                    <div className="space-y-3">
+                  <div className="grid gap-3 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.18fr)] xl:items-start">
+                    <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1 xl:sticky xl:top-5">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
                         const waitingReply = isWaitingForAdminReply(item);
                         const threadStatus = getReviewThreadStatus(item);
+                        const latestCustomerReply =
+                          getLatestCustomerReplyMessage(item);
+                        const previewText =
+                          latestCustomerReply?.text ||
+                          String(item.comment ?? "").trim() ||
+                          "Không có nội dung";
+                        const previewTimestamp =
+                          latestCustomerReply?.createdAt ?? item.createdAt;
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
                             type="button"
-                            onClick={() => setSelectedReviewId(Number(item.id))}
-                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                            onClick={() => {
+                              setSelectedReviewId(Number(item.id));
+                              setReviewDetailTab("overview");
+                            }}
+                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
                               isSelected
                                 ? "border-primary bg-primary/5 shadow-sm"
                                 : "border-border/70 bg-background hover:border-primary/40"
@@ -6536,7 +6589,7 @@ export default function AdminPage() {
                             <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
                               <span>•</span>
-                              <span>{formatDate(item.createdAt)}</span>
+                              <span>{formatDate(previewTimestamp)}</span>
                               <span>•</span>
                               <span
                                 className={
@@ -6548,24 +6601,24 @@ export default function AdminPage() {
                                 {formatThreadStatusLabel(threadStatus)}
                               </span>
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">
-                              {item.comment || "Không có nội dung"}
+                            <p className="mt-2 line-clamp-2 break-words text-sm text-slate-700">
+                              {previewText}
                             </p>
                           </button>
                         );
                       })}
                     </div>
 
-                    <div className="rounded-2xl border border-border/60 bg-background p-4">
+                    <div className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm xl:sticky xl:top-5 xl:max-h-[calc(100vh-260px)] xl:overflow-y-auto">
                       {selectedReview ? (
                         <div className="space-y-4">
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <h4 className="text-base font-semibold">
+                              <div className="min-w-0">
+                                <h4 className="truncate text-base font-semibold">
                                   {selectedReview.product?.name ?? "Sản phẩm"}
                                 </h4>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="truncate text-xs text-muted-foreground">
                                   {selectedReview.user?.fullName ??
                                     selectedReview.user?.email ??
                                     "Ẩn danh"}
@@ -6578,10 +6631,10 @@ export default function AdminPage() {
                                     : "Đang hiển thị",
                                 )}
                                 <span
-                                  className={`text-xs font-medium ${
+                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                     selectedReviewNeedsReply
-                                      ? "text-amber-700"
-                                      : "text-emerald-700"
+                                      ? "bg-amber-50 text-amber-700"
+                                      : "bg-emerald-50 text-emerald-700"
                                   }`}
                                 >
                                   {formatThreadStatusLabel(
@@ -6591,196 +6644,244 @@ export default function AdminPage() {
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
-                              <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
-                              <p className="mt-1 whitespace-pre-wrap">
-                                {selectedReview.comment ||
-                                  "Không có nội dung đánh giá"}
-                              </p>
-                            </div>
+                            <Tabs
+                              value={reviewDetailTab}
+                              onValueChange={setReviewDetailTab}
+                              className="space-y-3"
+                            >
+                              <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-secondary/50 p-1">
+                                <TabsTrigger value="overview" className="text-xs">
+                                  Tổng quan
+                                </TabsTrigger>
+                                <TabsTrigger
+                                  value="conversation"
+                                  className="text-xs"
+                                >
+                                  Hội thoại
+                                </TabsTrigger>
+                                <TabsTrigger value="reply" className="text-xs">
+                                  Phản hồi
+                                </TabsTrigger>
+                              </TabsList>
 
-                            <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                              <div>
-                                Tạo lúc: {formatDate(selectedReview.createdAt)}
-                              </div>
-                              <div>
-                                Cập nhật: {formatDate(selectedReview.updatedAt)}
-                              </div>
-                              <div>
-                                Kiểm duyệt:{" "}
-                                {selectedReview.moderatedAt
-                                  ? formatDate(selectedReview.moderatedAt)
-                                  : "Chưa"}
-                              </div>
-                              <div>
-                                Người kiểm duyệt:{" "}
-                                {selectedReview.moderator?.fullName ?? "-"}
-                              </div>
-                              <div>
-                                Trạng thái thread:{" "}
-                                {formatThreadStatusLabel(
-                                  selectedReviewThreadStatus,
-                                )}
-                              </div>
-                              <div>
-                                Người xử lý:{" "}
-                                {selectedReview.resolver?.fullName ?? "-"}
-                              </div>
-                              <div>
-                                Xử lý lúc:{" "}
-                                {selectedReview.threadResolvedAt
-                                  ? formatDate(selectedReview.threadResolvedAt)
-                                  : "-"}
-                              </div>
-                            </div>
-
-                            {selectedReview.hiddenReason ? (
-                              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                Lý do ẩn: {selectedReview.hiddenReason}
-                              </div>
-                            ) : null}
-
-                            {Array.isArray(selectedReview.images) &&
-                            selectedReview.images.length > 0 ? (
-                              <div className="space-y-2">
-                                <label className="text-xs font-semibold">
-                                  Ảnh đính kèm
-                                </label>
-                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                                  {selectedReview.images.map((image) => (
-                                    <a
-                                      key={image.id}
-                                      href={image.imageUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="overflow-hidden rounded-lg border border-border/60 bg-secondary/20"
-                                    >
-                                      <img
-                                        src={image.imageUrl}
-                                        alt="Ảnh đánh giá"
-                                        className="h-24 w-full object-cover"
-                                      />
-                                    </a>
-                                  ))}
+                              <TabsContent value="overview" className="mt-0 space-y-3">
+                                <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
+                                  <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
+                                  <p className="mt-1 whitespace-pre-wrap">
+                                    {selectedReview.comment ||
+                                      "Không có nội dung đánh giá"}
+                                  </p>
                                 </div>
-                              </div>
-                            ) : null}
 
-                            <div className="space-y-2">
-                              <label className="text-xs font-semibold">
-                                Hội thoại phản hồi
-                              </label>
+                                <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                                  <div>
+                                    Tạo lúc: {formatDate(selectedReview.createdAt)}
+                                  </div>
+                                  <div>
+                                    Cập nhật: {formatDate(selectedReview.updatedAt)}
+                                  </div>
+                                  <div>
+                                    Kiểm duyệt:{" "}
+                                    {selectedReview.moderatedAt
+                                      ? formatDate(selectedReview.moderatedAt)
+                                      : "Chưa"}
+                                  </div>
+                                  <div>
+                                    Người kiểm duyệt:{" "}
+                                    {selectedReview.moderator?.fullName ?? "-"}
+                                  </div>
+                                  <div>
+                                    Trạng thái thread:{" "}
+                                    {formatThreadStatusLabel(
+                                      selectedReviewThreadStatus,
+                                    )}
+                                  </div>
+                                  <div>
+                                    Người xử lý:{" "}
+                                    {selectedReview.resolver?.fullName ?? "-"}
+                                  </div>
+                                  <div>
+                                    Xử lý lúc:{" "}
+                                    {selectedReview.threadResolvedAt
+                                      ? formatDate(selectedReview.threadResolvedAt)
+                                      : "-"}
+                                  </div>
+                                </div>
 
-                              {selectedReviewThread.length > 0 ? (
-                                <div className="min-h-[260px] max-h-[34rem] space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-secondary/20 p-3">
-                                  {selectedReviewThread.map((message) => (
-                                    <div
-                                      key={`${selectedReview.id}-${message.id}`}
-                                      className={`rounded-xl border px-3 py-2 text-sm ${
-                                        message.isStaff
-                                          ? "ml-6 border-sky-200 bg-sky-50/80"
-                                          : "mr-6 border-emerald-200 bg-emerald-50/80"
-                                      }`}
-                                    >
-                                      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                        <span className="font-medium text-slate-700">
-                                          {message.isStaff
-                                            ? "Nhân viên"
-                                            : "Khách hàng"}
-                                          {message.senderName
-                                            ? ` • ${message.senderName}`
-                                            : ""}
-                                        </span>
-                                        <span>
-                                          {formatDate(message.createdAt)}
-                                        </span>
-                                      </div>
-                                      <p className="whitespace-pre-wrap text-slate-800">
-                                        {message.message}
-                                      </p>
+                                {selectedReview.hiddenReason ? (
+                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                    Lý do ẩn: {selectedReview.hiddenReason}
+                                  </div>
+                                ) : null}
+
+                                {Array.isArray(selectedReview.images) &&
+                                selectedReview.images.length > 0 ? (
+                                  <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-xs font-semibold">
+                                      <ImagePlus className="h-3.5 w-3.5" />
+                                      Ảnh đính kèm
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                      {selectedReview.images.map((image) => (
+                                        <a
+                                          key={image.id}
+                                          href={image.imageUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="overflow-hidden rounded-lg border border-border/60 bg-secondary/20"
+                                        >
+                                          <img
+                                            src={image.imageUrl}
+                                            alt="Ảnh đánh giá"
+                                            className="h-16 w-full object-cover"
+                                          />
+                                        </a>
+                                      ))}
                                     </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                                  Chưa có phản hồi hai chiều cho đánh giá này.
-                                </div>
-                              )}
-                            </div>
+                                  </div>
+                                ) : null}
+                              </TabsContent>
 
-                            <div className="space-y-2">
-                              <label className="text-xs font-semibold">
-                                Phản hồi quản trị
-                              </label>
-                              <div className="flex flex-wrap gap-2">
-                                {reviewReplyTemplates.map((template) => (
-                                  <Button
-                                    key={template.id}
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 rounded-full px-3 text-xs"
-                                    onClick={() =>
+                              <TabsContent
+                                value="conversation"
+                                className="mt-0 space-y-2"
+                              >
+                                <label className="text-xs font-semibold">
+                                  Hội thoại phản hồi
+                                </label>
+
+                                {selectedReviewThread.length > 0 ? (
+                                  <div className="min-h-[220px] max-h-[28rem] space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-secondary/20 p-3">
+                                    {selectedReviewThread.map((message) => (
+                                      <div
+                                        key={`${selectedReview.id}-${message.id}`}
+                                        className={`rounded-xl border px-3 py-2 text-sm ${
+                                          message.isStaff
+                                            ? "ml-6 border-sky-200 bg-sky-50/80"
+                                            : "mr-6 border-emerald-200 bg-emerald-50/80"
+                                        }`}
+                                      >
+                                        <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                          <span className="font-medium text-slate-700">
+                                            {message.isStaff
+                                              ? "Nhân viên"
+                                              : "Khách hàng"}
+                                            {message.senderName
+                                              ? ` • ${message.senderName}`
+                                              : ""}
+                                          </span>
+                                          <span>
+                                            {formatDate(message.createdAt)}
+                                          </span>
+                                        </div>
+                                        <p className="whitespace-pre-wrap text-slate-800">
+                                          {message.message}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                                    Chưa có phản hồi hai chiều cho đánh giá này.
+                                  </div>
+                                )}
+                              </TabsContent>
+
+                              <TabsContent value="reply" className="mt-0 space-y-3">
+                                <div className="rounded-xl border border-border/60 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-3">
+                                  <div className="rounded-lg border border-sky-100 bg-white/80 px-3 py-2">
+                                    <p className="text-xs font-semibold text-sky-700">
+                                      Phản hồi gần nhất từ khách
+                                    </p>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                      {latestCustomerReply?.message ||
+                                        selectedReview.comment ||
+                                        "Khách chưa để lại nội dung phản hồi."}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      {latestCustomerReply?.createdAt
+                                        ? `Lúc ${formatDate(latestCustomerReply.createdAt)}`
+                                        : "Đang hiển thị nội dung đánh giá ban đầu"}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {reviewReplyTemplates.map((template) => (
+                                      <Button
+                                        key={template.id}
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 rounded-full px-3 text-xs"
+                                        onClick={() =>
+                                          setReviewReplyDraftById((prev) => ({
+                                            ...prev,
+                                            [selectedReview.id]: template.text,
+                                          }))
+                                        }
+                                      >
+                                        {template.label}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    className="mt-2 min-h-[130px] w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                                    rows={5}
+                                    placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
+                                    value={
+                                      reviewReplyDraftById[selectedReview.id] ??
+                                      ""
+                                    }
+                                    onChange={(event) =>
                                       setReviewReplyDraftById((prev) => ({
                                         ...prev,
-                                        [selectedReview.id]: template.text,
+                                        [selectedReview.id]: event.target.value,
                                       }))
                                     }
-                                  >
-                                    {template.label}
-                                  </Button>
-                                ))}
-                              </div>
-                              <textarea
-                                className="min-h-[170px] w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                rows={6}
-                                placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
-                                value={
-                                  reviewReplyDraftById[selectedReview.id] ?? ""
-                                }
-                                onChange={(event) =>
-                                  setReviewReplyDraftById((prev) => ({
-                                    ...prev,
-                                    [selectedReview.id]: event.target.value,
-                                  }))
-                                }
-                              />
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  {selectedReview.adminRepliedAt
-                                    ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
-                                    : "Chưa có phản hồi"}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {
-                                    String(
-                                      reviewReplyDraftById[selectedReview.id] ??
-                                        "",
-                                    ).trim().length
-                                  }
-                                  /2000 ký tự
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={
-                                    replyingReviewId ===
-                                    Number(selectedReview.id)
-                                  }
-                                  onClick={() =>
-                                    saveReviewReply(Number(selectedReview.id))
-                                  }
-                                >
-                                  {replyingReviewId ===
-                                  Number(selectedReview.id)
-                                    ? "Đang lưu..."
-                                    : "Lưu phản hồi"}
-                                </Button>
-                              </div>
-                            </div>
+                                  />
+                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                      {selectedReview.adminRepliedAt
+                                        ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
+                                        : "Chưa có phản hồi"}
+                                    </span>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-xs text-muted-foreground">
+                                        {
+                                          String(
+                                            reviewReplyDraftById[
+                                              selectedReview.id
+                                            ] ?? "",
+                                          ).trim().length
+                                        }
+                                        /2000 ký tự
+                                      </span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={
+                                          replyingReviewId ===
+                                          Number(selectedReview.id)
+                                        }
+                                        onClick={() =>
+                                          saveReviewReply(
+                                            Number(selectedReview.id),
+                                          )
+                                        }
+                                      >
+                                        {replyingReviewId ===
+                                        Number(selectedReview.id)
+                                          ? "Đang lưu..."
+                                          : "Lưu phản hồi"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </TabsContent>
+                            </Tabs>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+                          <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border/60 bg-background/95 pt-3 backdrop-blur-sm">
                             <Button
                               size="sm"
                               variant={

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
@@ -25,6 +25,8 @@ export default function ProductDetailPage() {
   const [reviewError, setReviewError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewStarFilter, setReviewStarFilter] = useState("all");
+  const [expandedReviewThreads, setExpandedReviewThreads] = useState({});
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
   const [recentlyViewed, setRecentlyViewed] = useState([]);
@@ -315,6 +317,37 @@ export default function ProductDetailPage() {
     }
   }
 
+  const reviewStarCounts = useMemo(() => {
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const item of reviews) {
+      const rating = Number(item?.rating ?? 0);
+      if (rating >= 1 && rating <= 5) {
+        counts[rating] += 1;
+      }
+    }
+    return counts;
+  }, [reviews]);
+
+  const filteredReviews = useMemo(() => {
+    if (reviewStarFilter === "all") {
+      return reviews;
+    }
+
+    const target = Number(reviewStarFilter);
+    if (!Number.isFinite(target)) {
+      return reviews;
+    }
+
+    return reviews.filter((item) => Number(item?.rating ?? 0) === target);
+  }, [reviewStarFilter, reviews]);
+
+  function toggleReviewThread(reviewId) {
+    setExpandedReviewThreads((prev) => ({
+      ...prev,
+      [reviewId]: !prev[reviewId],
+    }));
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -588,16 +621,88 @@ export default function ProductDetailPage() {
                 )}
 
                 <div className="space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-secondary/20 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[
+                        { id: "all", label: "Tất cả", count: reviews.length },
+                        { id: "5", label: "5 sao", count: reviewStarCounts[5] },
+                        { id: "4", label: "4 sao", count: reviewStarCounts[4] },
+                        { id: "3", label: "3 sao", count: reviewStarCounts[3] },
+                        { id: "2", label: "2 sao", count: reviewStarCounts[2] },
+                        { id: "1", label: "1 sao", count: reviewStarCounts[1] },
+                      ].map((filterOption) => {
+                        const isActive = reviewStarFilter === filterOption.id;
+                        return (
+                          <button
+                            key={`review-star-filter-${filterOption.id}`}
+                            type="button"
+                            onClick={() => setReviewStarFilter(filterOption.id)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                              isActive
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {filterOption.id !== "all" ? (
+                              <Star
+                                className={`h-3.5 w-3.5 ${
+                                  isActive
+                                    ? "fill-amber-400 text-amber-500"
+                                    : "text-amber-500"
+                                }`}
+                              />
+                            ) : null}
+                            <span>{filterOption.label}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                                isActive
+                                  ? "bg-primary/20 text-primary"
+                                  : "bg-secondary/80 text-muted-foreground"
+                              }`}
+                            >
+                              {filterOption.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {reviews.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       Chưa có đánh giá nào.
                     </p>
+                  ) : filteredReviews.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Không có đánh giá nào phù hợp với bộ lọc sao đã chọn.
+                    </p>
                   ) : (
-                    reviews.map((review) => (
-                      <div
-                        key={review.id}
-                        className="rounded-lg border border-border/60 bg-background p-3"
-                      >
+                    filteredReviews.map((review) => {
+                      const thread = Array.isArray(review?.thread)
+                        ? review.thread
+                        : [];
+                      const firstStaffReply =
+                        thread.find((msg) => Boolean(msg?.isStaff)) ?? null;
+                      const firstStaffReplyId =
+                        firstStaffReply?.id !== undefined &&
+                        firstStaffReply?.id !== null
+                          ? String(firstStaffReply.id)
+                          : null;
+                      const expandableThread = firstStaffReplyId
+                        ? thread.filter(
+                            (msg) => String(msg?.id) !== firstStaffReplyId,
+                          )
+                        : thread;
+                      const isExpanded = Boolean(
+                        expandedReviewThreads[review.id],
+                      );
+                      const hiddenThreadCount = expandableThread.length;
+
+                      return (
+                        <div
+                          key={review.id}
+                          className="rounded-lg border border-border/60 bg-background p-3"
+                        >
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-sm font-semibold">
                             {review?.user?.fullName ?? "Ẩn danh"}
@@ -627,14 +732,58 @@ export default function ProductDetailPage() {
                           </div>
                         ) : null}
 
-                        {Array.isArray(review?.thread) &&
-                        review.thread.length > 0 ? (
+                        {firstStaffReply ? (
+                          <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-sky-700">
+                              Phản hồi đầu tiên từ cửa hàng
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                              {String(firstStaffReply.message ?? "")}
+                            </p>
+                            {firstStaffReply.createdAt ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatDate(firstStaffReply.createdAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : review.adminReply ? (
+                          <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-sky-700">
+                              Phản hồi đầu tiên từ cửa hàng
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700">
+                              {review.adminReply}
+                            </p>
+                            {review.adminRepliedAt ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatDate(review.adminRepliedAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {hiddenThreadCount > 0 ? (
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleReviewThread(review.id)}
+                            >
+                              {isExpanded
+                                ? "Ẩn bớt hội thoại"
+                                : `Xem thêm hội thoại (${hiddenThreadCount})`}
+                            </Button>
+                          </div>
+                        ) : null}
+
+                        {isExpanded && expandableThread.length > 0 ? (
                           <div className="mt-3 rounded-md border border-border/60 bg-secondary/30 px-3 py-2">
                             <p className="text-xs font-semibold text-muted-foreground">
-                              Phản hồi từ cửa hàng & trao đổi
+                              Hội thoại chi tiết
                             </p>
                             <div className="mt-2 space-y-2">
-                              {review.thread.map((msg) => (
+                              {expandableThread.map((msg) => (
                                 <div
                                   key={String(msg.id)}
                                   className={`rounded-md border px-3 py-2 text-sm ${
@@ -659,23 +808,10 @@ export default function ProductDetailPage() {
                               ))}
                             </div>
                           </div>
-                        ) : review.adminReply ? (
-                          <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
-                            <p className="text-xs font-semibold text-sky-700">
-                              Phản hồi từ cửa hàng
-                            </p>
-                            <p className="mt-1 text-sm text-slate-700">
-                              {review.adminReply}
-                            </p>
-                            {review.adminRepliedAt ? (
-                              <p className="mt-1 text-xs text-slate-500">
-                                {formatDate(review.adminRepliedAt)}
-                              </p>
-                            ) : null}
-                          </div>
                         ) : null}
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
