@@ -80,7 +80,6 @@ const ORDER_FILTERS = [
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { token, isAuthenticated, isHydrated, setSession } = useAuth();
   const { addToCart } = useCart();
   const { token, user, isAuthenticated, isHydrated, setSession } = useAuth();
   const [loading, setLoading] = useState(true);

@@ -164,10 +164,6 @@ const moderateReviewSchema = z.object({
   hiddenReason: z.string().max(2000).optional(),
 });
 
-const reviewReplySchema = z.object({
-  reply: z.string().min(1).max(2000),
-});
-
 function isAdminRole(role) {
   const normalizedRole = String(role ?? "")
     .trim()
