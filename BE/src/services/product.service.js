@@ -1,7 +1,10 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
-import { OrderStatus } from "@prisma/client";
-import { createWishlistPriceDropNotifications } from "./notification.service.js";
+import { OrderStatus, ReviewStatus } from "@prisma/client";
+import {
+  createSystemNotification,
+  createWishlistPriceDropNotifications,
+} from "./notification.service.js";
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
@@ -123,8 +126,9 @@ export async function getProductDetailBySlug(slug) {
   });
 }
 
-export async function listProductReviewsBySlug(slug) {
+export async function listProductReviewsBySlug(slug, input = {}) {
   const normalizedSlug = String(slug ?? "").trim().toLowerCase();
+  const ratingFilter = Number(input.rating);
   if (!normalizedSlug) {
     throw new Error("Product slug is required");
   }
@@ -139,13 +143,36 @@ export async function listProductReviewsBySlug(slug) {
   }
 
   const reviews = await prisma.review.findMany({
-    where: { productId: product.id },
+    where: {
+      productId: product.id,
+      status: ReviewStatus.VISIBLE,
+      ...(Number.isInteger(ratingFilter) && ratingFilter >= 1 && ratingFilter <= 5
+        ? { rating: ratingFilter }
+        : {}),
+    },
     include: {
       user: {
         select: {
           id: true,
           fullName: true,
           email: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -162,15 +189,28 @@ export async function listProductReviewsBySlug(slug) {
       id: review.id,
       rating: Number(review.rating ?? 0),
       comment: review.comment ? String(review.comment) : "",
+      status: review.status,
+      moderationReason: review.moderationReason ?? null,
       createdAt: review.createdAt,
       user: {
         id: review.user.id,
         fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
       },
+      replies: review.replies.map((reply) => ({
+        id: reply.id,
+        message: String(reply.message ?? ""),
+        createdAt: reply.createdAt,
+        user: {
+          id: reply.user.id,
+          fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
+          role: reply.user.role?.name ?? null,
+        },
+      })),
     })),
     summary: {
       totalReviews: reviews.length,
       averageRating,
+      ratingBreakdown: buildRatingBreakdown(reviews),
     },
   });
 }
@@ -417,6 +457,10 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
       data: {
         rating,
         comment: comment || null,
+        status: ReviewStatus.VISIBLE,
+        moderationReason: null,
+        moderatedBy: null,
+        moderatedAt: null,
       },
       include: {
         user: {
@@ -435,6 +479,7 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
         productId: product.id,
         rating,
         comment: comment || null,
+        status: ReviewStatus.VISIBLE,
       },
       include: {
         user: {
@@ -457,6 +502,202 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
       id: review.user.id,
       fullName: String(review.user.fullName ?? "").trim() || String(review.user.email ?? "Ẩn danh"),
     },
+  });
+}
+
+export async function replyToProductReview(userId, reviewIdInput, input = {}) {
+  const normalizedUserId = Number(userId);
+  const reviewId = Number(reviewIdInput);
+  const message = String(input.message ?? input.comment ?? "").trim();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("ID đánh giá không hợp lệ");
+  }
+
+  if (message.length < 1) {
+    throw new Error("Nội dung phản hồi không được để trống");
+  }
+
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+    },
+  });
+
+  if (!review) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  if (review.status === ReviewStatus.DELETED) {
+    throw new Error("Đánh giá đã bị xóa");
+  }
+
+  const reply = await prisma.reviewReply.create({
+    data: {
+      reviewId: review.id,
+      userId: normalizedUserId,
+      message,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (review.userId !== normalizedUserId) {
+    await createSystemNotification({
+      userId: review.userId,
+      title: "Có phản hồi mới cho đánh giá",
+      message: `Đánh giá của bạn cho ${String(review.product.name ?? "sản phẩm")} vừa có phản hồi mới.`,
+      payload: {
+        reviewId: review.id,
+        productId: review.productId,
+        productSlug: review.product.slug,
+        replyId: reply.id,
+      },
+    });
+  }
+
+  return serializeData({
+    id: reply.id,
+    reviewId: review.id,
+    message: reply.message,
+    createdAt: reply.createdAt,
+    user: {
+      id: reply.user.id,
+      fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
+      role: reply.user.role?.name ?? null,
+    },
+  });
+}
+
+export async function moderateProductReviewByAdmin(adminUserId, reviewIdInput, input = {}) {
+  const normalizedAdminId = Number(adminUserId);
+  const reviewId = Number(reviewIdInput);
+  const action = String(input.action ?? "").trim().toUpperCase();
+  const reason = String(input.reason ?? input.rejectReason ?? "").trim();
+
+  if (!Number.isFinite(normalizedAdminId) || normalizedAdminId <= 0) {
+    throw new Error("ID quản trị viên không hợp lệ");
+  }
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("ID đánh giá không hợp lệ");
+  }
+
+  if (!["HIDE", "DELETE"].includes(action)) {
+    throw new Error("Hành động phải là HIDE hoặc DELETE");
+  }
+
+  if (reason.length < 5) {
+    throw new Error("Lý do xử lý đánh giá phải có ít nhất 5 ký tự");
+  }
+
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+    },
+  });
+
+  if (!review) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  const nextStatus = action === "DELETE" ? ReviewStatus.DELETED : ReviewStatus.HIDDEN;
+  const updated = await prisma.$transaction(async (tx) => {
+    const nextReview = await tx.review.update({
+      where: { id: review.id },
+      data: {
+        status: nextStatus,
+        moderationReason: reason,
+        moderatedBy: normalizedAdminId,
+        moderatedAt: new Date(),
+      },
+    });
+
+    await tx.reviewModerationLog.create({
+      data: {
+        reviewId: review.id,
+        actorId: normalizedAdminId,
+        action: nextStatus,
+        reason,
+      },
+    });
+
+    return nextReview;
+  });
+
+  await createSystemNotification({
+    userId: review.userId,
+    title: nextStatus === ReviewStatus.DELETED ? "Đánh giá đã bị xóa" : "Đánh giá đã bị ẩn",
+    message: `Đánh giá của bạn cho ${String(review.product.name ?? "sản phẩm")} đã bị ${
+      nextStatus === ReviewStatus.DELETED ? "xóa" : "ẩn"
+    } vì: ${reason}`,
+    payload: {
+      reviewId: review.id,
+      productId: review.productId,
+      productSlug: review.product.slug,
+      action: nextStatus,
+      reason,
+    },
+  });
+
+  return serializeData({
+    id: updated.id,
+    status: updated.status,
+    moderationReason: updated.moderationReason,
+    moderatedAt: updated.moderatedAt,
+  });
+}
+
+function buildRatingBreakdown(reviews) {
+  const total = Math.max(0, reviews.length);
+  return [5, 4, 3, 2, 1].map((rating) => {
+    const count = reviews.filter((review) => Number(review.rating ?? 0) === rating).length;
+    const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+    return { rating, count, percent };
   });
 }
 

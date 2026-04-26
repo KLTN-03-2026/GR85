@@ -354,7 +354,18 @@ export async function listMyOrders(userId) {
     where: { userId },
     orderBy: { createdAt: "desc" },
     include: {
-      orderItems: true,
+      orderItems: {
+        include: {
+          product: {
+            include: {
+              images: {
+                orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -371,6 +382,18 @@ export async function listMyOrders(userId) {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       itemCount: order.orderItems.reduce((sum, item) => sum + item.quantity, 0),
+      items: order.orderItems.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        priceAtTime: item.priceAtTime,
+        lineTotal: Number(item.priceAtTime) * item.quantity,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          slug: item.product.slug,
+          imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+        },
+      })),
     })),
   );
 }
@@ -431,6 +454,72 @@ export async function getMyOrderDetail(userId, orderId) {
     })),
     statusHistory: order.statusHistories,
   });
+}
+
+export async function listMyReviews(userId) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  const reviews = await prisma.review.findMany({
+    where: { userId: normalizedUserId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      product: {
+        include: {
+          images: {
+            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+            take: 1,
+          },
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return serializeData(
+    reviews.map((review) => ({
+      id: review.id,
+      rating: Number(review.rating ?? 0),
+      comment: review.comment ? String(review.comment) : "",
+      status: review.status,
+      moderationReason: review.moderationReason ?? null,
+      createdAt: review.createdAt,
+      product: {
+        id: review.product.id,
+        name: review.product.name,
+        slug: review.product.slug,
+        imageUrl: review.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+      },
+      replies: review.replies.map((reply) => ({
+        id: reply.id,
+        message: String(reply.message ?? ""),
+        createdAt: reply.createdAt,
+        user: {
+          id: reply.user.id,
+          fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
+          role: reply.user.role?.name ?? null,
+        },
+      })),
+    })),
+  );
 }
 
 function createOtp() {

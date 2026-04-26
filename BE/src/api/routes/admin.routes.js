@@ -17,6 +17,10 @@ import {
   updateUserByAdmin,
 } from "../../services/admin.service.js";
 import {
+  moderateProductReviewByAdmin,
+  replyToProductReview,
+} from "../../services/product.service.js";
+import {
   listReturnRequestsForAdmin,
   reviewReturnRequestByAdmin,
 } from "../../services/wallet.service.js";
@@ -34,6 +38,15 @@ const updateUserSchema = z.object({
   avatarUrl: z.string().url().nullable().optional(),
   roleId: z.number().int().positive().nullable().optional(),
   status: z.enum(["ACTIVE", "BANNED", "UNVERIFIED"]).optional(),
+});
+
+const reviewModerationSchema = z.object({
+  action: z.enum(["HIDE", "DELETE"]),
+  reason: z.string().min(5).max(2000),
+});
+
+const reviewReplySchema = z.object({
+  message: z.string().min(1).max(2000),
 });
 
 router.get(
@@ -454,6 +467,58 @@ router.get(
     }
   },
 );
+
+router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chỉ quản trị viên mới có thể truy cập endpoint này" });
+    }
+    if (!hasPermission(req, "admin_reviews_manage")) {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const parsed = reviewReplySchema.parse(req.body ?? {});
+    const data = await replyToProductReview(Number(req.auth?.sub), Number(req.params.reviewId), parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+    }
+
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chỉ quản trị viên mới có thể truy cập endpoint này" });
+    }
+    if (!hasPermission(req, "admin_reviews_manage")) {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const parsed = reviewModerationSchema.parse(req.body ?? {});
+    const data = await moderateProductReviewByAdmin(Number(req.auth?.sub), Number(req.params.reviewId), parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+    }
+
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
 
 router.patch(
   "/returns/:requestId/review",
