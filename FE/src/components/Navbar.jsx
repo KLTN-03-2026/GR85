@@ -10,67 +10,24 @@ import {
   ShoppingCart,
   User,
   X,
-  Sparkles,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
 import { FloatingChatWidget } from "@/components/FloatingChatWidget";
-
-const ADMIN_NAV_ITEMS = [
-  { id: "dashboard", label: "Tổng quan" },
-  { id: "users", label: "Người dùng" },
-  { id: "products", label: "Sản phẩm" },
-  { id: "orders", label: "Đơn hàng" },
-  { id: "catalog", label: "Danh mục & NCC" },
-  { id: "vouchers", label: "Mã giảm giá" },
-  { id: "warehouse", label: "Kho" },
-  { id: "reviews", label: "Đánh giá" },
-  { id: "chat", label: "Chat" },
-  { id: "ai-build", label: "Cấu hình AI" },
-  { id: "verification", label: "Email OTP" },
-  { id: "roles", label: "Phân quyền" },
-  // PC Components
-  { id: "cpu", label: "CPU" },
-  { id: "gpu", label: "Card đồ họa" },
-  { id: "ram", label: "RAM" },
-  { id: "motherboard", label: "Mainboard" },
-  { id: "storage", label: "SSD" },
-  { id: "hdd", label: "HDD" },
-  { id: "psu", label: "Nguồn" },
-  { id: "case", label: "Vỏ máy" },
-  { id: "cooling", label: "Tản nhiệt" },
-  // Peripherals
-  { id: "monitor", label: "Màn hình" },
-  { id: "mouse", label: "Chuột" },
-  { id: "keyboard", label: "Bàn phím" },
-  { id: "headset", label: "Tai nghe" },
-  { id: "speaker", label: "Loa" },
-  { id: "webcam", label: "Webcam" },
-  { id: "microphone", label: "Microphone" },
-  { id: "cable", label: "Cáp" },
-  { id: "hub", label: "Hub" },
-  { id: "stand", label: "Giá đỡ" },
-  { id: "pad", label: "Lót chuột" },
-];
-
-const ADMIN_TAB_PERMISSION_MAP = {
-  dashboard: "admin_dashboard_view",
-  users: "admin_users_manage",
-  products: "admin_products_manage",
-  orders: "admin_orders_manage",
-  catalog: "admin_catalog_manage",
-  vouchers: "admin_vouchers_manage",
-  warehouse: "admin_warehouse_manage",
-  reviews: "admin_reviews_manage",
-  chat: "admin_chat_manage",
-  "ai-build": "admin_ai_build_manage",
-  verification: "admin_verification_view",
-  roles: "admin_roles_manage",
-};
-
-const SUPER_ADMIN_EMAIL = "admin@gmail.com";
+import {
+  ADMIN_NAV_ITEMS,
+  ADMIN_TAB_PERMISSION_MAP,
+  PUBLIC_NAV_LINKS,
+  SUPER_ADMIN_EMAIL,
+} from "@/components/navbar/navbar.constants.js";
+import {
+  buildPermissionSet,
+  canAccessAdminTab,
+  getInitials,
+  isAdminRole,
+} from "@/components/navbar/navbar.utils.js";
 
 export function Navbar() {
   const { totalItems } = useCart();
@@ -81,21 +38,12 @@ export function Navbar() {
   const [chatOpen, setChatOpen] = useState(false);
   const [featureSearchKeyword, setFeatureSearchKeyword] = useState("");
   const isAdmin = isAdminRole(user?.role);
-  const permissionSet = useMemo(
-    () =>
-      new Set(
-        (Array.isArray(user?.permissions) ? user.permissions : [])
-          .map((item) => String(item ?? "").trim().toLowerCase())
-          .filter(Boolean),
-      ),
-    [user?.permissions],
-  );
+  const permissionSet = useMemo(() => buildPermissionSet(user?.permissions), [user?.permissions]);
   const hasAdminPermission = useMemo(
     () => Array.from(permissionSet).some((item) => item.startsWith("admin_")),
     [permissionSet],
   );
-  const isSuperAdmin =
-    String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL;
   const canAccessAdmin = isAdmin || isSuperAdmin || hasAdminPermission;
   const isAdminPage = location.pathname.startsWith("/admin");
 
@@ -112,24 +60,10 @@ export function Navbar() {
       }
 
       const requiredPermission = ADMIN_TAB_PERMISSION_MAP[item.id];
-      if (!requiredPermission) {
-        return true;
-      }
-
-      if (isSuperAdmin) {
-        return true;
-      }
-
-      return currentPermissions.has(String(requiredPermission ?? "").toLowerCase());
+      return canAccessAdminTab(requiredPermission, currentPermissions, isSuperAdmin);
     });
   }, [featureSearchKeyword, isAdmin, isSuperAdmin, permissionSet]);
-
-  const navLinks = [
-    { href: "/", label: "Trang chủ" },
-    { href: "/builder", label: "Tự ráp PC" },
-    { href: "/components", label: "Linh kiện" },
-    { href: "/ai-recommend", label: "AI tư vấn", icon: Sparkles },
-  ];
+  const navLinks = PUBLIC_NAV_LINKS;
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border/70 bg-white shadow-sm">
@@ -146,7 +80,7 @@ export function Navbar() {
             </Link>
 
             {isHydrated && isAuthenticated && canAccessAdmin && (
-              <div className="hidden items-center gap-2 lg:flex flex-1 max-w-sm">
+              <div className="hidden flex-1 max-w-sm items-center gap-2 lg:flex">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -275,7 +209,7 @@ export function Navbar() {
                   onClick={() => navigate("/profile")}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors"
                 >
-                  {getInitials(user?.fullName ?? user?.email ?? "U")}
+                    {getInitials(user?.fullName ?? user?.email ?? "U")}
                 </button>
                 <button
                   onClick={() => navigate("/profile")}
@@ -395,21 +329,3 @@ export function Navbar() {
   );
 }
 
-function getInitials(value) {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
-function isAdminRole(role) {
-  return String(role ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .includes("admin");
-}
