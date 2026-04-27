@@ -12,6 +12,12 @@ import { useCart } from "@/contexts/CartContext";
 import { useBuild } from "@/contexts/BuildContext";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  buildComponentDetail,
+  formatComponentPrice,
+  getComponentGalleryImages,
+  getComponentIsInStock,
+} from "@/components/component-detail/componentDetail.utils.js";
 
 export function ComponentDetailModal({
   component,
@@ -52,41 +58,7 @@ export function ComponentDetailModal({
           return;
         }
 
-        const categoryMap = {
-          vga: "gpu",
-          ssd: "storage",
-          mainboard: "motherboard",
-        };
-
-        const categorySlug = String(payload?.category?.slug ?? component.category ?? "").toLowerCase();
-        const normalizedCategory = (categoryMap[categorySlug] ?? categorySlug) || component.category;
-
-        const imageUrls = Array.isArray(payload?.images)
-          ? payload.images.map((item) => item?.imageUrl).filter(Boolean)
-          : [];
-
-        setDetailData({
-          ...component,
-          id: payload?.id ?? component.id,
-          slug: payload?.slug ?? component.slug,
-          name: payload?.name ?? component.name,
-          productCode: payload?.productCode ?? component.productCode,
-          category: normalizedCategory,
-          brand:
-            payload?.specifications?.brand ||
-            payload?.supplier?.name ||
-            component.brand ||
-            "PC Perfect",
-          price: Number(payload?.price ?? component.price ?? 0),
-          stock: Number(payload?.stockQuantity ?? component.stock ?? 0),
-          specs: payload?.specifications ?? component.specs ?? {},
-          image: payload?.imageUrl || imageUrls[0] || component.image || fallbackImage,
-          images: imageUrls.length ? imageUrls : [payload?.imageUrl || component.image || fallbackImage],
-          fullDescription: payload?.detail?.fullDescription || component.fullDescription || "",
-          inTheBox: payload?.detail?.inTheBox || component.inTheBox || "",
-          warrantyPolicy: payload?.detail?.warrantyPolicy || component.warrantyPolicy || "",
-          manualUrl: payload?.detail?.manualUrl || component.manualUrl || null,
-        });
+        setDetailData(buildComponentDetail(component, payload, fallbackImage));
       } catch {
         if (!cancelled) {
           setDetailData((prev) => prev ?? component);
@@ -107,30 +79,12 @@ export function ComponentDetailModal({
 
   const activeComponent = detailData ?? component;
   const galleryImages = useMemo(() => {
-    const list = Array.isArray(activeComponent?.images)
-      ? activeComponent.images.filter(Boolean)
-      : [];
-    if (list.length > 0) {
-      return list;
-    }
-    return [activeComponent?.image || fallbackImage];
+    return getComponentGalleryImages(activeComponent, fallbackImage);
   }, [activeComponent]);
 
   const mainImage = galleryImages[Math.min(activeImageIndex, Math.max(0, galleryImages.length - 1))] || fallbackImage;
   const stock = Number(activeComponent?.stock ?? 0);
-  const isInStock =
-    typeof activeComponent?.inStock === "boolean"
-      ? activeComponent.inStock
-      : typeof activeComponent?.isOutOfStock === "boolean"
-        ? !activeComponent.isOutOfStock
-        : stock > 0;
-
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(price);
-  };
+  const isInStock = getComponentIsInStock(activeComponent, stock);
 
   const handleAddToCart = (isUsed = false) => {
     addToCart(activeComponent, isUsed);
@@ -313,7 +267,7 @@ export function ComponentDetailModal({
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Giá mới:</span>
                 <span className="text-2xl font-bold text-primary">
-                  {formatPrice(activeComponent.price)}
+                  {formatComponentPrice(activeComponent.price)}
                 </span>
               </div>
               {activeComponent.usedPrice && (
@@ -352,8 +306,8 @@ export function ComponentDetailModal({
                     disabled={!isInStock}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    {isInStock
-                      ? `Mua ngay - ${formatPrice(activeComponent.price)}`
+                      {isInStock
+                        ? `Mua ngay - ${formatComponentPrice(activeComponent.price)}`
                       : "Hết hàng"}
                   </Button>
                   <Button
@@ -372,7 +326,7 @@ export function ComponentDetailModal({
                       disabled={!isInStock}
                     >
                       <Package className="w-4 h-4" />
-                      Mua đồ cũ - {formatPrice(activeComponent.usedPrice)}
+                      Mua đồ cũ - {formatComponentPrice(activeComponent.usedPrice)}
                     </Button>
                   )}
                 </>

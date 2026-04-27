@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Cpu, Sparkles, ShoppingBag } from "lucide-react";
 import heroImage from "@/assets/hero-pc.jpg";
+import { HeroFeatureCard } from "@/components/hero/HeroFeatureCard.jsx";
 
 export function HeroSection() {
   return (
@@ -86,19 +87,19 @@ export function HeroSection() {
 
           {/* Features */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 pt-8 border-t border-border/50">
-            <FeatureCard
+            <HeroFeatureCard
               icon={Cpu}
               delay={0}
               title="Build thủ công"
               description="Tự chọn từng linh kiện theo ý thích"
             />
-            <FeatureCard
+            <HeroFeatureCard
               icon={Sparkles}
               delay={90}
               title="AI thông minh"
               description="Gợi ý cấu hình tối ưu theo ngân sách"
             />
-            <FeatureCard
+            <HeroFeatureCard
               icon={ShoppingBag}
               delay={180}
               title="Mua sắm dễ dàng"
@@ -121,21 +122,5 @@ export function HeroSection() {
         style={{ animationDelay: "1s" }}
       />
     </section>
-  );
-}
-
-function FeatureCard({ icon: Icon, title, description, delay = 0 }) {
-  return (
-    <div
-      className="glass rounded-xl p-6 text-center hover:border-primary/50 transition-all duration-300 group"
-      data-aos="fade-up"
-      data-aos-delay={delay}
-    >
-      <div className="w-12 h-12 rounded-lg gradient-primary mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-transform">
-        <Icon className="w-6 h-6 text-primary-foreground" />
-      </div>
-      <h3 className="font-display font-semibold text-lg mb-2">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </div>
   );
 }

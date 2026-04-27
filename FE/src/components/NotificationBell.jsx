@@ -1,4 +1,4 @@
-import { Bell, Check, Clock, Loader2, Trash2 } from "lucide-react";
+import { Bell, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useNotification } from "@/contexts/NotificationContext";
@@ -9,25 +9,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-
-const NotificationTypeBadgeMap = {
-  WISHLIST_PRICE_DROP: {
-    label: "Giảm giá wishlist",
-    color: "bg-red-100 text-red-800",
-  },
-  WISHLIST_NEW_COUPON: {
-    label: "Coupon mới",
-    color: "bg-blue-100 text-blue-800",
-  },
-  ORDER_STATUS_CHANGED: {
-    label: "Cập nhật đơn hàng",
-    color: "bg-green-100 text-green-800",
-  },
-  SYSTEM: {
-    label: "Thông báo hệ thống",
-    color: "bg-gray-100 text-gray-800",
-  },
-};
+import { NotificationBellItem } from "@/components/notification-bell/NotificationBellItem.jsx";
+import { formatNotificationTimeAgo } from "@/components/notification-bell/formatNotificationTimeAgo.js";
+import { getNotificationTypeMeta } from "@/components/notification-bell/notificationTypeMeta.js";
 
 export function NotificationBell() {
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead } =
@@ -62,16 +46,6 @@ export function NotificationBell() {
         description: error.message || "Không thể đánh dấu tất cả thông báo",
       });
     }
-  };
-
-  const getNotificationBadgeClass = (notificationType) => {
-    const badge = NotificationTypeBadgeMap[notificationType] || NotificationTypeBadgeMap.SYSTEM;
-    return badge.color;
-  };
-
-  const getNotificationLabel = (notificationType) => {
-    const badge = NotificationTypeBadgeMap[notificationType] || NotificationTypeBadgeMap.SYSTEM;
-    return badge.label;
   };
 
   return (
@@ -124,48 +98,13 @@ export function NotificationBell() {
           {!isLoading && notifications.length > 0 && (
             <div className="divide-y divide-border">
               {notifications.map((notification) => (
-                <div
+                <NotificationBellItem
                   key={notification.id}
-                  className={`px-4 py-3 hover:bg-muted/50 transition cursor-pointer ${
-                    !notification.isRead ? "bg-blue-50/50" : ""
-                  }`}
-                  onClick={() =>
-                    !notification.isRead &&
-                    handleMarkAsRead(notification.id, { stopPropagation: () => {} })
-                  }
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-sm line-clamp-1">
-                          {notification.title}
-                        </h3>
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${getNotificationBadgeClass(
-                            notification.type
-                          )}`}
-                        >
-                          {getNotificationLabel(notification.type)}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                        {notification.message}
-                      </p>
-
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {formatTimeAgo(new Date(notification.createdAt))}
-                      </div>
-                    </div>
-
-                    {!notification.isRead && (
-                      <div className="flex-shrink-0">
-                        <div className="h-2 w-2 rounded-full bg-blue-500" />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  notification={notification}
+                  onMarkAsRead={handleMarkAsRead}
+                  typeMeta={getNotificationTypeMeta(notification.type)}
+                  createdAtLabel={formatNotificationTimeAgo(notification.createdAt)}
+                />
               ))}
             </div>
           )}
@@ -173,21 +112,4 @@ export function NotificationBell() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function formatTimeAgo(date) {
-  if (!date) return "Vừa xong";
-
-  const now = new Date();
-  const diffMs = now - new Date(date);
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "Vừa xong";
-  if (diffMins < 60) return `${diffMins} phút trước`;
-  if (diffHours < 24) return `${diffHours} giờ trước`;
-  if (diffDays < 7) return `${diffDays} ngày trước`;
-
-  return date.toLocaleDateString("vi-VN");
 }
