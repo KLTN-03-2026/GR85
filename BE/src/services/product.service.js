@@ -8,6 +8,12 @@ import {
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
+const CATEGORY_PUBLIC_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  description: true,
+};
 
 export async function listProducts(query = {}) {
   const page = Math.max(1, Number(query.page ?? 1));
@@ -59,7 +65,7 @@ export async function listProducts(query = {}) {
       take: pageSize,
       orderBy,
       include: {
-        category: true,
+        category: { select: CATEGORY_PUBLIC_SELECT },
         supplier: true,
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
@@ -93,7 +99,7 @@ export async function getProductDetailBySlug(slug) {
   const product = await prisma.product.findUnique({
     where: { slug: normalizedSlug },
     include: {
-      category: true,
+      category: { select: CATEGORY_PUBLIC_SELECT },
       supplier: true,
       detail: true,
       images: {
@@ -120,7 +126,7 @@ export async function getProductDetailBySlug(slug) {
     take: 8,
     orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
     include: {
-      category: true,
+      category: { select: CATEGORY_PUBLIC_SELECT },
       supplier: true,
       images: {
         orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
@@ -285,7 +291,7 @@ export async function listMyWishlistProducts(userId) {
     include: {
       product: {
         include: {
-          category: true,
+          category: { select: CATEGORY_PUBLIC_SELECT },
           supplier: true,
           images: {
             orderBy: [
@@ -752,7 +758,7 @@ export async function getCatalogOverview() {
         { createdAt: "desc" },
       ],
       include: {
-        category: true,
+        category: { select: CATEGORY_PUBLIC_SELECT },
         supplier: true,
         detail: true,
         images: {
@@ -863,8 +869,10 @@ export async function createProduct(input) {
     throw new Error("Sale start time must be before end time");
   }
 
-  const category = await prisma.category.findUnique({
-    where: { slug: String(input.categorySlug).trim().toLowerCase() },
+  const category = await prisma.category.findFirst({
+    where: {
+      slug: String(input.categorySlug).trim().toLowerCase(),
+    },
   });
 
   if (!category) {
@@ -909,7 +917,7 @@ export async function createProduct(input) {
         : undefined,
     },
     include: {
-      category: true,
+      category: { select: CATEGORY_PUBLIC_SELECT },
       supplier: true,
       images: {
         orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
@@ -940,7 +948,7 @@ export async function createProduct(input) {
   const createdWithDetail = await prisma.product.findUnique({
     where: { id: created.id },
     include: {
-      category: true,
+      category: { select: CATEGORY_PUBLIC_SELECT },
       supplier: true,
       detail: true,
       images: {
@@ -984,8 +992,10 @@ export async function updateProductById(productId, input) {
   }
 
   if (input.categorySlug !== undefined) {
-    const category = await prisma.category.findUnique({
-      where: { slug: String(input.categorySlug).trim().toLowerCase() },
+    const category = await prisma.category.findFirst({
+      where: {
+        slug: String(input.categorySlug).trim().toLowerCase(),
+      },
     });
     if (!category) {
       throw new Error("Category not found");
@@ -1113,7 +1123,7 @@ export async function updateProductById(productId, input) {
       where: { id },
       data,
       include: {
-        category: true,
+        category: { select: CATEGORY_PUBLIC_SELECT },
         supplier: true,
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
@@ -1176,7 +1186,7 @@ export async function updateProductById(productId, input) {
   const updatedWithDetail = await prisma.product.findUnique({
     where: { id },
     include: {
-      category: true,
+      category: { select: CATEGORY_PUBLIC_SELECT },
       supplier: true,
       detail: true,
       images: {
