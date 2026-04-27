@@ -1,0 +1,9 @@
+ALTER TABLE `Categories`
+  ADD COLUMN `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3);
+
+UPDATE `Categories`
+SET `is_active` = TRUE,
+    `is_deleted` = FALSE
+WHERE `is_active` IS NULL OR `is_deleted` IS NULL;

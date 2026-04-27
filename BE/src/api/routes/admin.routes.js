@@ -19,6 +19,12 @@ import {
   updateUserByAdmin,
 } from "../../services/admin.service.js";
 import {
+  createCategoryByAdmin as createCategoryAdmin,
+  deleteCategoryByAdmin as removeCategoryByAdmin,
+  listCategoriesForAdmin as listCategoriesAdmin,
+  updateCategoryByAdmin as editCategoryByAdmin,
+} from "../../services/category-admin.service.js";
+import {
   moderateProductReviewByAdmin,
   replyToProductReview,
 } from "../../services/product.service.js";
@@ -49,6 +55,21 @@ const updateUserSchema = z.object({
   roleId: z.number().int().positive().nullable().optional(),
   status: z.enum(["ACTIVE", "BANNED", "UNVERIFIED"]).optional(),
 });
+
+const categoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().default(""),
+  status: z.enum(["all", "active", "inactive"]).default("all"),
+});
+
+const createCategorySchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(2000).optional().default(""),
+  isActive: z.boolean().default(true),
+});
+
+const updateCategorySchema = createCategorySchema.partial();
 
 const reviewModerationSchema = z.object({
   action: z.enum(["HIDE", "DELETE"]),
@@ -184,6 +205,13 @@ function hasPermission(req, permission) {
   );
 }
 
+function canManageCategories(req) {
+  return (
+    hasPermission(req, "admin_products_manage") ||
+    hasPermission(req, "admin_catalog_manage")
+  );
+}
+
 router.get("/reviews", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
@@ -207,6 +235,89 @@ router.get("/reviews", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.get("/categories", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = categoryQuerySchema.parse(req.query);
+    const data = await listCategoriesAdmin(parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.post("/categories", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = createCategorySchema.parse(req.body);
+    const data = await createCategoryAdmin(parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.patch("/categories/:categoryId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = updateCategorySchema.parse(req.body);
+    const data = await editCategoryByAdmin(req.params.categoryId, parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.delete("/categories/:categoryId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const data = await removeCategoryByAdmin(req.params.categoryId);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
   }
 });
 

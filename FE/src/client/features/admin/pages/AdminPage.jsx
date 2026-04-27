@@ -38,6 +38,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
+import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
@@ -59,7 +60,7 @@ const navItems = [
   { id: "users", label: "Người dùng", icon: Users },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
   { id: "products-create", label: "Thêm sản phẩm mới", icon: Plus },
-  { id: "products-inventory", label: "Kho sản phẩm", icon: Package },
+  { id: "products-inventory", label: "Danh mục sản phẩm", icon: Package },
   { id: "products-edit", label: "Chỉnh sửa sản phẩm", icon: Pencil },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
@@ -4423,14 +4424,14 @@ export default function AdminPage() {
                 isProductCreateTab
                   ? "Thêm sản phẩm mới"
                   : isProductInventoryTab
-                    ? "Kho sản phẩm"
+                    ? "Danh mục sản phẩm"
                     : "Chỉnh sửa sản phẩm"
               }
               description={
                 isProductCreateTab
                   ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
                   : isProductInventoryTab
-                    ? "Danh sách sản phẩm, tìm kiếm, ưu tiên hiển thị và thao tác nhanh"
+                    ? "Quản lý các loại sản phẩm như CPU, RAM, SSD, Mainboard và danh mục liên quan"
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
               }
             />
@@ -4919,7 +4920,11 @@ export default function AdminPage() {
                 </Panel>
               </div>
 
-              <div className={`${isProductCreateTab ? "hidden" : ""}`}>
+              <div className={`${isProductInventoryTab ? "" : "hidden"}`}>
+                <CategoryManagementPanel />
+              </div>
+
+              <div className={`${isProductEditTab ? "" : "hidden"}`}>
                 <Panel
                   title="Kho sản phẩm"
                   description="Task #31 + #32: tìm kiếm nhanh, phân trang 12 sản phẩm/trang"
