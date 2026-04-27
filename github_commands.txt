@@ -1,0 +1,330 @@
+TONG HOP LENH GIT + GITHUB (TIENG VIET)
+======================================
+
+0) CAI DAT LAN DAU
+------------------
+# Kiem tra phien ban Git
+git --version
+
+# Cai dat ten va email toan cuc
+git config --global user.name "Ten cua ban"
+git config --global user.email "ban@example.com"
+
+# Dat nhanh mac dinh la main
+git config --global init.defaultBranch main
+
+# Bat mau hien thi cho de nhin
+git config --global color.ui auto
+
+# Xem tat ca cau hinh
+git config --list
+
+
+1) TAO HOAC CLONE REPOSITORY
+----------------------------
+# Khoi tao repo trong thu muc hien tai
+git init
+
+# Clone repo ve may
+git clone <repo-url>
+
+# Clone vao thu muc cu the
+git clone <repo-url> <ten-thu-muc>
+
+# Them remote origin
+git remote add origin <repo-url>
+
+# Xem danh sach remote
+git remote -v
+
+
+2) QUY TRINH LAM VIEC HANG NGAY
+--------------------------------
+# Kiem tra trang thai
+git status
+
+# Xem thay doi chua stage
+git diff
+
+# Stage 1 file
+git add <file>
+
+# Stage tat ca
+git add .
+
+# Bo stage 1 file
+git restore --staged <file>
+
+# Tao commit tu phan da stage
+git commit -m "noi dung commit"
+
+# Commit nhanh cac file da theo doi
+git commit -am "noi dung commit"
+
+# Day code len nhanh hien tai
+git push
+
+# Day lan dau va gan upstream
+git push -u origin <branch>
+
+# Keo code moi nhat (fetch + merge)
+git pull
+
+# Chi lay ve thong tin moi, chua merge
+git fetch
+
+
+3) BRANCH
+---------
+# Liet ke branch local
+git branch
+
+# Liet ke tat ca branch (local + remote)
+git branch -a
+
+# Tao branch moi
+git branch <branch>
+
+# Chuyen sang branch
+git switch <branch>
+
+# Tao va chuyen branch trong 1 lenh
+git switch -c <branch>
+
+# Kieu cu
+git checkout <branch>
+
+# Doi ten branch hien tai
+git branch -m <ten-moi>
+
+# Xoa branch local (an toan)
+git branch -d <branch>
+
+# Xoa branch local bat chap
+git branch -D <branch>
+
+
+4) MERGE / REBASE
+-----------------
+# Gop branch vao branch hien tai
+git merge <branch>
+
+# Rebase branch hien tai len branch khac
+git rebase <branch>
+
+# Tiep tuc rebase sau khi xu ly conflict
+git rebase --continue
+
+# Huy rebase
+git rebase --abort
+
+# Huy merge
+git merge --abort
+
+
+5) HOAN TAC / RESET / RESTORE
+-----------------------------
+# Bo thay doi chua stage cua 1 file
+git restore <file>
+
+# Bo tat ca thay doi chua stage
+git restore .
+
+# Lui 1 commit, giu thay doi trong working tree
+git reset --soft HEAD~1
+
+# Lui 1 commit, bo stage nhung giu noi dung file
+git reset --mixed HEAD~1
+
+# Lui 1 commit va bo thay doi file (CAN THAN)
+git reset --hard HEAD~1
+
+# Tao commit dao nguoc 1 commit cu
+git revert <commit>
+
+
+6) STASH
+--------
+# Cat thay doi tam thoi
+git stash
+
+# Cat kem mo ta
+git stash push -m "wip: mo ta"
+
+# Xem danh sach stash
+git stash list
+
+# Ap dung stash moi nhat (khong xoa khoi list)
+git stash apply
+
+# Ap dung va xoa stash moi nhat
+git stash pop
+
+# Xoa 1 stash
+git stash drop stash@{0}
+
+# Xoa tat ca stash
+git stash clear
+
+
+7) LOG / LICH SU
+----------------
+# Xem lich su commit
+git log
+
+# Xem lich su gon
+git log --oneline
+
+# Xem lich su dang do thi
+git log --oneline --graph --decorate --all
+
+# Xem chi tiet 1 commit
+git show <commit>
+
+# Xem ai sua tung dong
+git blame <file>
+
+
+8) TAG / RELEASE
+----------------
+# Liet ke tag
+git tag
+
+# Tao lightweight tag
+git tag v1.0.0
+
+# Tao annotated tag
+git tag -a v1.0.0 -m "release v1.0.0"
+
+# Day 1 tag len remote
+git push origin v1.0.0
+
+# Day tat ca tag
+git push origin --tags
+
+# Xoa tag local
+git tag -d v1.0.0
+
+# Xoa tag remote
+git push origin :refs/tags/v1.0.0
+
+
+9) QUAN LY REMOTE
+-----------------
+# Xem chi tiet remote origin
+git remote show origin
+
+# Doi URL remote
+git remote set-url origin <url-moi>
+
+# Xoa remote
+git remote remove origin
+
+
+10) GITHUB CLI (gh)
+-------------------
+# Kiem tra cai dat gh
+gh --version
+
+# Dang nhap GitHub
+gh auth login
+
+# Kiem tra trang thai dang nhap
+gh auth status
+
+# Tao repo tu thu muc hien tai
+gh repo create <ten-repo> --private --source=. --remote=origin --push
+
+# Clone repo tren GitHub
+gh repo clone <owner>/<repo>
+
+# Mo repo tren trinh duyet
+gh repo view --web
+
+# Tao Pull Request
+gh pr create --base main --head <branch> --title "tieu de" --body "mo ta"
+
+# Liet ke PR
+gh pr list
+
+# Checkout PR theo so
+gh pr checkout <pr-number>
+
+# Merge PR va xoa branch
+gh pr merge <pr-number> --squash --delete-branch
+
+# Tao issue
+gh issue create --title "bug: tieu de" --body "noi dung"
+
+# Liet ke issue
+gh issue list
+
+
+11) FLOW DAY DU CHO DU AN MOI
+-----------------------------
+# Chay trong thu muc du an:
+git init
+git add .
+git commit -m "khoi tao du an"
+git branch -M main
+git remote add origin <repo-url>
+git push -u origin main
+
+
+12) FLOW DAY DU CHO FEATURE BRANCH
+----------------------------------
+# Tao nhanh tinh nang
+git switch -c feature/<ten>
+
+# Lam viec va commit
+git add .
+git commit -m "feat: ..."
+
+# Day branch len remote
+git push -u origin feature/<ten>
+
+# Sau khi merge PR, don dep local
+git switch main
+git pull
+git branch -d feature/<ten>
+
+
+13) CAU HINH SSH CHO GITHUB
+---------------------------
+# Tao SSH key (ed25519)
+ssh-keygen -t ed25519 -C "ban@example.com"
+
+# Bat ssh-agent (Linux/macOS)
+eval "$(ssh-agent -s)"
+
+# Them key vao agent
+ssh-add ~/.ssh/id_ed25519
+
+# In public key de copy len GitHub
+cat ~/.ssh/id_ed25519.pub
+
+# Test ket noi SSH
+ssh -T git@github.com
+
+
+14) .GITIGNORE NHANH
+--------------------
+# Vi du cho Node.js
+node_modules/
+.env
+dist/
+build/
+coverage/
+
+# Dung theo doi file da commit nhung van giu o may
+git rm --cached <file>
+
+
+15) LUU Y AN TOAN
+-----------------
+# Truoc khi pull, nen kiem tra:
+git status
+
+# Tren nhanh dung chung, uu tien git revert hon git reset --hard
+# Viet message commit ro rang, ngan gon
+# Pull/rebase thuong xuyen de giam xung dot
