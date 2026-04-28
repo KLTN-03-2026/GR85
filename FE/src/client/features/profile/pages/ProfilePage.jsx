@@ -90,6 +90,7 @@ export default function ProfilePage() {
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderFilter, setOrderFilter] = useState("ALL");
+  const [showPendingOrders, setShowPendingOrders] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
@@ -257,16 +258,22 @@ export default function ProfilePage() {
   }
 
   const filteredOrders = useMemo(
-    () =>
-      orderFilter === "ALL"
-        ? orders
-        : orders.filter((order) => getOrderFilterKey(order) === orderFilter),
-    [orderFilter, orders],
+    () => {
+      let result = orders;
+      if (!showPendingOrders) {
+        result = result.filter((order) => getOrderFilterKey(order) !== "PENDING_PAYMENT");
+      }
+      if (orderFilter !== "ALL") {
+        result = result.filter((order) => getOrderFilterKey(order) === orderFilter);
+      }
+      return result;
+    },
+    [orderFilter, orders, showPendingOrders],
   );
 
   const sortedVisibleOrders = useMemo(
     () =>
-      [...visibleOrders].sort(
+      [...filteredOrders].sort(
         (a, b) =>
           new Date(b?.createdAt ?? 0).getTime() -
           new Date(a?.createdAt ?? 0).getTime(),
