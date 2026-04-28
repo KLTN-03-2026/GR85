@@ -58,7 +58,7 @@ export function CategoryManagementPanel() {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message || "Khong tai duoc danh muc");
+          throw new Error(payload?.message || "Không tải được danh mục");
         }
 
         const payload = await response.json();
@@ -75,8 +75,8 @@ export function CategoryManagementPanel() {
         if (!cancelled) {
           setItems([]);
           toast({
-            title: "Khong tai duoc danh muc",
-            description: error instanceof Error ? error.message : "Da xay ra loi",
+            title: "Không tải được danh mục",
+            description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
             variant: "destructive",
           });
         }
@@ -189,7 +189,7 @@ export function CategoryManagementPanel() {
     const name = form.name.trim();
     if (!name) {
       toast({
-        title: "Ten danh muc la bat buoc",
+        title: "Tên danh mục là bắt buộc",
         variant: "destructive",
       });
       return;
@@ -215,11 +215,11 @@ export function CategoryManagementPanel() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message || "Khong luu duoc danh muc");
+        throw new Error(payload?.message || "Không lưu được danh mục");
       }
 
       toast({
-        title: editingId ? "Da cap nhat danh muc" : "Da tao danh muc",
+        title: editingId ? "Đã cập nhật danh mục" : "Đã tạo danh mục",
         description: name,
       });
 
@@ -233,8 +233,8 @@ export function CategoryManagementPanel() {
       await refreshList();
     } catch (error) {
       toast({
-        title: "Khong luu duoc danh muc",
-        description: error instanceof Error ? error.message : "Da xay ra loi",
+        title: "Không lưu được danh mục",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
@@ -247,7 +247,7 @@ export function CategoryManagementPanel() {
       return;
     }
 
-    if (!window.confirm(`Xoa danh muc ${category.name}? Neu danh muc co san pham se bi chan.`)) {
+    if (!window.confirm(`Xóa danh mục ${category.name}? Nếu danh mục có sản phẩm sẽ bị chặn.`)) {
       return;
     }
 
@@ -262,11 +262,11 @@ export function CategoryManagementPanel() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message || "Khong xoa duoc danh muc");
+        throw new Error(payload?.message || "Không xóa được danh mục");
       }
 
       toast({
-        title: "Da tam ngung danh muc",
+        title: "Đã tạm ngừng danh mục",
         description: category.name,
       });
 
@@ -278,8 +278,8 @@ export function CategoryManagementPanel() {
       await refreshList();
     } catch (error) {
       toast({
-        title: "Khong the xoa danh muc",
-        description: error instanceof Error ? error.message : "Da xay ra loi",
+        title: "Không thể xóa danh mục",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
@@ -359,7 +359,7 @@ export function CategoryManagementPanel() {
                     setPagination((prev) => ({ ...prev, page: 1 }));
                   }}
                 >
-                  Tim
+                  Tìm
                 </Button>
               </div>
             </div>
@@ -374,7 +374,7 @@ export function CategoryManagementPanel() {
                 }}
                 className="h-9 w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
               >
-                <option value="all">Tat ca</option>
+                <option value="all">Tất cả</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -579,7 +579,7 @@ export function CategoryManagementPanel() {
 
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="text-muted-foreground">
-              Trang {pagination.page} / {pagination.totalPages} - {pagination.totalItems} muc
+              Trang {pagination.page} / {pagination.totalPages} - {pagination.totalItems} mục
             </span>
             <div className="flex gap-2">
               <Button
@@ -588,7 +588,7 @@ export function CategoryManagementPanel() {
                 disabled={pagination.page <= 1}
                 onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
               >
-                Truoc
+                Trước
               </Button>
               <Button
                 size="sm"
