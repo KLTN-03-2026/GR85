@@ -520,8 +520,8 @@ export default function ProductDetailPage() {
                       <button
                         key={`rating-${item.rating}`}
                         type="button"
-                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewFilterRating === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
-                        onClick={() => setReviewFilterRating(String(item.rating))}
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewStarFilter === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
+                        onClick={() => setReviewStarFilter(String(item.rating))}
                       >
                         <span className="w-10 font-medium">{item.rating}★</span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
@@ -540,8 +540,8 @@ export default function ProductDetailPage() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={reviewFilterRating === "ALL" ? "default" : "outline"}
-                    onClick={() => setReviewFilterRating("ALL")}
+                    variant={reviewStarFilter === "all" ? "default" : "outline"}
+                    onClick={() => setReviewStarFilter("all")}
                   >
                     Tất cả
                   </Button>
@@ -550,8 +550,8 @@ export default function ProductDetailPage() {
                       key={`rating-filter-${rating}`}
                       type="button"
                       size="sm"
-                      variant={reviewFilterRating === String(rating) ? "default" : "outline"}
-                      onClick={() => setReviewFilterRating(String(rating))}
+                      variant={reviewStarFilter === String(rating) ? "default" : "outline"}
+                      onClick={() => setReviewStarFilter(String(rating))}
                     >
                       {rating} sao
                     </Button>
