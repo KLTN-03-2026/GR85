@@ -12,48 +12,124 @@ export const adminPermissionCatalog = [
     description: "Xem dashboard quản trị",
   },
   {
+    actionName: "admin_users_view",
+    description: "Chỉ xem danh sách người dùng",
+  },
+  {
+    actionName: "admin_users_edit",
+    description: "Xem và sửa người dùng",
+  },
+  {
     actionName: "admin_users_manage",
-    description: "Quản lý người dùng",
+    description: "Quản lý người dùng (toàn quyền)",
+  },
+  {
+    actionName: "admin_products_view",
+    description: "Chỉ xem danh sách sản phẩm",
+  },
+  {
+    actionName: "admin_products_edit",
+    description: "Xem và sửa sản phẩm",
   },
   {
     actionName: "admin_products_manage",
-    description: "Quản lý sản phẩm",
+    description: "Quản lý sản phẩm (toàn quyền)",
+  },
+  {
+    actionName: "admin_orders_view",
+    description: "Chỉ xem danh sách đơn hàng",
+  },
+  {
+    actionName: "admin_orders_edit",
+    description: "Xem và cập nhật trạng thái đơn hàng",
   },
   {
     actionName: "admin_orders_manage",
-    description: "Quản lý đơn hàng",
+    description: "Quản lý đơn hàng (toàn quyền)",
+  },
+  {
+    actionName: "admin_catalog_view",
+    description: "Chỉ xem danh mục",
+  },
+  {
+    actionName: "admin_catalog_edit",
+    description: "Xem và sửa danh mục",
   },
   {
     actionName: "admin_catalog_manage",
-    description: "Quản lý danh mục và nhà cung cấp",
+    description: "Quản lý danh mục (toàn quyền)",
+  },
+  {
+    actionName: "admin_vouchers_view",
+    description: "Chỉ xem danh sách voucher",
+  },
+  {
+    actionName: "admin_vouchers_edit",
+    description: "Xem và sửa voucher",
   },
   {
     actionName: "admin_vouchers_manage",
-    description: "Quản lý voucher",
+    description: "Quản lý voucher (toàn quyền)",
+  },
+  {
+    actionName: "admin_warehouse_view",
+    description: "Chỉ xem kho",
+  },
+  {
+    actionName: "admin_warehouse_edit",
+    description: "Xem và cập nhật kho",
   },
   {
     actionName: "admin_warehouse_manage",
-    description: "Quản lý kho",
+    description: "Quản lý kho (toàn quyền)",
+  },
+  {
+    actionName: "admin_reviews_view",
+    description: "Chỉ xem đánh giá",
+  },
+  {
+    actionName: "admin_reviews_edit",
+    description: "Xem và duyệt đánh giá",
   },
   {
     actionName: "admin_reviews_manage",
-    description: "Quản lý đánh giá",
+    description: "Quản lý đánh giá (toàn quyền)",
+  },
+  {
+    actionName: "admin_chat_view",
+    description: "Chỉ xem chat",
+  },
+  {
+    actionName: "admin_chat_edit",
+    description: "Xem và trả lời chat",
   },
   {
     actionName: "admin_chat_manage",
-    description: "Quản lý chat",
+    description: "Quản lý chat (toàn quyền)",
+  },
+  {
+    actionName: "admin_ai_build_view",
+    description: "Chỉ xem cấu hình AI",
+  },
+  {
+    actionName: "admin_ai_build_edit",
+    description: "Xem và sửa cấu hình AI",
   },
   {
     actionName: "admin_ai_build_manage",
-    description: "Quản lý cấu hình AI",
+    description: "Quản lý cấu hình AI (toàn quyền)",
   },
   {
     actionName: "admin_verification_view",
     description: "Xem xác thực email",
   },
   {
+    actionName: "admin_roles_view",
+    description: "Chỉ xem phân quyền",
+  },
+  {
     actionName: "admin_roles_manage",
-    description: "Quản lý phân quyền",
+    description: "Quản lý phân quyền (toàn quyền)",
   },
 ];
 
