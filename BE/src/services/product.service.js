@@ -241,9 +241,9 @@ export async function listProductReviewsBySlug(slug, input = {}) {
         message: String(reply.message ?? ""),
         createdAt: reply.createdAt,
         user: {
-          id: reply.user.id,
-          fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
-          role: reply.user.role?.name ?? null,
+          id: reply.sender.id,
+          fullName: String(reply.sender.fullName ?? "").trim() || String(reply.sender.email ?? "Ẩn danh"),
+          role: reply.sender.role?.name ?? null,
         },
       })),
     })),

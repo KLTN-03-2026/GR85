@@ -94,6 +94,7 @@ export default function ProfilePage() {
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
   const [reorderingOrderId, setReorderingOrderId] = useState(null);
+  const [showPendingOrders, setShowPendingOrders] = useState(false);
   const [myReviews, setMyReviews] = useState([]);
   const [myReviewsLoading, setMyReviewsLoading] = useState(false);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
@@ -266,7 +267,7 @@ export default function ProfilePage() {
 
   const sortedVisibleOrders = useMemo(
     () =>
-      [...visibleOrders].sort(
+      [...filteredOrders].sort(
         (a, b) =>
           new Date(b?.createdAt ?? 0).getTime() -
           new Date(a?.createdAt ?? 0).getTime(),
@@ -819,13 +820,6 @@ export default function ProfilePage() {
               >
                 Sổ địa chỉ
               </Button>
-              <Button
-                variant={activeTab === "reviews" ? "default" : "ghost"}
-                onClick={() => setActiveTab("reviews")}
-                className="rounded-b-none"
-              >
-                Đánh giá của tôi
-              </Button>
             </div>
 
             {/* Profile Tab */}
@@ -1227,9 +1221,6 @@ export default function ProfilePage() {
                         Tải lại
                       </Button>
                     </div>
-                    <Button variant="outline" onClick={loadMyOrders}>
-                      Tải lại
-                    </Button>
                   </div>
 
                   <div className="flex flex-wrap gap-2 border-b border-border pb-2">

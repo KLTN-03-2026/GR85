@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -35,12 +36,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -1348,6 +1344,7 @@ export default function AdminPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ reply }),
+        body: JSON.stringify({ message: reply }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1355,14 +1352,40 @@ export default function AdminPage() {
         throw new Error(payload?.message ?? "Không thể lưu phản hồi");
       }
 
-      setAdminReviews((prev) =>
-        prev.map((item) =>
-          Number(item.id) === Number(reviewId) ? payload : item,
-        ),
+      setAdminReviews(
+        (prev) =>
+          prev.map((item) =>
+            Number(item.id) === Number(reviewId) ? payload : item,
+          ),
+        prev.map((item) => {
+          if (Number(item.id) === Number(reviewId)) {
+            if (payload?.reviewId) {
+              const newThread = [
+                ...(item.thread || []),
+                {
+                  id: payload.id,
+                  senderId: payload.user?.id || payload.senderId,
+                  senderName: payload.user?.fullName || "Nhân viên",
+                  isStaff: true,
+                  message: payload.message,
+                  createdAt: payload.createdAt,
+                },
+              ];
+              return {
+                ...item,
+                thread: newThread,
+                threadStatus: "WAITING_CUSTOMER",
+              };
+            }
+            return { ...item, ...payload };
+          }
+          return item;
+        }),
       );
       setReviewReplyDraftById((prev) => ({
         ...prev,
         [reviewId]: String(payload?.adminReply ?? ""),
+        [reviewId]: "",
       }));
       toast({ title: "Đã lưu phản hồi đánh giá" });
     } catch (error) {
@@ -2803,10 +2826,16 @@ export default function AdminPage() {
       discountValue: String(item.discountValue ?? ""),
       minOrderValue: String(item.minOrderValue ?? "0"),
       usageLimit: String(item.usageLimit ?? "100"),
-      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
-      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
+      startDate: item.startDate
+        ? new Date(item.startDate).toISOString().slice(0, 16)
+        : "",
+      endDate: item.endDate
+        ? new Date(item.endDate).toISOString().slice(0, 16)
+        : "",
       status: String(item.status ?? "ACTIVE"),
-      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) =>
+        Number(user.id),
+      ),
     });
   }
 
@@ -2821,8 +2850,12 @@ export default function AdminPage() {
       const discountValue = Number(voucherForm.discountValue);
       const minOrderValue = Number(voucherForm.minOrderValue || 0);
       const usageLimit = Number(voucherForm.usageLimit || 100);
-      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
-      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+      const startDate = voucherForm.startDate
+        ? new Date(voucherForm.startDate)
+        : null;
+      const endDate = voucherForm.endDate
+        ? new Date(voucherForm.endDate)
+        : null;
 
       if (!normalizedCode) {
         throw new Error("Mã giảm giá không được để trống");
@@ -2856,7 +2889,9 @@ export default function AdminPage() {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         status: voucherForm.status,
-        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) =>
+          Number(value),
+        ),
       };
 
       const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
@@ -2871,7 +2906,9 @@ export default function AdminPage() {
       const result = await response.json().catch(() => null);
       if (!response.ok) {
         const fieldMessage = extractIssueMessage(result?.issues);
-        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
+        throw new Error(
+          fieldMessage || result?.message || "Cập nhật voucher thất bại",
+        );
       }
 
       await refreshDashboardSummary();
@@ -3413,7 +3450,10 @@ export default function AdminPage() {
   );
 
   const latestCustomerReply = useMemo(() => {
-    if (!Array.isArray(selectedReviewThread) || selectedReviewThread.length === 0) {
+    if (
+      !Array.isArray(selectedReviewThread) ||
+      selectedReviewThread.length === 0
+    ) {
       return null;
     }
 
@@ -5906,7 +5946,9 @@ export default function AdminPage() {
                         Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
                       </p>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Mã giảm giá</label>
+                        <label className="text-sm font-medium">
+                          Mã giảm giá
+                        </label>
                         <input
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.code}
@@ -5922,7 +5964,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Phạm vi mã</label>
+                          <label className="text-sm font-medium">
+                            Phạm vi mã
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.couponScope}
@@ -5934,12 +5978,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PRODUCT">Giảm giá sản phẩm</option>
-                            <option value="SHIPPING">Giảm phí vận chuyển</option>
+                            <option value="SHIPPING">
+                              Giảm phí vận chuyển
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Loại giảm</label>
+                          <label className="text-sm font-medium">
+                            Loại giảm
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.discountType}
@@ -5951,12 +5999,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PERCENT">%</option>
-                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                            <option value="FIXED_AMOUNT">
+                              Số tiền cố định
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Giá trị giảm</label>
+                          <label className="text-sm font-medium">
+                            Giá trị giảm
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -5974,7 +6026,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Đơn tối thiểu</label>
+                          <label className="text-sm font-medium">
+                            Đơn tối thiểu
+                          </label>
                           <input
                             type="number"
                             min="0"
@@ -5989,7 +6043,9 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Số lượt dùng</label>
+                          <label className="text-sm font-medium">
+                            Số lượt dùng
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -6006,7 +6062,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                        <label className="text-sm font-medium">
+                          Thời gian bắt đầu
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -6021,7 +6079,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian kết thúc</label>
+                        <label className="text-sm font-medium">
+                          Thời gian kết thúc
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -6036,7 +6096,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Trạng thái</label>
+                        <label className="text-sm font-medium">
+                          Trạng thái
+                        </label>
                         <select
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.status}
@@ -6712,60 +6774,60 @@ export default function AdminPage() {
               >
                 <div className="mb-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
                   <div className="grid gap-3 md:grid-cols-5">
-                  <div className="grid gap-2">
-                    <label className="text-xs font-medium">Tìm kiếm</label>
-                    <input
-                      type="text"
-                      placeholder="Khách, sản phẩm, nội dung..."
-                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                      value={reviewSearchKeyword}
-                      onChange={(e) => setReviewSearchKeyword(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-medium">Sắp xếp</label>
-                    <select
-                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                      value={reviewSortBy}
-                      onChange={(e) => setReviewSortBy(e.target.value)}
-                    >
-                      <option value="newest">Mới nhất</option>
-                      <option value="oldest">Cũ nhất</option>
-                      <option value="highest-rating">Đánh giá cao</option>
-                      <option value="lowest-rating">Đánh giá thấp</option>
-                    </select>
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-medium">Hiển thị</label>
-                    <select
-                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                      value={reviewStatusFilter}
-                      onChange={(e) => setReviewStatusFilter(e.target.value)}
-                    >
-                      <option value="all">Tất cả</option>
-                      <option value="visible">Đang hiển thị</option>
-                      <option value="hidden">Đã ẩn</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end justify-between gap-2 md:col-span-2">
-                    <span className="text-xs text-muted-foreground">
-                      Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
-                      giá
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!hasActiveReviewFilters}
-                      onClick={() => {
-                        setReviewSearchKeyword("");
-                        setReviewSortBy("newest");
-                        setReviewStatusFilter("all");
-                        setReviewQuickFilter("all");
-                      }}
-                    >
-                      Xóa bộ lọc
-                    </Button>
-                  </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Khách, sản phẩm, nội dung..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={reviewSearchKeyword}
+                        onChange={(e) => setReviewSearchKeyword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Sắp xếp</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={reviewSortBy}
+                        onChange={(e) => setReviewSortBy(e.target.value)}
+                      >
+                        <option value="newest">Mới nhất</option>
+                        <option value="oldest">Cũ nhất</option>
+                        <option value="highest-rating">Đánh giá cao</option>
+                        <option value="lowest-rating">Đánh giá thấp</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Hiển thị</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={reviewStatusFilter}
+                        onChange={(e) => setReviewStatusFilter(e.target.value)}
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="visible">Đang hiển thị</option>
+                        <option value="hidden">Đã ẩn</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end justify-between gap-2 md:col-span-2">
+                      <span className="text-xs text-muted-foreground">
+                        Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
+                        giá
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!hasActiveReviewFilters}
+                        onClick={() => {
+                          setReviewSearchKeyword("");
+                          setReviewSortBy("newest");
+                          setReviewStatusFilter("all");
+                          setReviewQuickFilter("all");
+                        }}
+                      >
+                        Xóa bộ lọc
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -6911,7 +6973,10 @@ export default function AdminPage() {
                               className="space-y-3"
                             >
                               <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-secondary/50 p-1">
-                                <TabsTrigger value="overview" className="text-xs">
+                                <TabsTrigger
+                                  value="overview"
+                                  className="text-xs"
+                                >
                                   Tổng quan
                                 </TabsTrigger>
                                 <TabsTrigger
@@ -6925,7 +6990,10 @@ export default function AdminPage() {
                                 </TabsTrigger>
                               </TabsList>
 
-                              <TabsContent value="overview" className="mt-0 space-y-3">
+                              <TabsContent
+                                value="overview"
+                                className="mt-0 space-y-3"
+                              >
                                 <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
                                   <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
                                   <p className="mt-1 whitespace-pre-wrap">
@@ -6936,10 +7004,12 @@ export default function AdminPage() {
 
                                 <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
                                   <div>
-                                    Tạo lúc: {formatDate(selectedReview.createdAt)}
+                                    Tạo lúc:{" "}
+                                    {formatDate(selectedReview.createdAt)}
                                   </div>
                                   <div>
-                                    Cập nhật: {formatDate(selectedReview.updatedAt)}
+                                    Cập nhật:{" "}
+                                    {formatDate(selectedReview.updatedAt)}
                                   </div>
                                   <div>
                                     Kiểm duyệt:{" "}
@@ -6964,7 +7034,9 @@ export default function AdminPage() {
                                   <div>
                                     Xử lý lúc:{" "}
                                     {selectedReview.threadResolvedAt
-                                      ? formatDate(selectedReview.threadResolvedAt)
+                                      ? formatDate(
+                                          selectedReview.threadResolvedAt,
+                                        )
                                       : "-"}
                                   </div>
                                 </div>
@@ -7048,7 +7120,10 @@ export default function AdminPage() {
                                 )}
                               </TabsContent>
 
-                              <TabsContent value="reply" className="mt-0 space-y-3">
+                              <TabsContent
+                                value="reply"
+                                className="mt-0 space-y-3"
+                              >
                                 <div className="rounded-xl border border-border/60 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-3">
                                   <div className="rounded-lg border border-sky-100 bg-white/80 px-3 py-2">
                                     <p className="text-xs font-semibold text-sky-700">
@@ -7204,7 +7279,7 @@ export default function AdminPage() {
                   </div>
                 )}
               </Panel>
-             </div>
+            </div>
           </section>
 
           <Dialog
@@ -7418,15 +7493,18 @@ export default function AdminPage() {
                             .trim()
                             .toLowerCase() === "admin@gmail.com";
 
-                        const hasManage = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_manage`,
-                        );
-                        const hasEdit = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_edit`,
-                        );
-                        const hasView = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_view`,
-                        );
+                        const hasManage =
+                          effectiveSelectedPermissionDraft.includes(
+                            `admin_${module}_manage`,
+                          );
+                        const hasEdit =
+                          effectiveSelectedPermissionDraft.includes(
+                            `admin_${module}_edit`,
+                          );
+                        const hasView =
+                          effectiveSelectedPermissionDraft.includes(
+                            `admin_${module}_view`,
+                          );
 
                         let currentLevel = "none";
                         if (hasManage) {
@@ -7438,9 +7516,10 @@ export default function AdminPage() {
                         }
 
                         // Find label for this module
-                        const moduleLabel = navItems.find(
-                          (item) => permissionModuleMap[item.id] === module,
-                        )?.label || module;
+                        const moduleLabel =
+                          navItems.find(
+                            (item) => permissionModuleMap[item.id] === module,
+                          )?.label || module;
 
                         return (
                           <div
@@ -7512,7 +7591,9 @@ export default function AdminPage() {
                                         newPermissions.add(
                                           `admin_${module}_edit`,
                                         );
-                                      } else if (levelOption.value === "manage") {
+                                      } else if (
+                                        levelOption.value === "manage"
+                                      ) {
                                         newPermissions.add(
                                           `admin_${module}_view`,
                                         );
@@ -7526,9 +7607,8 @@ export default function AdminPage() {
 
                                       setPermissionDraftByUserId((prev) => ({
                                         ...prev,
-                                        [selectedPermissionTarget.id]: Array.from(
-                                          newPermissions,
-                                        ),
+                                        [selectedPermissionTarget.id]:
+                                          Array.from(newPermissions),
                                       }));
                                     }}
                                     disabled={isSuperAdmin}
