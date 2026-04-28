@@ -11,6 +11,7 @@ export async function requestAiBuildRecommendation(input) {
     body: JSON.stringify({
       budget: Number(input?.budget ?? 0),
       usage: String(input?.usage ?? "general"),
+      targetCategories: input?.targetCategories || null,
       preferredBrands: Array.isArray(input?.preferredBrands)
         ? input.preferredBrands.map((brand) => String(brand))
         : [],

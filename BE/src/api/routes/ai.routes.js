@@ -11,6 +11,7 @@ const router = Router();
 const recommendSchema = z.object({
   budget: z.number().positive(),
   usage: z.string().min(1),
+  targetCategories: z.array(z.string()).optional().nullable(),
   preferredBrands: z.array(z.string()).optional().default([]),
   allowUsed: z.boolean().optional().default(false),
 });
