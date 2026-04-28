@@ -11,7 +11,6 @@ import {
   listMyReviewHistory,
   loginUser,
   listUserAddresses,
-  listMyReviews,
   listMyOrders,
   replyToMyReview,
   resendVerificationCode,

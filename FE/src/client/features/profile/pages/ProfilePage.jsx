@@ -136,7 +136,6 @@ export default function ProfilePage() {
   const [isLocatingAddress, setIsLocatingAddress] = useState(false);
 
   const [reviewView, setReviewView] = useState("history");
-  const [myReviews, setMyReviews] = useState([]);
   const [pendingReviews, setPendingReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(false);
