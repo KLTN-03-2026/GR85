@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
@@ -17,17 +17,58 @@ export default function ProductDetailPage() {
   const [reviewSummary, setReviewSummary] = useState({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
+  const [reviewImages, setReviewImages] = useState([]);
+  const [reviewImagePreviews, setReviewImagePreviews] = useState([]);
   const [reviewError, setReviewError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  const [reviewFilterRating, setReviewFilterRating] = useState("ALL");
-  const [replyingReviewId, setReplyingReviewId] = useState(null);
+  const [reviewStarFilter, setReviewStarFilter] = useState("all");
+  const [expandedReviewThreads, setExpandedReviewThreads] = useState({});
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
+
+  const refreshReviewEligibility = useCallback(
+    async (productSlug, authToken, isCancelled = () => false) => {
+      if (!productSlug || !authToken || !isAuthenticated) {
+        setCanReview(false);
+        setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/products/${productSlug}/review-eligibility`,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        );
+
+        const payload = await response.json().catch(() => ({}));
+        if (isCancelled()) {
+          return;
+        }
+
+        setCanReview(Boolean(payload?.canReview));
+        setReviewEligibilityMessage(String(payload?.reason ?? ""));
+      } catch {
+        if (isCancelled()) {
+          return;
+        }
+
+        setCanReview(false);
+        setReviewEligibilityMessage(
+          "Không thể kiểm tra quyền đánh giá lúc này",
+        );
+      }
+    },
+    [isAuthenticated],
+  );
 
   const loadReviews = async (productSlug, isCancelled = () => false) => {
     try {
@@ -58,6 +99,19 @@ export default function ProductDetailPage() {
       setReviewSummary({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
     }
   };
+
+  useEffect(() => {
+    const nextPreviews = reviewImages.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    setReviewImagePreviews(nextPreviews);
+
+    return () => {
+      nextPreviews.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    };
+  }, [reviewImages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,50 +162,14 @@ export default function ProductDetailPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadReviewEligibility() {
-      if (!product?.slug || !token || !isAuthenticated) {
-        setCanReview(false);
-        setReviewEligibilityMessage("Vui lòng đăng nhập để gửi đánh giá");
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/products/${product.slug}/review-eligibility`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        const payload = await response.json();
-        if (cancelled) {
-          return;
-        }
-
-        setCanReview(Boolean(payload?.canReview));
-        setReviewEligibilityMessage(String(payload?.reason ?? ""));
-      } catch {
-        if (cancelled) {
-          return;
-        }
-
-        setCanReview(false);
-        setReviewEligibilityMessage(
-          "Không thể kiểm tra quyền đánh giá lúc này",
-        );
-      }
-    }
-
     if (isHydrated) {
-      loadReviewEligibility();
+      refreshReviewEligibility(product?.slug, token, () => cancelled);
     }
 
     return () => {
       cancelled = true;
     };
-  }, [product?.slug, token, isAuthenticated, isHydrated]);
+  }, [product?.slug, token, isHydrated, refreshReviewEligibility]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,16 +271,21 @@ export default function ProductDetailPage() {
     try {
       setIsSubmittingReview(true);
 
+      const formData = new FormData();
+      formData.append("rating", String(reviewRating));
+      if (reviewComment.trim()) {
+        formData.append("comment", reviewComment.trim());
+      }
+      reviewImages.forEach((file) => {
+        formData.append("images", file);
+      });
+
       const response = await fetch(`/api/products/${product.slug}/reviews`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          rating: Number(reviewRating),
-          comment: reviewComment.trim() || undefined,
-        }),
+        body: formData,
       });
 
       const responseText = await response.text();
@@ -282,7 +305,9 @@ export default function ProductDetailPage() {
 
       setReviewMessage("Đánh giá của bạn đã được ghi nhận");
       setReviewComment("");
+      setReviewImages([]);
       await loadReviews(product.slug);
+      await refreshReviewEligibility(product.slug, token);
     } catch (error) {
       setReviewError(
         error instanceof Error ? error.message : "Gửi đánh giá thất bại",
@@ -292,52 +317,35 @@ export default function ProductDetailPage() {
     }
   }
 
-  const visibleReviews = useMemo(() => {
-    if (reviewFilterRating === "ALL") {
+  const reviewStarCounts = useMemo(() => {
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const item of reviews) {
+      const rating = Number(item?.rating ?? 0);
+      if (rating >= 1 && rating <= 5) {
+        counts[rating] += 1;
+      }
+    }
+    return counts;
+  }, [reviews]);
+
+  const filteredReviews = useMemo(() => {
+    if (reviewStarFilter === "all") {
       return reviews;
     }
 
-    return reviews.filter((review) => Number(review.rating ?? 0) === Number(reviewFilterRating));
-  }, [reviewFilterRating, reviews]);
-
-  async function replyToReview(reviewId) {
-    if (!isHydrated || !isAuthenticated || !token) {
-      setReviewMessage("Vui lòng đăng nhập để phản hồi đánh giá");
-      return;
+    const target = Number(reviewStarFilter);
+    if (!Number.isFinite(target)) {
+      return reviews;
     }
 
-    if (!product?.slug) {
-      return;
-    }
+    return reviews.filter((item) => Number(item?.rating ?? 0) === target);
+  }, [reviewStarFilter, reviews]);
 
-    const message = window.prompt("Nhập phản hồi của bạn:");
-    if (!message || !message.trim()) {
-      return;
-    }
-
-    try {
-      setReplyingReviewId(reviewId);
-      const response = await fetch(`/api/products/${product.slug}/reviews/${reviewId}/replies`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: message.trim() }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "Không thể gửi phản hồi");
-      }
-
-      setReviewMessage("Phản hồi của bạn đã được gửi");
-      await loadReviews(product.slug);
-    } catch (error) {
-      setReviewError(error instanceof Error ? error.message : "Không thể gửi phản hồi");
-    } finally {
-      setReplyingReviewId(null);
-    }
+  function toggleReviewThread(reviewId) {
+    setExpandedReviewThreads((prev) => ({
+      ...prev,
+      [reviewId]: !prev[reviewId],
+    }));
   }
 
   return (
@@ -598,6 +606,45 @@ export default function ProductDetailPage() {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-sm font-medium">
+                          Ảnh đánh giá
+                        </label>
+                        <span className="text-xs text-muted-foreground">
+                          Tối đa 6 ảnh, JPG/PNG/WEBP
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
+                        onChange={(event) => {
+                          const files = Array.from(
+                            event.target.files ?? [],
+                          ).slice(0, 6);
+                          setReviewImages(files);
+                        }}
+                      />
+                      {reviewImagePreviews.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {reviewImagePreviews.map((item, index) => (
+                            <div
+                              key={`${item.file.name}-${index}`}
+                              className="relative overflow-hidden rounded-xl border border-border/60 bg-secondary/20"
+                            >
+                              <img
+                                src={item.previewUrl}
+                                alt={`Ảnh đánh giá ${index + 1}`}
+                                className="h-28 w-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
                     <Button type="submit" disabled={isSubmittingReview}>
                       {isSubmittingReview ? "Đang gửi..." : "Gửi đánh giá"}
                     </Button>
@@ -626,59 +673,192 @@ export default function ProductDetailPage() {
                   </p>
                 )}
 
-                <div className="space-y-3">
-                  {visibleReviews.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Chưa có đánh giá nào.</p>
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-secondary/20 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[
+                        { id: "all", label: "Tất cả", count: reviews.length },
+                        { id: "5", label: "5 sao", count: reviewStarCounts[5] },
+                        { id: "4", label: "4 sao", count: reviewStarCounts[4] },
+                        { id: "3", label: "3 sao", count: reviewStarCounts[3] },
+                        { id: "2", label: "2 sao", count: reviewStarCounts[2] },
+                        { id: "1", label: "1 sao", count: reviewStarCounts[1] },
+                      ].map((filterOption) => {
+                        const isActive = reviewStarFilter === filterOption.id;
+                        return (
+                          <button
+                            key={`review-star-filter-${filterOption.id}`}
+                            type="button"
+                            onClick={() => setReviewStarFilter(filterOption.id)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                              isActive
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {filterOption.id !== "all" ? (
+                              <Star
+                                className={`h-3.5 w-3.5 ${
+                                  isActive
+                                    ? "fill-amber-400 text-amber-500"
+                                    : "text-amber-500"
+                                }`}
+                              />
+                            ) : null}
+                            <span>{filterOption.label}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                                isActive
+                                  ? "bg-primary/20 text-primary"
+                                  : "bg-secondary/80 text-muted-foreground"
+                              }`}
+                            >
+                              {filterOption.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {reviews.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có đánh giá nào.
+                    </p>
+                  ) : filteredReviews.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Không có đánh giá nào phù hợp với bộ lọc sao đã chọn.
+                    </p>
                   ) : (
-                    visibleReviews.map((review) => (
-                      <div key={review.id} className="rounded-lg border border-border/60 bg-background p-3">
+                    filteredReviews.map((review) => {
+                      const thread = Array.isArray(review?.thread)
+                        ? review.thread
+                        : [];
+                      const firstStaffReply =
+                        thread.find((msg) => Boolean(msg?.isStaff)) ?? null;
+                      const firstStaffReplyId =
+                        firstStaffReply?.id !== undefined &&
+                        firstStaffReply?.id !== null
+                          ? String(firstStaffReply.id)
+                          : null;
+                      const expandableThread = firstStaffReplyId
+                        ? thread.filter(
+                            (msg) => String(msg?.id) !== firstStaffReplyId,
+                          )
+                        : thread;
+                      const isExpanded = Boolean(
+                        expandedReviewThreads[review.id],
+                      );
+                      const hiddenThreadCount = expandableThread.length;
+
+                      return (
+                        <div
+                          key={review.id}
+                          className="rounded-lg border border-border/60 bg-background p-3"
+                        >
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-sm font-semibold">{review?.user?.fullName ?? "Ẩn danh"}</p>
                           <p className="text-xs text-muted-foreground">{formatRelativeTime(review.createdAt)}</p>
                         </div>
-                        <p className="mt-1 text-sm text-amber-600">{"★".repeat(Number(review.rating ?? 0))}</p>
-                        {review.comment && <p className="mt-2 text-sm">{review.comment}</p>}
+                        <p className="mt-1 text-sm text-amber-600">
+                          {"★".repeat(Number(review.rating ?? 0))}
+                        </p>
+                        {review.comment && (
+                          <p className="mt-2 text-sm">{review.comment}</p>
+                        )}
 
-                        {review.adminReply ? (
+                        {Array.isArray(review?.images) &&
+                        review.images.length > 0 ? (
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {review.images.map((image) => (
+                              <img
+                                key={image.id}
+                                src={image.imageUrl}
+                                alt="Ảnh đánh giá"
+                                className="h-24 w-full rounded-md border border-border/60 object-cover"
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {firstStaffReply ? (
                           <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
-                            <p className="text-xs font-semibold text-sky-700">Phản hồi từ cửa hàng</p>
-                            <p className="mt-1 text-sm text-slate-700">{review.adminReply}</p>
+                            <p className="text-xs font-semibold text-sky-700">
+                              Phản hồi đầu tiên từ cửa hàng
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                              {String(firstStaffReply.message ?? "")}
+                            </p>
+                            {firstStaffReply.createdAt ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatDate(firstStaffReply.createdAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : review.adminReply ? (
+                          <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-sky-700">
+                              Phản hồi đầu tiên từ cửa hàng
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700">
+                              {review.adminReply}
+                            </p>
                             {review.adminRepliedAt ? (
                               <p className="mt-1 text-xs text-slate-500">{formatDate(review.adminRepliedAt)}</p>
                             ) : null}
                           </div>
                         ) : null}
 
-                        {Array.isArray(review.replies) && review.replies.length > 0 ? (
-                          <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
-                            {review.replies.map((reply) => (
-                              <div key={reply.id} className="rounded-md bg-muted/40 p-2 text-sm">
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="font-medium">
-                                    {reply.user?.fullName ?? "Ẩn danh"}
-                                    {reply.user?.role ? ` · ${reply.user.role}` : ""}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">{formatRelativeTime(reply.createdAt)}</p>
-                                </div>
-                                <p className="mt-1">{reply.message}</p>
-                              </div>
-                            ))}
+                        {hiddenThreadCount > 0 ? (
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleReviewThread(review.id)}
+                            >
+                              {isExpanded
+                                ? "Ẩn bớt hội thoại"
+                                : `Xem thêm hội thoại (${hiddenThreadCount})`}
+                            </Button>
                           </div>
                         ) : null}
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => replyToReview(review.id)}
-                            disabled={replyingReviewId === review.id}
-                          >
-                            {replyingReviewId === review.id ? "Đang gửi..." : "Phản hồi"}
-                          </Button>
-                        </div>
+                        {isExpanded && expandableThread.length > 0 ? (
+                          <div className="mt-3 rounded-md border border-border/60 bg-secondary/30 px-3 py-2">
+                            <p className="text-xs font-semibold text-muted-foreground">
+                              Hội thoại chi tiết
+                            </p>
+                            <div className="mt-2 space-y-2">
+                              {expandableThread.map((msg) => (
+                                <div
+                                  key={String(msg.id)}
+                                  className={`rounded-md border px-3 py-2 text-sm ${
+                                    msg.isStaff
+                                      ? "border-sky-200 bg-sky-50"
+                                      : "border-emerald-200 bg-emerald-50"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                    <span className="font-medium text-slate-700">
+                                      {msg.isStaff
+                                        ? "Nhân viên"
+                                        : (review?.user?.fullName ??
+                                          "Khách hàng")}
+                                    </span>
+                                    <span>{formatDate(msg.createdAt)}</span>
+                                  </div>
+                                  <p className="mt-1 text-slate-700 whitespace-pre-wrap">
+                                    {String(msg.message ?? "")}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import dns from "node:dns";
-import { UserStatus } from "@prisma/client";
+import { OrderStatus, PaymentStatus, UserStatus } from "@prisma/client";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
@@ -112,7 +112,8 @@ export async function registerUser(input) {
   }
 
   return serializeData({
-    message: "Đăng ký thành công. Vui lòng kiểm tra email để xác minh tài khoản",
+    message:
+      "Đăng ký thành công. Vui lòng kiểm tra email để xác minh tài khoản",
     email: user.email,
     verificationRequired: true,
   });
@@ -258,10 +259,14 @@ export async function requestPasswordReset(input) {
         purpose: verificationPurposes.PASSWORD_RESET,
       });
     } catch {
-      throw new Error("Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau");
+      throw new Error(
+        "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau",
+      );
     }
   } catch {
-    throw new Error("Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau");
+    throw new Error(
+      "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau",
+    );
   }
 
   return serializeData({
@@ -412,7 +417,11 @@ export async function getMyOrderDetail(userId, orderId) {
           product: {
             include: {
               images: {
-                orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+                orderBy: [
+                  { isPrimary: "desc" },
+                  { sortOrder: "asc" },
+                  { id: "asc" },
+                ],
                 take: 1,
               },
             },
@@ -449,14 +458,16 @@ export async function getMyOrderDetail(userId, orderId) {
         id: item.product.id,
         name: item.product.name,
         slug: item.product.slug,
-        imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+        imageUrl:
+          item.product.images?.[0]?.imageUrl ??
+          "/images/component-placeholder.svg",
       },
     })),
     statusHistory: order.statusHistories,
   });
 }
 
-export async function listMyReviews(userId) {
+export async function listMyReviewHistory(userId) {
   const normalizedUserId = Number(userId);
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     throw new Error("ID người dùng không hợp lệ");
@@ -464,61 +475,299 @@ export async function listMyReviews(userId) {
 
   const reviews = await prisma.review.findMany({
     where: { userId: normalizedUserId },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }],
     include: {
       product: {
-        include: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
           images: {
-            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+            orderBy: [
+              { isPrimary: "desc" },
+              { sortOrder: "asc" },
+              { id: "asc" },
+            ],
             take: 1,
           },
         },
       },
       replies: {
         orderBy: { createdAt: "asc" },
+        take: 200,
         include: {
-          user: {
+          sender: {
             select: {
               id: true,
               fullName: true,
               email: true,
-              role: {
-                select: {
-                  name: true,
-                },
-              },
             },
           },
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
         },
       },
     },
   });
 
-  return serializeData(
-    reviews.map((review) => ({
-      id: review.id,
-      rating: Number(review.rating ?? 0),
-      comment: review.comment ? String(review.comment) : "",
-      status: review.status,
-      moderationReason: review.moderationReason ?? null,
-      createdAt: review.createdAt,
-      product: {
-        id: review.product.id,
-        name: review.product.name,
-        slug: review.product.slug,
-        imageUrl: review.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+  return serializeData({
+    items: reviews.map((review) => mapMyReview(review, normalizedUserId)),
+  });
+}
+
+export async function listMyPendingReviews(userId) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  const orderItems = await prisma.orderItem.findMany({
+    where: {
+      order: {
+        userId: normalizedUserId,
+        orderStatus: OrderStatus.DELIVERED,
+        paymentStatus: PaymentStatus.PAID,
       },
-      replies: review.replies.map((reply) => ({
-        id: reply.id,
-        message: String(reply.message ?? ""),
-        createdAt: reply.createdAt,
-        user: {
-          id: reply.user.id,
-          fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
-          role: reply.user.role?.name ?? null,
+    },
+    orderBy: [{ order: { createdAt: "desc" } }, { id: "desc" }],
+    include: {
+      order: {
+        select: {
+          id: true,
+          createdAt: true,
+          updatedAt: true,
+          orderStatus: true,
+          paymentStatus: true,
         },
-      })),
-    })),
+      },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          images: {
+            orderBy: [
+              { isPrimary: "desc" },
+              { sortOrder: "asc" },
+              { id: "asc" },
+            ],
+            take: 1,
+          },
+        },
+      },
+      reviews: {
+        where: { userId: normalizedUserId },
+        select: { id: true },
+        take: 1,
+      },
+    },
+    take: 300,
+  });
+
+  const pending = orderItems
+    .filter((item) => (item.reviews ?? []).length === 0)
+    .map((item) => ({
+      orderId: item.orderId,
+      orderCreatedAt: item.order?.createdAt ?? null,
+      product: {
+        id: item.product?.id,
+        name: item.product?.name ?? "",
+        slug: item.product?.slug ?? "",
+        imageUrl:
+          item.product?.images?.[0]?.imageUrl ??
+          "/images/component-placeholder.svg",
+      },
+      quantity: Number(item.quantity ?? 0),
+    }));
+
+  return serializeData({
+    items: pending,
+  });
+}
+
+export async function getMyReviewThread(userId, reviewIdInput) {
+  const normalizedUserId = Number(userId);
+  const reviewId = Number(reviewIdInput);
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Mã đánh giá không hợp lệ");
+  }
+
+  const review = await prisma.review.findFirst({
+    where: { id: reviewId, userId: normalizedUserId },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+      replier: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!review) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  return serializeData({
+    reviewId: review.id,
+    product: review.product,
+    thread: mapReviewThread(review, normalizedUserId),
+  });
+}
+
+export async function replyToMyReview(userId, reviewIdInput, input = {}) {
+  const normalizedUserId = Number(userId);
+  const reviewId = Number(reviewIdInput);
+  const message = String(input.message ?? "").trim();
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Mã đánh giá không hợp lệ");
+  }
+  if (!message) {
+    throw new Error("Nội dung phản hồi là bắt buộc");
+  }
+  if (message.length > 2000) {
+    throw new Error("Nội dung phản hồi quá dài");
+  }
+
+  const existing = await prisma.review.findFirst({
+    where: { id: reviewId, userId: normalizedUserId },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.reviewReply.create({
+      data: {
+        reviewId,
+        senderId: normalizedUserId,
+        message,
+      },
+    });
+
+    await tx.review.update({
+      where: { id: reviewId },
+      data: {
+        threadStatus: "WAITING_ADMIN",
+        threadResolvedBy: null,
+        threadResolvedAt: null,
+      },
+    });
+  });
+
+  return getMyReviewThread(normalizedUserId, reviewId);
+}
+
+function mapMyReview(review, userId) {
+  return {
+    id: review.id,
+    productId: review.productId,
+    rating: Number(review.rating ?? 0),
+    comment: review.comment ? String(review.comment) : "",
+    isHidden: Boolean(review.isHidden),
+    hiddenReason: review.hiddenReason ? String(review.hiddenReason) : "",
+    adminReply: review.adminReply ? String(review.adminReply) : "",
+    adminRepliedAt: review.adminRepliedAt,
+    threadStatus: String(review.threadStatus ?? "OPEN"),
+    threadResolvedAt: review.threadResolvedAt,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+    product: review.product
+      ? {
+          id: review.product.id,
+          name: review.product.name ?? "",
+          slug: review.product.slug ?? "",
+          imageUrl:
+            review.product.images?.[0]?.imageUrl ??
+            "/images/component-placeholder.svg",
+        }
+      : null,
+    thread: mapReviewThread(review, userId),
+  };
+}
+
+function mapReviewThread(review, userId) {
+  const replies = Array.isArray(review?.replies) ? review.replies : [];
+  const thread = replies.map((reply) => {
+    const senderId = Number(reply.senderId);
+    const isStaff =
+      Number.isFinite(senderId) && senderId > 0 && senderId !== Number(userId);
+
+    return {
+      id: reply.id,
+      senderId,
+      senderName:
+        String(reply.sender?.fullName ?? "").trim() ||
+        String(reply.sender?.email ?? "").trim() ||
+        (isStaff ? "Nhân viên" : "Bạn"),
+      isStaff,
+      message: String(reply.message ?? ""),
+      createdAt: reply.createdAt,
+    };
+  });
+
+  const fallbackAdminReply = String(review?.adminReply ?? "").trim();
+  const fallbackAdminRepliedAt = review?.adminRepliedAt
+    ? new Date(review.adminRepliedAt)
+    : null;
+  const hasFallback =
+    Boolean(fallbackAdminReply) &&
+    !thread.some(
+      (item) => String(item.message ?? "").trim() === fallbackAdminReply,
+    );
+
+  if (hasFallback) {
+    thread.push({
+      id: `fallback-admin-${review.id}`,
+      senderId: Number(review?.adminRepliedBy) || null,
+      senderName: review?.replier?.fullName
+        ? String(review.replier.fullName)
+        : "Nhân viên",
+      isStaff: true,
+      message: fallbackAdminReply,
+      createdAt:
+        fallbackAdminRepliedAt || review?.updatedAt || review?.createdAt,
+    });
+  }
+
+  return thread.sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
 }
 
@@ -879,7 +1128,11 @@ function resolveEffectivePermissions(user) {
     user?.role?.permissions?.map((item) => item.permission.actionName) ??
     defaultUserPermissions;
 
-  if (String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+  if (
+    String(user?.email ?? "")
+      .trim()
+      .toLowerCase() === SUPER_ADMIN_EMAIL
+  ) {
     return adminPermissionCatalog.map((item) => item.actionName);
   }
 
@@ -889,13 +1142,19 @@ function resolveEffectivePermissions(user) {
 function resolveDisplayRoleFromPermissions(user, permissions = []) {
   const baseRole = String(user?.role?.name ?? "User").trim() || "User";
 
-  if (String(user?.email ?? "").trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+  if (
+    String(user?.email ?? "")
+      .trim()
+      .toLowerCase() === SUPER_ADMIN_EMAIL
+  ) {
     return "Admin";
   }
 
   if (
     (Array.isArray(permissions) ? permissions : []).some((item) =>
-      String(item ?? "").toLowerCase().startsWith("admin_"),
+      String(item ?? "")
+        .toLowerCase()
+        .startsWith("admin_"),
     )
   ) {
     return "Admin";
