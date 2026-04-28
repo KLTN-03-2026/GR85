@@ -1522,10 +1522,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-                ...order,
-                orderStatus: payload.orderStatus,
-                updatedAt: payload.updatedAt,
-              }
+              ...order,
+              orderStatus: payload.orderStatus,
+              updatedAt: payload.updatedAt,
+            }
             : order,
         ),
       );
@@ -1799,16 +1799,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === userId
               ? {
-                  ...item,
-                  fullName: payload.fullName,
-                  email: payload.email,
-                  phone: payload.phone,
-                  address: payload.address,
-                  avatarUrl: payload.avatarUrl,
-                  status: payload.status,
-                  roleId: payload.roleId,
-                  role: payload.role,
-                }
+                ...item,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
               : item,
           ),
         };
@@ -1821,30 +1821,30 @@ export default function AdminPage() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-                ...prev,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
             : prev,
         );
         setSelectedUserDraft((prev) =>
           prev
             ? {
-                ...prev,
-                fullName: payload.fullName ?? "",
-                email: payload.email ?? "",
-                phone: payload.phone ?? "",
-                address: payload.address ?? "",
-                avatarUrl: payload.avatarUrl ?? "",
-                roleId: payload.roleId ? String(payload.roleId) : "",
-                status: payload.status ?? "ACTIVE",
-              }
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
             : prev,
         );
       }
@@ -1989,16 +1989,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === selectedUserDetail.id
               ? {
-                  ...item,
-                  fullName: payload.fullName,
-                  email: payload.email,
-                  phone: payload.phone,
-                  address: payload.address,
-                  avatarUrl: payload.avatarUrl,
-                  status: payload.status,
-                  roleId: payload.roleId,
-                  role: payload.role,
-                }
+                ...item,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
               : item,
           ),
         };
@@ -2007,31 +2007,31 @@ export default function AdminPage() {
       setSelectedUserDetail((prev) =>
         prev
           ? {
-              ...prev,
-              fullName: payload.fullName,
-              email: payload.email,
-              phone: payload.phone,
-              address: payload.address,
-              avatarUrl: payload.avatarUrl,
-              status: payload.status,
-              roleId: payload.roleId,
-              role: payload.role,
-            }
+            ...prev,
+            fullName: payload.fullName,
+            email: payload.email,
+            phone: payload.phone,
+            address: payload.address,
+            avatarUrl: payload.avatarUrl,
+            status: payload.status,
+            roleId: payload.roleId,
+            role: payload.role,
+          }
           : prev,
       );
 
       setSelectedUserDraft((prev) =>
         prev
           ? {
-              ...prev,
-              fullName: payload.fullName ?? "",
-              email: payload.email ?? "",
-              phone: payload.phone ?? "",
-              address: payload.address ?? "",
-              avatarUrl: payload.avatarUrl ?? "",
-              roleId: payload.roleId ? String(payload.roleId) : "",
-              status: payload.status ?? "ACTIVE",
-            }
+            ...prev,
+            fullName: payload.fullName ?? "",
+            email: payload.email ?? "",
+            phone: payload.phone ?? "",
+            address: payload.address ?? "",
+            avatarUrl: payload.avatarUrl ?? "",
+            roleId: payload.roleId ? String(payload.roleId) : "",
+            status: payload.status ?? "ACTIVE",
+          }
           : prev,
       );
 
@@ -2491,7 +2491,7 @@ export default function AdminPage() {
           [...prev].sort(
             (a, b) =>
               Number(Boolean(b.isHomepageFeatured)) -
-                Number(Boolean(a.isHomepageFeatured)) ||
+              Number(Boolean(a.isHomepageFeatured)) ||
               Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
           ),
         );
@@ -3865,8 +3865,8 @@ export default function AdminPage() {
 
     return normalizePermissionActions(
       permissionDraftByUserId[selectedPermissionTarget.id] ??
-        selectedPermissionTarget.permissions ??
-        [],
+      selectedPermissionTarget.permissions ??
+      [],
     );
   }, [permissionCatalog, permissionDraftByUserId, selectedPermissionTarget]);
 
@@ -3928,11 +3928,11 @@ export default function AdminPage() {
           (prev ?? []).map((item) =>
             Number(item.id) === userId
               ? {
-                  ...item,
-                  permissions: payload.permissions ?? [],
-                  roleId: payload.roleId ?? item.roleId,
-                  role: payload.role ?? item.role,
-                }
+                ...item,
+                permissions: payload.permissions ?? [],
+                roleId: payload.roleId ?? item.roleId,
+                role: payload.role ?? item.role,
+              }
               : item,
           ),
         );
@@ -4064,11 +4064,10 @@ export default function AdminPage() {
                           key={item.id}
                           type="button"
                           onClick={() => setActiveTab(item.id)}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                            activeTab === item.id
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
                               ? "bg-primary text-primary-foreground"
                               : "text-slate-700 hover:bg-secondary hover:text-primary"
-                          }`}
+                            }`}
                         >
                           <span className="flex items-center gap-3">
                             <item.icon className="h-4 w-4" />
@@ -4130,11 +4129,10 @@ export default function AdminPage() {
                       key={card.id}
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
-                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
-                        selectedSummaryCard === card.id
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
                           ? "border-primary ring-2 ring-primary/20"
                           : "hover:border-primary/50"
-                      }`}
+                        }`}
                     >
                       <p className="text-sm text-muted-foreground">
                         {card.label}
@@ -4666,7 +4664,7 @@ export default function AdminPage() {
                               key={`cell-${index}`}
                               fill={
                                 ["#10b981", "#f59e0b", "#ef4444", "#6366f1"][
-                                  index % 4
+                                index % 4
                                 ]
                               }
                             />
@@ -4701,11 +4699,10 @@ export default function AdminPage() {
 
           <section
             id="products"
-            className={`space-y-6 ${
-              isProductCreateTab || isProductInventoryTab || isProductEditTab
+            className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
                 ? "block"
                 : "hidden"
-            }`}
+              }`}
           >
             {!isProductInventoryTab ? (
               <SectionHeader
@@ -6142,13 +6139,13 @@ export default function AdminPage() {
                         : formatMoney(item.discountValue),
                       formatMoney(item.minOrderValue),
                       Array.isArray(item.assignedUsers) &&
-                      item.assignedUsers.length > 0
+                        item.assignedUsers.length > 0
                         ? item.assignedUsers
-                            .map(
-                              (user) =>
-                                user.fullName || user.email || `#${user.id}`,
-                            )
-                            .join(", ")
+                          .map(
+                            (user) =>
+                              user.fullName || user.email || `#${user.id}`,
+                          )
+                          .join(", ")
                         : "Tất cả",
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
@@ -6783,11 +6780,10 @@ export default function AdminPage() {
                       key={chip.id}
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                        reviewQuickFilter === chip.id
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-border bg-background text-muted-foreground hover:text-foreground"
-                      }`}
+                        }`}
                     >
                       {chip.label}
                     </button>
@@ -6830,7 +6826,7 @@ export default function AdminPage() {
                               isSelected
                                 ? "border-primary bg-primary/5 shadow-sm"
                                 : "border-border/70 bg-background hover:border-primary/40"
-                            }`}
+                              }`}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -7204,7 +7200,7 @@ export default function AdminPage() {
                   </div>
                 )}
               </Panel>
-             </div>
+            </div>
           </section>
 
           <Dialog
@@ -7382,7 +7378,7 @@ export default function AdminPage() {
                           .toLowerCase() === "admin@gmail.com"
                           ? "Siêu quản trị"
                           : selectedPermissionTarget.role?.name ||
-                            "Chưa có vai trò"}
+                          "Chưa có vai trò"}
                       </div>
                     </div>
                   ) : null}
@@ -7558,7 +7554,7 @@ export default function AdminPage() {
                     disabled={
                       !selectedPermissionTarget ||
                       savingPermissionTargetId ===
-                        Number(selectedPermissionTarget?.id) ||
+                      Number(selectedPermissionTarget?.id) ||
                       String(selectedPermissionTarget?.email ?? "")
                         .trim()
                         .toLowerCase() === "admin@gmail.com"
@@ -7566,11 +7562,11 @@ export default function AdminPage() {
                     className="w-full"
                   >
                     {savingPermissionTargetId ===
-                    Number(selectedPermissionTarget?.id)
+                      Number(selectedPermissionTarget?.id)
                       ? "Đang lưu quyền tài khoản..."
                       : String(selectedPermissionTarget?.email ?? "")
-                            .trim()
-                            .toLowerCase() === "admin@gmail.com"
+                        .trim()
+                        .toLowerCase() === "admin@gmail.com"
                         ? "Siêu quản trị luôn có toàn quyền"
                         : "Lưu quyền tài khoản"}
                   </Button>
@@ -7648,33 +7644,33 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-    value === "Đã thanh toán" ||
-    value === "Đã hoàn tiền" ||
-    value === "Đã giao" ||
-    value === "Đã giao hàng" ||
-    value === "Đã kết nối" ||
-    value === "Đã đăng" ||
-    value === "Phổ biến" ||
-    value === "Đã xác minh" ||
-    value === "Còn hàng" ||
-    value === "Đã dùng" ||
-    value === "Đang hiển thị"
+      value === "Đã thanh toán" ||
+      value === "Đã hoàn tiền" ||
+      value === "Đã giao" ||
+      value === "Đã giao hàng" ||
+      value === "Đã kết nối" ||
+      value === "Đã đăng" ||
+      value === "Phổ biến" ||
+      value === "Đã xác minh" ||
+      value === "Còn hàng" ||
+      value === "Đã dùng" ||
+      value === "Đang hiển thị"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-          value === "Chờ xác nhận" ||
-          value === "Chờ thanh toán" ||
-          value === "Đang xử lý" ||
-          value === "Đang chuẩn bị" ||
-          value === "Tạm dừng" ||
-          value === "Cần xem xét" ||
-          value === "Bản nháp" ||
-          value === "Ổn định"
+        value === "Chờ xác nhận" ||
+        value === "Chờ thanh toán" ||
+        value === "Đang xử lý" ||
+        value === "Đang chuẩn bị" ||
+        value === "Tạm dừng" ||
+        value === "Cần xem xét" ||
+        value === "Bản nháp" ||
+        value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-            value === "Đang vận chuyển" ||
-            value === "Quản trị viên" ||
-            value === "Nhân viên" ||
-            value === "Mở"
+          value === "Đang vận chuyển" ||
+          value === "Quản trị viên" ||
+          value === "Nhân viên" ||
+          value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : value === "Đã ẩn"
             ? "bg-slate-200 text-slate-700"
