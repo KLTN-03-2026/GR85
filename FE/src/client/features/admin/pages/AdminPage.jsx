@@ -4417,24 +4417,22 @@ export default function AdminPage() {
                 : "hidden"
             }`}
           >
-            <SectionHeader
-              sectionId={activeTab}
-              icon={Package}
-              title={
-                isProductCreateTab
-                  ? "Thêm sản phẩm mới"
-                  : isProductInventoryTab
-                    ? "Danh mục sản phẩm"
+            {!isProductInventoryTab ? (
+              <SectionHeader
+                sectionId={activeTab}
+                icon={Package}
+                title={
+                  isProductCreateTab
+                    ? "Thêm sản phẩm mới"
                     : "Chỉnh sửa sản phẩm"
-              }
-              description={
-                isProductCreateTab
-                  ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
-                  : isProductInventoryTab
-                    ? "Quản lý các loại sản phẩm như CPU, RAM, SSD, Mainboard và danh mục liên quan"
+                }
+                description={
+                  isProductCreateTab
+                    ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
-              }
-            />
+                }
+              />
+            ) : null}
             <div className="grid gap-6">
               <div
                 className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}
