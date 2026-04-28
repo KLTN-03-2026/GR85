@@ -61,7 +61,7 @@ export function CategoryManagementPanel() {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message || "Khong tai duoc danh muc");
+          throw new Error(payload?.message || "Không tải được danh mục");
         }
 
         const payload = await response.json();
@@ -87,8 +87,8 @@ export function CategoryManagementPanel() {
           setItems([]);
           setTopCategories([]);
           toast({
-            title: "Khong tai duoc danh muc",
-            description: error instanceof Error ? error.message : "Da xay ra loi",
+            title: "Không tải được danh mục",
+            description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
             variant: "destructive",
           });
         }
@@ -147,7 +147,7 @@ export function CategoryManagementPanel() {
     const name = form.name.trim();
     if (!name) {
       toast({
-        title: "Ten danh muc la bat buoc",
+        title: "Tên danh mục là bắt buộc",
         variant: "destructive",
       });
       return;
@@ -173,11 +173,11 @@ export function CategoryManagementPanel() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message || "Khong luu duoc danh muc");
+        throw new Error(payload?.message || "Không lưu được danh mục");
       }
 
       toast({
-        title: editingId ? "Da cap nhat danh muc" : "Da tao danh muc",
+        title: editingId ? "Đã cập nhật danh mục" : "Đã tạo danh mục",
         description: name,
       });
 
@@ -191,8 +191,8 @@ export function CategoryManagementPanel() {
       await refreshList();
     } catch (error) {
       toast({
-        title: "Khong luu duoc danh muc",
-        description: error instanceof Error ? error.message : "Da xay ra loi",
+        title: "Không lưu được danh mục",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
@@ -205,7 +205,7 @@ export function CategoryManagementPanel() {
       return;
     }
 
-    if (!window.confirm(`Xoa danh muc ${category.name}? Neu danh muc co san pham se bi chan.`)) {
+    if (!window.confirm(`Xóa danh mục ${category.name}? Nếu danh mục có sản phẩm sẽ bị chặn.`)) {
       return;
     }
 
@@ -220,11 +220,11 @@ export function CategoryManagementPanel() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message || "Khong xoa duoc danh muc");
+        throw new Error(payload?.message || "Không xóa được danh mục");
       }
 
       toast({
-        title: "Da tam ngung danh muc",
+        title: "Đã tạm ngừng danh mục",
         description: category.name,
       });
 
@@ -236,8 +236,8 @@ export function CategoryManagementPanel() {
       await refreshList();
     } catch (error) {
       toast({
-        title: "Khong the xoa danh muc",
-        description: error instanceof Error ? error.message : "Da xay ra loi",
+        title: "Không thể xóa danh mục",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
@@ -298,29 +298,29 @@ export function CategoryManagementPanel() {
   return (
     <div className="space-y-6 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-sm">
       <div className="grid gap-3 md:grid-cols-3">
-        <StatCard title="Tong danh muc" value={summary.totalCategories} />
-        <StatCard title="Dang hoat dong" value={summary.activeCategories} />
-        <StatCard title="Tam ngung / da xoa" value={summary.inactiveCategories} />
+        <StatCard title="Tổng danh mục" value={summary.totalCategories} />
+        <StatCard title="Đang hoạt động" value={summary.activeCategories} />
+        <StatCard title="Tạm ngừng / đã xóa" value={summary.inactiveCategories} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold">Quan ly danh muc san pham</h3>
+              <h3 className="text-lg font-semibold">Quản lý danh mục sản phẩm</h3>
               <p className="text-sm text-muted-foreground">
-                Tao moi, sua, tam ngung va tim kiem danh muc.
+                Tạo mới, sửa, tạm ngừng và tìm kiếm danh mục.
               </p>
             </div>
             <Button variant="outline" className="gap-2" onClick={clearForm}>
               <Plus className="h-4 w-4" />
-              Tao moi
+              Tạo mới
             </Button>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium">Tim theo ten</label>
+              <label className="mb-1 block text-xs font-medium">Tìm theo tên</label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -333,7 +333,7 @@ export function CategoryManagementPanel() {
                         setPagination((prev) => ({ ...prev, page: 1 }));
                       }
                     }}
-                    placeholder="Nhap ten danh muc..."
+                    placeholder="Nhập tên danh mục..."
                     className="w-full rounded-xl border border-border/60 bg-background py-2 pl-9 pr-3 text-sm"
                   />
                 </div>
@@ -344,13 +344,13 @@ export function CategoryManagementPanel() {
                     setPagination((prev) => ({ ...prev, page: 1 }));
                   }}
                 >
-                  Tim
+                  Tìm
                 </Button>
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium">Trang thai</label>
+              <label className="mb-1 block text-xs font-medium">Trạng thái</label>
               <select
                 value={status}
                 onChange={(event) => {
@@ -359,7 +359,7 @@ export function CategoryManagementPanel() {
                 }}
                 className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
               >
-                <option value="all">Tat ca</option>
+                <option value="all">Tất cả</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -368,21 +368,21 @@ export function CategoryManagementPanel() {
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="grid gap-1">
-              <label className="text-xs font-medium">Ten danh muc</label>
+              <label className="text-xs font-medium">Tên danh mục</label>
               <input
                 value={form.name}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                 className="rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
-                placeholder="Vi du: CPU, Mainboard..."
+                placeholder="Ví dụ: CPU, Mainboard..."
               />
             </div>
             <div className="grid gap-1 md:col-span-2">
-              <label className="text-xs font-medium">Mo ta</label>
+              <label className="text-xs font-medium">Mô tả</label>
               <input
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 className="rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
-                placeholder="Mo ta ngan gon cho danh muc"
+                placeholder="Mô tả ngắn gọn cho danh mục"
               />
             </div>
           </div>
@@ -399,40 +399,39 @@ export function CategoryManagementPanel() {
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleSave} disabled={savingId !== null} className="gap-2">
               {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {editingId ? "Cap nhat" : "Tao danh muc"}
+              {editingId ? "Cập nhật" : "Tạo danh mục"}
             </Button>
             <Button variant="outline" onClick={clearForm} disabled={savingId !== null}>
-              Huy
+              Hủy
             </Button>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-border/60">
             <div className="space-y-4 p-4">
               <div>
-                <h4 className="text-sm font-semibold">Danh muc</h4>
-                <p className="text-xs text-muted-foreground">Danh sach loai san pham nhu CPU, RAM, SSD, Mainboard...</p>
+                <h4 className="text-sm font-semibold">Danh mục</h4>
+                <p className="text-xs text-muted-foreground">Danh sách loại sản phẩm như CPU, RAM, SSD, Mainboard...</p>
               </div>
 
               {isLoading ? (
                 <div className="rounded-xl border border-border/60 bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-                  Dang tai danh muc...
+                  Đang tải danh mục...
                 </div>
               ) : items.length === 0 ? (
                 <div className="rounded-xl border border-border/60 bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-                  Khong co danh muc phu hop.
+                  Không có danh mục phù hợp.
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId(null)}
-                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                      selectedCategoryId === null
-                        ? "border-emerald-500 bg-emerald-500 text-white"
-                        : "border-border/70 bg-background hover:border-emerald-300"
-                    }`}
+                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${selectedCategoryId === null
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : "border-border/70 bg-background hover:border-emerald-300"
+                      }`}
                   >
-                    Tat ca
+                    Tất cả
                   </button>
 
                   {items.map((category) => (
@@ -440,11 +439,10 @@ export function CategoryManagementPanel() {
                       key={category.id}
                       type="button"
                       onClick={() => setSelectedCategoryId(category.id)}
-                      className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                        selectedCategoryId === category.id
-                          ? "border-emerald-500 bg-emerald-500 text-white"
-                          : "border-border/70 bg-background hover:border-emerald-300"
-                      }`}
+                      className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${selectedCategoryId === category.id
+                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        : "border-border/70 bg-background hover:border-emerald-300"
+                        }`}
                     >
                       {category.name}
                     </button>
@@ -458,14 +456,14 @@ export function CategoryManagementPanel() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-base font-semibold">{selectedCategory.name}</p>
-                        <p className="text-xs text-muted-foreground">{selectedCategory.description || "Khong co mo ta"}</p>
+                        <p className="text-xs text-muted-foreground">{selectedCategory.description || "Không có mô tả"}</p>
                       </div>
                       <StatusBadge category={selectedCategory} />
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-lg border border-border/60 px-3 py-2">
-                        <p className="text-xs text-muted-foreground">So san pham</p>
+                        <p className="text-xs text-muted-foreground">Số sản phẩm</p>
                         <p className="text-sm font-semibold">{selectedCategory.productCount}</p>
                       </div>
                       <div className="rounded-lg border border-border/60 px-3 py-2">
@@ -477,7 +475,7 @@ export function CategoryManagementPanel() {
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" className="gap-1" onClick={() => startEditing(selectedCategory)}>
                         <Pencil className="h-3.5 w-3.5" />
-                        Sua danh muc
+                        Sửa danh mục
                       </Button>
                       <Button
                         size="sm"
@@ -487,13 +485,13 @@ export function CategoryManagementPanel() {
                         disabled={deletingId === selectedCategory.id}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Xoa danh muc
+                        Xóa danh mục
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="text-muted-foreground">
-                    Chon mot danh muc de xem chi tiet va thao tac nhanh.
+                    Chọn một danh mục để xem chi tiết và thao tác nhanh.
                   </div>
                 )}
               </div>
@@ -502,7 +500,7 @@ export function CategoryManagementPanel() {
 
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="text-muted-foreground">
-              Trang {pagination.page} / {pagination.totalPages} - {pagination.totalItems} muc
+              Trang {pagination.page} / {pagination.totalPages} - {pagination.totalItems} mục
             </span>
             <div className="flex gap-2">
               <Button
@@ -511,7 +509,7 @@ export function CategoryManagementPanel() {
                 disabled={pagination.page <= 1}
                 onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
               >
-                Truoc
+                Trước
               </Button>
               <Button
                 size="sm"
@@ -532,13 +530,13 @@ export function CategoryManagementPanel() {
 
         <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-4">
           <div>
-            <h3 className="text-lg font-semibold">Danh muc dung nhieu</h3>
-            <p className="text-sm text-muted-foreground">Top danh muc theo so san pham</p>
+            <h3 className="text-lg font-semibold">Danh mục dùng nhiều</h3>
+            <p className="text-sm text-muted-foreground">Top danh mục theo số sản phẩm</p>
           </div>
 
           <div className="space-y-3">
             {topCategories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Chua co du lieu</p>
+              <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
             ) : (
               topCategories.map((category, index) => (
                 <div key={category.id} className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
@@ -553,7 +551,7 @@ export function CategoryManagementPanel() {
           </div>
 
           <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-            San pham van duoc gan danh muc trong man them/sua san pham.
+            Sản phẩm vẫn được gán danh mục trong màn thêm/sửa sản phẩm.
           </div>
         </div>
       </div>
