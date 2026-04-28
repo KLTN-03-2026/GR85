@@ -142,7 +142,7 @@ export async function markMessagesReadByUser({ conversationId, userId }) {
   });
 
   if (unreadMessages.length === 0) {
-    return { count: 0 };
+    return { count: 0, messageIds: [] };
   }
 
   const rows = unreadMessages.map((item) => ({
@@ -155,7 +155,7 @@ export async function markMessagesReadByUser({ conversationId, userId }) {
     skipDuplicates: true,
   });
 
-  return { count: rows.length };
+  return { count: rows.length, messageIds: unreadMessages.map((m) => m.id) };
 }
 
 export async function updateRoomStatus({ roomId, status }) {

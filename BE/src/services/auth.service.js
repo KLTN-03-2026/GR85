@@ -359,7 +359,18 @@ export async function listMyOrders(userId) {
     where: { userId },
     orderBy: { createdAt: "desc" },
     include: {
-      orderItems: true,
+      orderItems: {
+        include: {
+          product: {
+            include: {
+              images: {
+                orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -376,6 +387,18 @@ export async function listMyOrders(userId) {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       itemCount: order.orderItems.reduce((sum, item) => sum + item.quantity, 0),
+      items: order.orderItems.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        priceAtTime: item.priceAtTime,
+        lineTotal: Number(item.priceAtTime) * item.quantity,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          slug: item.product.slug,
+          imageUrl: item.product.images?.[0]?.imageUrl ?? "/images/component-placeholder.svg",
+        },
+      })),
     })),
   );
 }

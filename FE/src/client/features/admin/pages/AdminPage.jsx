@@ -45,6 +45,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
+import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
+import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
   Bar,
@@ -65,7 +67,7 @@ const navItems = [
   { id: "users", label: "Người dùng", icon: Users },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
   { id: "products-create", label: "Thêm sản phẩm mới", icon: Plus },
-  { id: "products-inventory", label: "Kho sản phẩm", icon: Package },
+  { id: "products-inventory", label: "Danh mục sản phẩm", icon: Package },
   { id: "products-edit", label: "Chỉnh sửa sản phẩm", icon: Pencil },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
@@ -1094,6 +1096,47 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isHydrated, token, toast]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token) {
+      return;
+    }
+
+    const socket = connectChatSocket(token);
+    if (!socket) {
+      return;
+    }
+
+    const handleOrderStatusUpdated = async (payload) => {
+      const changedOrderId = Number(payload?.orderId);
+      if (!Number.isFinite(changedOrderId) || changedOrderId <= 0) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/orders", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const ordersPayload = await response.json();
+          setAdminOrders(Array.isArray(ordersPayload) ? ordersPayload : []);
+        }
+      } catch {
+        // Keep silent to avoid noisy toasts on background sync.
+      }
+
+      if (Number(selectedOrderDetail?.id) === changedOrderId) {
+        loadOrderDetail(changedOrderId);
+      }
+    };
+
+    socket.on("order_status_updated", handleOrderStatusUpdated);
+
+    return () => {
+      socket.off("order_status_updated", handleOrderStatusUpdated);
+    };
+  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id]);
 
   const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
@@ -2723,84 +2766,93 @@ export default function AdminPage() {
     return "";
   }
 
-  async function editVoucher(item) {
-    if (!token || !item?.id) {
-      return;
-    }
-
-    const discountValueInput = window.prompt(
-      "Giá trị giảm mới",
-      String(item.discountValue ?? ""),
-    );
-    if (discountValueInput === null) {
-      return;
-    }
-
-    const minOrderInput = window.prompt(
-      "Đơn tối thiểu mới",
-      String(item.minOrderValue ?? "0"),
-    );
-    if (minOrderInput === null) {
-      return;
-    }
-
-    const usageLimitInput = window.prompt(
-      "Số lượt dùng mới",
-      String(item.usageLimit ?? "100"),
-    );
-    if (usageLimitInput === null) {
-      return;
-    }
-
-    const startDateInput = window.prompt(
-      "Thời gian bắt đầu (ISO: 2026-04-18T10:00:00.000Z)",
-      new Date(item.startDate).toISOString(),
-    );
-    if (startDateInput === null) {
-      return;
-    }
-
-    const endDateInput = window.prompt(
-      "Thời gian kết thúc (ISO: 2026-04-30T23:59:59.000Z)",
-      new Date(item.endDate).toISOString(),
-    );
-    if (endDateInput === null) {
-      return;
-    }
-
-    const statusInput = window.prompt(
-      "Trạng thái (ACTIVE / DISABLED / EXPIRED)",
-      String(item.status ?? "ACTIVE"),
-    );
-    if (statusInput === null) {
+  function beginEditVoucher(item) {
+    if (!item?.id) {
       return;
     }
 
     setEditingVoucherId(item.id);
+    setVoucherForm({
+      code: String(item.code ?? ""),
+      couponScope: String(item.couponScope ?? "PRODUCT"),
+      discountType: String(item.discountType ?? "PERCENT"),
+      discountValue: String(item.discountValue ?? ""),
+      minOrderValue: String(item.minOrderValue ?? "0"),
+      usageLimit: String(item.usageLimit ?? "100"),
+      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
+      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
+      status: String(item.status ?? "ACTIVE"),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
+    });
+  }
+
+  async function updateVoucher() {
+    if (!token || !editingVoucherId) {
+      return;
+    }
+
+    setIsSavingVoucher(true);
     try {
-      const response = await fetch(`/api/admin/coupons/${item.id}`, {
+      const normalizedCode = voucherForm.code.trim().toUpperCase();
+      const discountValue = Number(voucherForm.discountValue);
+      const minOrderValue = Number(voucherForm.minOrderValue || 0);
+      const usageLimit = Number(voucherForm.usageLimit || 100);
+      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
+      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+
+      if (!normalizedCode) {
+        throw new Error("Mã giảm giá không được để trống");
+      }
+      if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        throw new Error("Giá trị giảm phải lớn hơn 0");
+      }
+      if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+        throw new Error("Đơn tối thiểu phải >= 0");
+      }
+      if (!Number.isFinite(usageLimit) || usageLimit <= 0) {
+        throw new Error("Số lượt dùng phải lớn hơn 0");
+      }
+      if (!startDate || Number.isNaN(startDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian bắt đầu hợp lệ");
+      }
+      if (!endDate || Number.isNaN(endDate.getTime())) {
+        throw new Error("Vui lòng chọn thời gian kết thúc hợp lệ");
+      }
+      if (endDate <= startDate) {
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
+      }
+
+      const payload = {
+        code: normalizedCode,
+        couponScope: voucherForm.couponScope,
+        discountType: voucherForm.discountType,
+        discountValue,
+        minOrderValue,
+        usageLimit,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        status: voucherForm.status,
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
+      };
+
+      const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          discountValue: Number(discountValueInput),
-          minOrderValue: Number(minOrderInput),
-          usageLimit: Number(usageLimitInput),
-          startDate: startDateInput,
-          endDate: endDateInput,
-          status: String(statusInput).trim().toUpperCase(),
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const payload = await response.json().catch(() => null);
+      const result = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Cập nhật voucher thất bại");
+        const fieldMessage = extractIssueMessage(result?.issues);
+        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
       }
 
       await refreshDashboardSummary();
       toast({ title: "Đã cập nhật voucher" });
+      setEditingVoucherId(null);
     } catch (error) {
       toast({
         title: "Không thể cập nhật voucher",
@@ -2808,7 +2860,7 @@ export default function AdminPage() {
         variant: "destructive",
       });
     } finally {
-      setEditingVoucherId(null);
+      setIsSavingVoucher(false);
     }
   }
 
@@ -4631,24 +4683,22 @@ export default function AdminPage() {
                 : "hidden"
             }`}
           >
-            <SectionHeader
-              sectionId={activeTab}
-              icon={Package}
-              title={
-                isProductCreateTab
-                  ? "Thêm sản phẩm mới"
-                  : isProductInventoryTab
-                    ? "Kho sản phẩm"
+            {!isProductInventoryTab ? (
+              <SectionHeader
+                sectionId={activeTab}
+                icon={Package}
+                title={
+                  isProductCreateTab
+                    ? "Thêm sản phẩm mới"
                     : "Chỉnh sửa sản phẩm"
-              }
-              description={
-                isProductCreateTab
-                  ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
-                  : isProductInventoryTab
-                    ? "Danh sách sản phẩm, tìm kiếm, ưu tiên hiển thị và thao tác nhanh"
+                }
+                description={
+                  isProductCreateTab
+                    ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
-              }
-            />
+                }
+              />
+            ) : null}
             <div className="grid gap-6">
               <div
                 className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}
@@ -5134,7 +5184,11 @@ export default function AdminPage() {
                 </Panel>
               </div>
 
-              <div className={`${isProductCreateTab ? "hidden" : ""}`}>
+              <div className={`${isProductInventoryTab ? "" : "hidden"}`}>
+                <CategoryManagementPanel />
+              </div>
+
+              <div className={`${isProductEditTab ? "" : "hidden"}`}>
                 <Panel
                   title="Kho sản phẩm"
                   description="Task #31 + #32: tìm kiếm nhanh, phân trang 12 sản phẩm/trang"
@@ -5558,9 +5612,9 @@ export default function AdminPage() {
             />
 
             <div className="grid gap-6 xl:grid-cols-5">
-              <div className="xl:col-span-2">
+              <div className="xl:col-span-2 space-y-6">
                 <Panel
-                  title="Tạo mã giảm giá"
+                  title="Thêm voucher"
                   description="Áp dụng cho thanh toán giỏ hàng"
                 >
                   <div className="space-y-3">
@@ -5813,9 +5867,192 @@ export default function AdminPage() {
                       className="gap-2"
                     >
                       <Plus className="h-4 w-4" />
-                      Tạo mã giảm giá
+                      Tạo voucher
                     </Button>
                   </div>
+                </Panel>
+
+                <Panel
+                  title="Sửa voucher"
+                  description="Chọn một voucher ở danh sách để chỉnh sửa"
+                >
+                  {editingVoucherId ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
+                      </p>
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Mã giảm giá</label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.code}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              code: event.target.value.toUpperCase(),
+                            }))
+                          }
+                          placeholder="VD: GIAM50"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Phạm vi mã</label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.couponScope}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                couponScope: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="PRODUCT">Giảm giá sản phẩm</option>
+                            <option value="SHIPPING">Giảm phí vận chuyển</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Loại giảm</label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.discountType}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                discountType: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="PERCENT">%</option>
+                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Giá trị giảm</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.discountValue}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                discountValue: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Đơn tối thiểu</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.minOrderValue}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                minOrderValue: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Số lượt dùng</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            value={voucherForm.usageLimit}
+                            onChange={(event) =>
+                              setVoucherForm((prev) => ({
+                                ...prev,
+                                usageLimit: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                        <input
+                          type="datetime-local"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.startDate}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              startDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Thời gian kết thúc</label>
+                        <input
+                          type="datetime-local"
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.endDate}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              endDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Trạng thái</label>
+                        <select
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          value={voucherForm.status}
+                          onChange={(event) =>
+                            setVoucherForm((prev) => ({
+                              ...prev,
+                              status: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="DISABLED">DISABLED</option>
+                          <option value="EXPIRED">EXPIRED</option>
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          onClick={updateVoucher}
+                          disabled={isSavingVoucher}
+                          className="gap-2"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Cập nhật voucher
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setEditingVoucherId(null)}
+                        >
+                          Hủy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Chọn nút Sửa ở danh sách bên phải để mở form chỉnh sửa.
+                    </p>
+                  )}
                 </Panel>
               </div>
 
@@ -5899,13 +6136,13 @@ export default function AdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => editVoucher(item)}
+                          onClick={() => beginEditVoucher(item)}
                           disabled={
                             editingVoucherId === item.id ||
                             deletingVoucherId === item.id
                           }
                         >
-                          {editingVoucherId === item.id ? "Đang lưu..." : "Sửa"}
+                          Sửa
                         </Button>
                         <Button
                           size="sm"
@@ -6943,7 +7180,7 @@ export default function AdminPage() {
                   </div>
                 )}
               </Panel>
-            </div>
+             </div>
           </section>
 
           <Dialog

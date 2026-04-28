@@ -16,6 +16,7 @@ import {
   MapPin,
   Plus,
   Pencil,
+  RotateCcw,
   Trash2,
   Navigation,
   Package,
@@ -24,6 +25,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
+import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import { profileApi } from "@/client/features/profile/data/profile.api";
 
 const profileValidation = {
@@ -68,18 +71,33 @@ const passwordValidation = {
 
 const ORDERS_PER_PAGE = 4;
 
+const ORDER_FILTERS = [
+  { key: "ALL", label: "Tất cả" },
+  { key: "PENDING_PAYMENT", label: "Chờ thanh toán" },
+  { key: "PREPARING", label: "Đang chuẩn bị" },
+  { key: "SHIPPING", label: "Đang giao" },
+  { key: "DELIVERED", label: "Đã giao" },
+  { key: "CANCELLED", label: "Đã hủy" },
+];
+
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { token, isAuthenticated, isHydrated, setSession } = useAuth();
+  const { addToCart } = useCart();
+  const { token, user, isAuthenticated, isHydrated, setSession } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showPendingOrders, setShowPendingOrders] = useState(true);
+  const [orderFilter, setOrderFilter] = useState("ALL");
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
+  const [reorderingOrderId, setReorderingOrderId] = useState(null);
+  const [myReviews, setMyReviews] = useState([]);
+  const [myReviewsLoading, setMyReviewsLoading] = useState(false);
+  const [replyingReviewId, setReplyingReviewId] = useState(null);
+  const [myReviewFilter, setMyReviewFilter] = useState("ALL");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
   const [showPasswords, setShowPasswords] = useState({
@@ -223,15 +241,29 @@ export default function ProfilePage() {
     }
   }
 
-  const visibleOrders = showPendingOrders
-    ? orders
-    : orders.filter(
-        (order) =>
-          !(
-            String(order?.paymentStatus ?? "").toUpperCase() === "PENDING" &&
-            String(order?.orderStatus ?? "").toUpperCase() === "PENDING"
-          ),
-      );
+  async function loadMyReviews() {
+    try {
+      setMyReviewsLoading(true);
+      const data = await profileApi.getMyReviews();
+      setMyReviews(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể tải lịch sử đánh giá",
+      });
+      setMyReviews([]);
+    } finally {
+      setMyReviewsLoading(false);
+    }
+  }
+
+  const filteredOrders = useMemo(
+    () =>
+      orderFilter === "ALL"
+        ? orders
+        : orders.filter((order) => getOrderFilterKey(order) === orderFilter),
+    [orderFilter, orders],
+  );
 
   const sortedVisibleOrders = useMemo(
     () =>
@@ -240,7 +272,15 @@ export default function ProfilePage() {
           new Date(b?.createdAt ?? 0).getTime() -
           new Date(a?.createdAt ?? 0).getTime(),
       ),
-    [visibleOrders],
+    [filteredOrders],
+  );
+
+  const filteredMyReviews = useMemo(
+    () =>
+      myReviewFilter === "ALL"
+        ? myReviews
+        : myReviews.filter((review) => String(review?.status ?? "").toUpperCase() === myReviewFilter),
+    [myReviewFilter, myReviews],
   );
 
   const totalOrderPages = Math.max(
@@ -261,7 +301,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     setCurrentOrderPage(1);
-  }, [showPendingOrders]);
+  }, [orderFilter]);
 
   async function loadOrderDetail(orderId) {
     try {
@@ -299,6 +339,81 @@ export default function ProfilePage() {
       });
     } finally {
       setSubmittingReturnOrderId(null);
+    }
+  }
+
+  async function handleReorder(order) {
+    const items = Array.isArray(order?.items) ? order.items : [];
+
+    if (items.length === 0) {
+      setMessage({
+        type: "error",
+        text: "Đơn hàng này không có sản phẩm để mua lại",
+      });
+      return;
+    }
+
+    try {
+      setReorderingOrderId(order.id);
+      setMessage(null);
+
+      for (const item of items) {
+        const quantity = Math.max(1, Number(item.quantity ?? 1));
+        await addToCart(item.product, quantity);
+      }
+
+      setMessage({
+        type: "success",
+        text: `Đã thêm lại toàn bộ sản phẩm của đơn #${order.id} vào giỏ hàng`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể mua lại đơn hàng",
+      });
+    } finally {
+      setReorderingOrderId(null);
+    }
+  }
+
+  async function handleReplyMyReview(review) {
+    if (!review?.product?.slug || !review?.id) {
+      return;
+    }
+
+    const messageText = window.prompt("Nhập phản hồi cho thread đánh giá:");
+    if (!messageText || !messageText.trim()) {
+      return;
+    }
+
+    try {
+      setReplyingReviewId(review.id);
+      const response = await fetch(`/api/products/${review.product.slug}/reviews/${review.id}/replies`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: messageText.trim() }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Không thể gửi phản hồi");
+      }
+
+      setMessage({
+        type: "success",
+        text: "Phản hồi đánh giá đã được gửi",
+      });
+      await loadMyReviews();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể gửi phản hồi đánh giá",
+      });
+    } finally {
+      setReplyingReviewId(null);
     }
   }
 
@@ -690,6 +805,13 @@ export default function ProfilePage() {
                 className="rounded-b-none"
               >
                 Đơn hàng của tôi
+              </Button>
+              <Button
+                variant={activeTab === "reviews" ? "default" : "ghost"}
+                onClick={() => setActiveTab("reviews")}
+                className="rounded-b-none"
+              >
+                Đánh giá của tôi
               </Button>
               <Button
                 variant={activeTab === "addresses" ? "default" : "ghost"}
@@ -1106,6 +1228,23 @@ export default function ProfilePage() {
                         Tải lại
                       </Button>
                     </div>
+                    <Button variant="outline" onClick={loadMyOrders}>
+                      Tải lại
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 border-b border-border pb-2">
+                    {ORDER_FILTERS.map((tab) => (
+                      <Button
+                        key={tab.key}
+                        type="button"
+                        size="sm"
+                        variant={orderFilter === tab.key ? "default" : "outline"}
+                        onClick={() => setOrderFilter(tab.key)}
+                      >
+                        {tab.label}
+                      </Button>
+                    ))}
                   </div>
 
                   {ordersLoading ? (
@@ -1369,6 +1508,120 @@ export default function ProfilePage() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {activeTab === "reviews" && (
+              <Card className="p-6">
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold">Lịch sử đánh giá</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Xem các review của bạn và theo dõi phản hồi từ admin.
+                      </p>
+                    </div>
+                    <Button variant="outline" onClick={loadMyReviews}>
+                      Tải lại
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 border-b border-border pb-2">
+                    {["ALL", "VISIBLE", "HIDDEN", "DELETED"].map((status) => (
+                      <Button
+                        key={`review-filter-${status}`}
+                        type="button"
+                        size="sm"
+                        variant={myReviewFilter === status ? "default" : "outline"}
+                        onClick={() => setMyReviewFilter(status)}
+                      >
+                        {status === "ALL"
+                          ? "Tất cả"
+                          : status === "VISIBLE"
+                            ? "Đang hiển thị"
+                            : status === "HIDDEN"
+                              ? "Đã ẩn"
+                              : "Đã xóa"}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {myReviewsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang tải lịch sử đánh giá...
+                    </div>
+                  ) : filteredMyReviews.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Bạn chưa có đánh giá nào phù hợp bộ lọc hiện tại.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredMyReviews.map((review) => (
+                        <Card key={review.id} className="border-border/70 p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="flex items-start gap-3">
+                              <img
+                                src={review.product?.imageUrl || "/images/component-placeholder.svg"}
+                                alt={review.product?.name || "Sản phẩm"}
+                                className="h-16 w-16 rounded-xl object-cover"
+                              />
+                              <div>
+                                <p className="font-semibold">{review.product?.name ?? "Sản phẩm"}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {formatRelativeTime(review.createdAt)} · {"★".repeat(Number(review.rating ?? 0))}
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Badge variant="outline">{formatReviewStatus(review.status)}</Badge>
+                                  {review.moderationReason ? (
+                                    <Badge variant="secondary">{review.moderationReason}</Badge>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground lg:text-right">
+                              <p>#{review.id}</p>
+                              <p>{review.product?.slug}</p>
+                            </div>
+                          </div>
+
+                          {review.comment ? (
+                            <p className="mt-3 rounded-lg bg-muted/40 p-3 text-sm">{review.comment}</p>
+                          ) : null}
+
+                          <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                            {(review.replies ?? []).length > 0 ? (
+                              review.replies.map((reply) => (
+                                <div key={reply.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="font-medium">
+                                      {reply.user?.fullName ?? "Ẩn danh"}
+                                      {reply.user?.role ? ` · ${reply.user.role}` : ""}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">{formatRelativeTime(reply.createdAt)}</p>
+                                  </div>
+                                  <p className="mt-1">{reply.message}</p>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Chưa có phản hồi trong thread này.</p>
+                            )}
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={replyingReviewId === review.id}
+                              onClick={() => handleReplyMyReview(review)}
+                            >
+                              {replyingReviewId === review.id ? "Đang gửi..." : "Phản hồi"}
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1951,6 +2204,44 @@ function formatOrderStatus(orderStatusValue, paymentStatusValue) {
   return formatEnum(orderStatus);
 }
 
+function formatReviewStatus(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "VISIBLE") {
+    return "Đang hiển thị";
+  }
+  if (normalized === "HIDDEN") {
+    return "Đã ẩn";
+  }
+  if (normalized === "DELETED") {
+    return "Đã xóa";
+  }
+
+  return formatEnum(normalized);
+}
+
+function getOrderFilterKey(order) {
+  const orderStatus = String(order?.orderStatus ?? "").trim().toUpperCase();
+  const paymentStatus = String(order?.paymentStatus ?? "").trim().toUpperCase();
+
+  if (orderStatus === "CANCELLED") {
+    return "CANCELLED";
+  }
+
+  if (orderStatus === "DELIVERED") {
+    return "DELIVERED";
+  }
+
+  if (orderStatus === "SHIPPING") {
+    return "SHIPPING";
+  }
+
+  if (orderStatus === "PROCESSING" || paymentStatus === "PAID") {
+    return "PREPARING";
+  }
+
+  return "PENDING_PAYMENT";
+}
+
 function formatHistoryStatus(value) {
   const normalized = String(value ?? "")
     .trim()
@@ -2115,6 +2406,39 @@ function formatDate(value) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatRelativeTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) {
+    return `${diffSeconds} giây trước`;
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes} phút trước`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} giờ trước`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays} ngày trước`;
+  }
+
+  return formatDate(date);
 }
 
 function getBrowserCoordinates() {

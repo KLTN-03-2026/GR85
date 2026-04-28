@@ -14,10 +14,7 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [reviews, setReviews] = useState([]);
-  const [reviewSummary, setReviewSummary] = useState({
-    totalReviews: 0,
-    averageRating: 0,
-  });
+  const [reviewSummary, setReviewSummary] = useState({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewImages, setReviewImages] = useState([]);
@@ -89,6 +86,9 @@ export default function ProductDetailPage() {
       setReviewSummary({
         totalReviews: Number(payload?.summary?.totalReviews ?? 0),
         averageRating: Number(payload?.summary?.averageRating ?? 0),
+        ratingBreakdown: Array.isArray(payload?.summary?.ratingBreakdown)
+          ? payload.summary.ratingBreakdown
+          : [],
       });
     } catch {
       if (isCancelled()) {
@@ -96,7 +96,7 @@ export default function ProductDetailPage() {
       }
 
       setReviews([]);
-      setReviewSummary({ totalReviews: 0, averageRating: 0 });
+      setReviewSummary({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
     }
   };
 
@@ -141,7 +141,7 @@ export default function ProductDetailPage() {
             error instanceof Error ? error.message : "Có lỗi xảy ra",
           );
           setReviews([]);
-          setReviewSummary({ totalReviews: 0, averageRating: 0 });
+          setReviewSummary({ totalReviews: 0, averageRating: 0, ratingBreakdown: [] });
         }
       } finally {
         if (!cancelled) {
@@ -502,8 +502,61 @@ export default function ProductDetailPage() {
                 </p>
               )}
 
-              <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
+              <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-4">
                 <h2 className="text-lg font-semibold">Đánh giá sản phẩm</h2>
+
+                <div className="grid gap-3 rounded-xl border border-border/60 bg-background p-3 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Điểm trung bình</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {reviewSummary.averageRating.toFixed(1)}/5
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {reviewSummary.totalReviews} lượt đánh giá
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {(reviewSummary.ratingBreakdown ?? []).map((item) => (
+                      <button
+                        key={`rating-${item.rating}`}
+                        type="button"
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewFilterRating === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
+                        onClick={() => setReviewFilterRating(String(item.rating))}
+                      >
+                        <span className="w-10 font-medium">{item.rating}★</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${item.percent ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="w-12 text-right text-xs text-muted-foreground">{item.percent ?? 0}%</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={reviewFilterRating === "ALL" ? "default" : "outline"}
+                    onClick={() => setReviewFilterRating("ALL")}
+                  >
+                    Tất cả
+                  </Button>
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <Button
+                      key={`rating-filter-${rating}`}
+                      type="button"
+                      size="sm"
+                      variant={reviewFilterRating === String(rating) ? "default" : "outline"}
+                      onClick={() => setReviewFilterRating(String(rating))}
+                    >
+                      {rating} sao
+                    </Button>
+                  ))}
+                </div>
 
                 {!isHydrated ? (
                   <p className="text-sm text-muted-foreground">
@@ -704,12 +757,8 @@ export default function ProductDetailPage() {
                           className="rounded-lg border border-border/60 bg-background p-3"
                         >
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold">
-                            {review?.user?.fullName ?? "Ẩn danh"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDate(review.createdAt)}
-                          </p>
+                          <p className="text-sm font-semibold">{review?.user?.fullName ?? "Ẩn danh"}</p>
+                          <p className="text-xs text-muted-foreground">{formatRelativeTime(review.createdAt)}</p>
                         </div>
                         <p className="mt-1 text-sm text-amber-600">
                           {"★".repeat(Number(review.rating ?? 0))}
@@ -755,9 +804,7 @@ export default function ProductDetailPage() {
                               {review.adminReply}
                             </p>
                             {review.adminRepliedAt ? (
-                              <p className="mt-1 text-xs text-slate-500">
-                                {formatDate(review.adminRepliedAt)}
-                              </p>
+                              <p className="mt-1 text-xs text-slate-500">{formatDate(review.adminRepliedAt)}</p>
                             ) : null}
                           </div>
                         ) : null}
@@ -940,6 +987,40 @@ function formatDate(value) {
   }
 
   return date.toLocaleString("vi-VN");
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  const units = [
+    [60, "giây"],
+    [60, "phút"],
+    [24, "giờ"],
+    [7, "ngày"],
+    [4.345, "tuần"],
+    [12, "tháng"],
+  ];
+
+  let valueCount = diffSeconds;
+  let unitLabel = "giây";
+
+  for (const [threshold, label] of units) {
+    unitLabel = label;
+    if (valueCount < threshold) {
+      break;
+    }
+    valueCount = Math.floor(valueCount / threshold);
+  }
+
+  if (unitLabel === "giây") {
+    return `${valueCount} giây trước`;
+  }
+
+  return `${valueCount} ${unitLabel} trước`;
 }
 
 const RECENTLY_VIEWED_KEY = "techbuiltai-recently-viewed";
