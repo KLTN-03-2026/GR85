@@ -26,7 +26,10 @@ export async function markNotificationAsRead(userId, notificationId) {
     throw new Error("Invalid user id");
   }
 
-  if (!Number.isFinite(normalizedNotificationId) || normalizedNotificationId <= 0) {
+  if (
+    !Number.isFinite(normalizedNotificationId) ||
+    normalizedNotificationId <= 0
+  ) {
     throw new Error("Invalid notification id");
   }
 
@@ -72,7 +75,11 @@ export async function markAllNotificationsAsRead(userId) {
   });
 }
 
-export async function createWishlistPriceDropNotifications(product, oldPrice, newPrice) {
+export async function createWishlistPriceDropNotifications(
+  product,
+  oldPrice,
+  newPrice,
+) {
   const productId = Number(product?.id);
   if (!Number.isFinite(productId) || productId <= 0) {
     return;
@@ -80,7 +87,11 @@ export async function createWishlistPriceDropNotifications(product, oldPrice, ne
 
   const previous = Number(oldPrice);
   const current = Number(newPrice);
-  if (!Number.isFinite(previous) || !Number.isFinite(current) || current >= previous) {
+  if (
+    !Number.isFinite(previous) ||
+    !Number.isFinite(current) ||
+    current >= previous
+  ) {
     return;
   }
 
@@ -109,7 +120,10 @@ export async function createWishlistPriceDropNotifications(product, oldPrice, ne
   });
 }
 
-export async function createWishlistCouponNotifications(coupon, productIds = []) {
+export async function createWishlistCouponNotifications(
+  coupon,
+  productIds = [],
+) {
   const normalizedProductIds = Array.from(
     new Set(
       (Array.isArray(productIds) ? productIds : [])
@@ -159,7 +173,11 @@ export async function createWishlistCouponNotifications(coupon, productIds = [])
   });
 }
 
-export async function createOrderStatusChangeNotification(orderId, userId, newStatus) {
+export async function createOrderStatusChangeNotification(
+  orderId,
+  userId,
+  newStatus,
+) {
   const normalizedOrderId = Number(orderId);
   const normalizedUserId = Number(userId);
 
@@ -172,14 +190,32 @@ export async function createOrderStatusChangeNotification(orderId, userId, newSt
   }
 
   const statusMessages = {
-    PENDING: { title: "Đơn hàng chờ xác nhận", message: "Đơn hàng của bạn đang chờ xác nhận từ cửa hàng." },
-    PROCESSING: { title: "Đơn hàng đang chuẩn bị", message: "Đơn hàng của bạn đang được chuẩn bị để gửi đi." },
-    SHIPPING: { title: "Đơn hàng đang vận chuyển", message: "Đơn hàng của bạn đang được vận chuyển đến địa chỉ của bạn." },
-    DELIVERED: { title: "Đơn hàng đã giao", message: "Đơn hàng của bạn đã được giao thành công." },
-    CANCELLED: { title: "Đơn hàng đã hủy", message: "Đơn hàng của bạn đã được hủy." },
+    PENDING: {
+      title: "Đơn hàng chờ xác nhận",
+      message: "Đơn hàng của bạn đang chờ xác nhận từ cửa hàng.",
+    },
+    PROCESSING: {
+      title: "Đơn hàng đang chuẩn bị",
+      message: "Đơn hàng của bạn đang được chuẩn bị để gửi đi.",
+    },
+    SHIPPING: {
+      title: "Đơn hàng đang vận chuyển",
+      message: "Đơn hàng của bạn đang được vận chuyển đến địa chỉ của bạn.",
+    },
+    DELIVERED: {
+      title: "Đơn hàng đã giao",
+      message: "Đơn hàng của bạn đã được giao thành công.",
+    },
+    CANCELLED: {
+      title: "Đơn hàng đã hủy",
+      message: "Đơn hàng của bạn đã được hủy.",
+    },
   };
 
-  const statusMessage = statusMessages[newStatus] || { title: "Cập nhật đơn hàng", message: "Đơn hàng của bạn có cập nhật mới." };
+  const statusMessage = statusMessages[newStatus] || {
+    title: "Cập nhật đơn hàng",
+    message: "Đơn hàng của bạn có cập nhật mới.",
+  };
 
   try {
     await prisma.notification.create({
@@ -199,7 +235,12 @@ export async function createOrderStatusChangeNotification(orderId, userId, newSt
   }
 }
 
-export async function createSystemNotification({ userId, title, message, payload = {} }) {
+export async function createSystemNotification({
+  userId,
+  title,
+  message,
+  payload = {},
+}) {
   const normalizedUserId = Number(userId);
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
     return;
@@ -224,6 +265,128 @@ export async function createSystemNotification({ userId, title, message, payload
   } catch (_error) {
     // Silent fail for notification delivery edge-cases.
   }
+}
+
+export async function createReviewReplyNotification({
+  userId,
+  reviewId,
+  product,
+  replyPreview,
+}) {
+  const normalizedUserId = Number(userId);
+  const normalizedReviewId = Number(reviewId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+  if (!Number.isFinite(normalizedReviewId) || normalizedReviewId <= 0) {
+    return;
+  }
+
+  const productName = String(product?.name ?? "sản phẩm").trim() || "sản phẩm";
+  const preview = String(replyPreview ?? "").trim();
+  const message = preview
+    ? `Nhân viên vừa phản hồi đánh giá của bạn về ${productName}: ${preview}`
+    : `Nhân viên vừa phản hồi đánh giá của bạn về ${productName}.`;
+
+  await createSystemNotification({
+    userId: normalizedUserId,
+    title: "Phản hồi đánh giá",
+    message,
+    payload: {
+      kind: "REVIEW_REPLY",
+      reviewId: normalizedReviewId,
+      productId: Number(product?.id ?? 0) || undefined,
+      productSlug: String(product?.slug ?? "") || undefined,
+    },
+  });
+}
+
+export async function createReviewModerationNotification({
+  userId,
+  reviewId,
+  product,
+  action,
+  reason,
+}) {
+  const normalizedUserId = Number(userId);
+  const normalizedReviewId = Number(reviewId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+  if (!Number.isFinite(normalizedReviewId) || normalizedReviewId <= 0) {
+    return;
+  }
+
+  const normalizedAction = String(action ?? "")
+    .trim()
+    .toUpperCase();
+  const productName = String(product?.name ?? "sản phẩm").trim() || "sản phẩm";
+  const normalizedReason = String(reason ?? "").trim();
+
+  const title =
+    normalizedAction === "HIDE"
+      ? "Đánh giá đã bị ẩn"
+      : normalizedAction === "UNHIDE"
+        ? "Đánh giá đã được hiện lại"
+        : "Cập nhật đánh giá";
+
+  const messageBase =
+    normalizedAction === "HIDE"
+      ? `Đánh giá của bạn về ${productName} đã bị ẩn.`
+      : normalizedAction === "UNHIDE"
+        ? `Đánh giá của bạn về ${productName} đã được hiện lại.`
+        : `Đánh giá của bạn về ${productName} có cập nhật.`;
+
+  const message = normalizedReason
+    ? `${messageBase} Lý do: ${normalizedReason}`
+    : messageBase;
+
+  await createSystemNotification({
+    userId: normalizedUserId,
+    title,
+    message,
+    payload: {
+      kind: "REVIEW_MODERATION",
+      action: normalizedAction,
+      reviewId: normalizedReviewId,
+      productId: Number(product?.id ?? 0) || undefined,
+      productSlug: String(product?.slug ?? "") || undefined,
+    },
+  });
+}
+
+export async function createReviewDeletedNotification({
+  userId,
+  reviewId,
+  product,
+  reason,
+}) {
+  const normalizedUserId = Number(userId);
+  const normalizedReviewId = Number(reviewId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+  if (!Number.isFinite(normalizedReviewId) || normalizedReviewId <= 0) {
+    return;
+  }
+
+  const productName = String(product?.name ?? "sản phẩm").trim() || "sản phẩm";
+  const normalizedReason = String(reason ?? "").trim();
+  const message = normalizedReason
+    ? `Đánh giá của bạn về ${productName} đã bị xóa. Lý do: ${normalizedReason}`
+    : `Đánh giá của bạn về ${productName} đã bị xóa.`;
+
+  await createSystemNotification({
+    userId: normalizedUserId,
+    title: "Đánh giá đã bị xóa",
+    message,
+    payload: {
+      kind: "REVIEW_DELETED",
+      reviewId: normalizedReviewId,
+      productId: Number(product?.id ?? 0) || undefined,
+      productSlug: String(product?.slug ?? "") || undefined,
+    },
+  });
 }
 
 function mapNotification(item) {
