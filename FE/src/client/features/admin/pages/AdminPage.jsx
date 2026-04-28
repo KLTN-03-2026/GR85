@@ -134,6 +134,30 @@ const tabPermissionMap = {
   roles: "admin_roles_manage",
 };
 
+// Mapping module base names -> permission module (users, products, orders, etc.)
+const permissionModuleMap = {
+  users: "users",
+  "products-create": "products",
+  "products-inventory": "products",
+  "products-edit": "products",
+  orders: "orders",
+  catalog: "catalog",
+  vouchers: "vouchers",
+  warehouse: "warehouse",
+  reviews: "reviews",
+  chat: "chat",
+  "ai-build": "ai_build",
+  roles: "roles",
+};
+
+// Permission levels for each module: view -> edit -> manage (hierarchical)
+const PERMISSION_LEVELS = [
+  { value: "none", label: "Không có quyền", icon: "🚫" },
+  { value: "view", label: "Chỉ xem", icon: "👁️" },
+  { value: "edit", label: "Xem + sửa", icon: "✏️" },
+  { value: "manage", label: "Quản lý (toàn quyền)", icon: "🔑" },
+];
+
 const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 
 const schemaBySection = {
@@ -6800,71 +6824,161 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">
-                      Quyền theo menu
+                      Quyền theo module
                     </span>
                     {selectedPermissionTarget ? (
                       <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                        {
-                          menuPermissionOptions.filter((item) =>
-                            effectiveSelectedPermissionDraft.includes(
-                              item.actionName,
-                            ),
-                          ).length
-                        }{" "}
-                        mục
+                        {Array.isArray(effectiveSelectedPermissionDraft)
+                          ? effectiveSelectedPermissionDraft.length
+                          : 0}{" "}
+                        quyền
                       </span>
                     ) : null}
                   </div>
 
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {menuPermissionOptions.map((permissionItem) => {
-                      const actionName = String(
-                        permissionItem.actionName ?? "",
-                      );
-                      const isSuperAdmin =
-                        String(selectedPermissionTarget?.email ?? "")
-                          .trim()
-                          .toLowerCase() === "admin@gmail.com";
-                      const checked = isSuperAdmin
-                        ? true
-                        : effectiveSelectedPermissionDraft.includes(actionName);
+                  <div className="grid gap-2 lg:grid-cols-2">
+                    {navItems
+                      .reduce((acc, item) => {
+                        const module = permissionModuleMap[item.id];
+                        if (module && !acc.some((m) => m === module)) {
+                          acc.push(module);
+                        }
+                        return acc;
+                      }, [])
+                      .map((module) => {
+                        const isSuperAdmin =
+                          String(selectedPermissionTarget?.email ?? "")
+                            .trim()
+                            .toLowerCase() === "admin@gmail.com";
 
-                      return (
-                        <label
-                          key={actionName}
-                          className="flex cursor-pointer items-start gap-2 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={isSuperAdmin || !selectedPermissionTarget}
-                            onChange={(event) =>
-                              selectedPermissionTarget
-                                ? toggleUserPermission(
-                                    selectedPermissionTarget.id,
-                                    actionName,
-                                    event.target.checked,
-                                  )
-                                : null
-                            }
-                            className="mt-1"
-                          />
-                          <span className="flex flex-col gap-1">
-                            <span className="font-medium">
-                              {permissionItem.label}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {actionName}
-                            </span>
-                            {permissionItem.description ? (
-                              <span className="text-xs text-muted-foreground">
-                                {permissionItem.description}
+                        const hasManage = effectiveSelectedPermissionDraft.includes(
+                          `admin_${module}_manage`,
+                        );
+                        const hasEdit = effectiveSelectedPermissionDraft.includes(
+                          `admin_${module}_edit`,
+                        );
+                        const hasView = effectiveSelectedPermissionDraft.includes(
+                          `admin_${module}_view`,
+                        );
+
+                        let currentLevel = "none";
+                        if (hasManage) {
+                          currentLevel = "manage";
+                        } else if (hasEdit) {
+                          currentLevel = "edit";
+                        } else if (hasView) {
+                          currentLevel = "view";
+                        }
+
+                        // Find label for this module
+                        const moduleLabel = navItems.find(
+                          (item) => permissionModuleMap[item.id] === module,
+                        )?.label || module;
+
+                        return (
+                          <div
+                            key={module}
+                            className="rounded-lg border border-border/60 bg-secondary/40 p-2.5"
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold">
+                                {moduleLabel}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                {currentLevel === "manage"
+                                  ? "🔑 Quản lý"
+                                  : currentLevel === "edit"
+                                    ? "✏️ Sửa"
+                                    : currentLevel === "view"
+                                      ? "👁️ Xem"
+                                      : "🚫 Không có"}
                               </span>
-                            ) : null}
-                          </span>
-                        </label>
-                      );
-                    })}
+                            </div>
+
+                            {isSuperAdmin ? (
+                              <div className="text-[10px] text-muted-foreground">
+                                Siêu quản trị có toàn quyền
+                              </div>
+                            ) : !selectedPermissionTarget ? (
+                              <div className="text-[10px] text-muted-foreground">
+                                Vui lòng chọn tài khoản
+                              </div>
+                            ) : (
+                              <div className="flex flex-row gap-1 flex-wrap">
+                                {[
+                                  { value: "none", label: "🚫 Không có" },
+                                  { value: "view", label: "👁️ Chỉ xem" },
+                                  { value: "edit", label: "✏️ Xem + sửa" },
+                                  {
+                                    value: "manage",
+                                    label: "🔑 Quản lý toàn bộ",
+                                  },
+                                ].map((levelOption) => (
+                                  <button
+                                    key={levelOption.value}
+                                    type="button"
+                                    onClick={() => {
+                                      const newPermissions = new Set(
+                                        effectiveSelectedPermissionDraft,
+                                      );
+
+                                      // Remove all levels
+                                      newPermissions.delete(
+                                        `admin_${module}_view`,
+                                      );
+                                      newPermissions.delete(
+                                        `admin_${module}_edit`,
+                                      );
+                                      newPermissions.delete(
+                                        `admin_${module}_manage`,
+                                      );
+
+                                      // Add selected level
+                                      if (levelOption.value === "view") {
+                                        newPermissions.add(
+                                          `admin_${module}_view`,
+                                        );
+                                      } else if (levelOption.value === "edit") {
+                                        newPermissions.add(
+                                          `admin_${module}_view`,
+                                        );
+                                        newPermissions.add(
+                                          `admin_${module}_edit`,
+                                        );
+                                      } else if (levelOption.value === "manage") {
+                                        newPermissions.add(
+                                          `admin_${module}_view`,
+                                        );
+                                        newPermissions.add(
+                                          `admin_${module}_edit`,
+                                        );
+                                        newPermissions.add(
+                                          `admin_${module}_manage`,
+                                        );
+                                      }
+
+                                      setPermissionDraftByUserId((prev) => ({
+                                        ...prev,
+                                        [selectedPermissionTarget.id]: Array.from(
+                                          newPermissions,
+                                        ),
+                                      }));
+                                    }}
+                                    disabled={isSuperAdmin}
+                                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                      currentLevel === levelOption.value
+                                        ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                                        : "border-border/60 bg-background text-muted-foreground hover:border-emerald-300"
+                                    }`}
+                                  >
+                                    {levelOption.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
 
                   <Button
