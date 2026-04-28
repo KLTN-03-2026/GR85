@@ -187,10 +187,6 @@ const moderateReviewSchema = z.object({
   reason: z.string().max(2000).optional(),
 });
 
-const reviewReplySchema = z.object({
-  reply: z.string().min(1).max(2000),
-});
-
 const reviewResolveSchema = z.object({
   resolved: z.boolean().default(true),
 });
