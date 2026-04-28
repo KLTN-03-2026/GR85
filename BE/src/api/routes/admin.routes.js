@@ -22,6 +22,16 @@ import {
   updateUserByAdmin,
 } from "../../services/admin.service.js";
 import {
+  createCategoryByAdmin as createCategoryAdmin,
+  deleteCategoryByAdmin as removeCategoryByAdmin,
+  listCategoriesForAdmin as listCategoriesAdmin,
+  updateCategoryByAdmin as editCategoryByAdmin,
+} from "../../services/category-admin.service.js";
+import {
+  moderateProductReviewByAdmin,
+  replyToProductReview,
+} from "../../services/product.service.js";
+import {
   listReturnRequestsForAdmin,
   reviewReturnRequestByAdmin,
 } from "../../services/wallet.service.js";
@@ -49,17 +59,36 @@ const updateUserSchema = z.object({
   status: z.enum(["ACTIVE", "BANNED", "UNVERIFIED"]).optional(),
 });
 
+const categoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().default(""),
+  status: z.enum(["all", "active", "inactive"]).default("all"),
+});
+
+const createCategorySchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(2000).optional().default(""),
+  isActive: z.boolean().default(true),
+});
+
+const updateCategorySchema = createCategorySchema.partial();
+
+const reviewModerationSchema = z.object({
+  action: z.enum(["HIDE", "DELETE"]),
+  reason: z.string().min(5).max(2000),
+});
+
+const reviewReplySchema = z.object({
+  message: z.string().min(1).max(2000),
+});
+
 router.get("/users/:userId/detail", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
       return res.status(403).json({
         message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
       });
-    }
-    if (!hasPermission(req, "admin_users_manage")) {
-      return res
-        .status(403)
-        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
     const data = await getUserDetailByAdmin(req.params.userId);
@@ -186,6 +215,13 @@ function hasPermission(req, permission) {
   );
 }
 
+function canManageCategories(req) {
+  return (
+    hasPermission(req, "admin_products_manage") ||
+    hasPermission(req, "admin_catalog_manage")
+  );
+}
+
 router.get("/reviews", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
@@ -207,6 +243,89 @@ router.get("/reviews", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.get("/categories", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = categoryQuerySchema.parse(req.query);
+    const data = await listCategoriesAdmin(parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.post("/categories", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = createCategorySchema.parse(req.body);
+    const data = await createCategoryAdmin(parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.patch("/categories/:categoryId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const parsed = updateCategorySchema.parse(req.body);
+    const data = await editCategoryByAdmin(req.params.categoryId, parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
+  }
+});
+
+router.delete("/categories/:categoryId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chi quan tri vien moi co the truy cap endpoint nay" });
+    }
+    if (!canManageCategories(req)) {
+      return res.status(403).json({ message: "Ban khong co quyen thuc hien chuc nang nay" });
+    }
+
+    const data = await removeCategoryByAdmin(req.params.categoryId);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Loi may chu khong xac dinh" });
   }
 });
 
@@ -247,7 +366,7 @@ router.patch("/reviews/:reviewId/moderate", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/reviews/:reviewId/reply", requireAuth, async (req, res) => {
+router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
       return res.status(403).json({
@@ -255,17 +374,37 @@ router.patch("/reviews/:reviewId/reply", requireAuth, async (req, res) => {
       });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
-      return res
-        .status(403)
-        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
     const parsed = reviewReplySchema.parse(req.body ?? {});
-    const data = await replyReviewByAdmin(
-      Number(req.auth?.sub),
-      req.params.reviewId,
-      parsed,
-    );
+    const data = await replyToProductReview(Number(req.auth?.sub), Number(req.params.reviewId), parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+    }
+
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Chỉ quản trị viên mới có thể truy cập endpoint này" });
+    }
+    if (!hasPermission(req, "admin_reviews_manage")) {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const parsed = reviewModerationSchema.parse(req.body ?? {});
+    const data = await moderateProductReviewByAdmin(Number(req.auth?.sub), Number(req.params.reviewId), parsed);
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -470,21 +609,25 @@ router.post("/coupons", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/coupons/:couponId", requireAuth, async (req, res) => {
+router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
       return res.status(403).json({
         message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
       });
     }
-    if (!hasPermission(req, "admin_vouchers_manage")) {
+    if (!hasPermission(req, "admin_reviews_manage")) {
       return res
         .status(403)
         .json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
-    const parsed = updateCouponSchema.parse(req.body ?? {});
-    const data = await updateCouponByAdmin(req.params.couponId, parsed);
+    const parsed = reviewModerationSchema.parse(req.body ?? {});
+    const data = await moderateProductReviewByAdmin(
+      Number(req.auth?.sub),
+      Number(req.params.reviewId),
+      parsed,
+    );
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -503,22 +646,31 @@ router.patch("/coupons/:couponId", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/coupons/:couponId", requireAuth, async (req, res) => {
+router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
       return res.status(403).json({
         message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
       });
     }
-    if (!hasPermission(req, "admin_vouchers_manage")) {
+    if (!hasPermission(req, "admin_reviews_manage")) {
       return res
         .status(403)
         .json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
-    const data = await deleteCouponByAdmin(req.params.couponId);
-    return res.json(data);
+    const parsed = reviewReplySchema.parse(req.body ?? {});
+    const data = await replyToProductReview(
+      Number(req.auth?.sub),
+      Number(req.params.reviewId),
+      parsed,
+    );
+    return res.status(201).json(data);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+    }
+
     if (error instanceof Error) {
       const status = error.message.includes("not found") ? 404 : 400;
       return res.status(status).json({ message: error.message });
@@ -528,20 +680,20 @@ router.delete("/coupons/:couponId", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/warehouse/overview", requireAuth, async (req, res) => {
+router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
       return res.status(403).json({
         message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
       });
     }
-    if (!hasPermission(req, "admin_warehouse_manage")) {
+    if (!hasPermission(req, "admin_reviews_manage")) {
       return res
         .status(403)
         .json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
-    const data = await getWarehouseOverviewByAdmin();
+    const data = await deleteReviewByAdmin(req.params.reviewId);
     return res.json(data);
   } catch (error) {
     if (error instanceof Error) {

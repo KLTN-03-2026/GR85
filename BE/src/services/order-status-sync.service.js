@@ -4,6 +4,7 @@ import {
   reloadOrderWithHistory,
   runOrderStatusUpdateTransaction,
 } from "../repositories/order-sync.repository.js";
+import { emitOrderStatusUpdated } from "../realtime/chat.socket.js";
 
 const ORDER_STATUS = {
   PENDING: "PENDING",
@@ -99,15 +100,19 @@ export async function updateOrderStatus({
   console.info(
     `[OrderStatusSync] order=${normalizedOrderId} source=${normalizedSource} ${currentStatus} -> ${normalizedTargetStatus}`,
   );
+  const updatedOrder = await reloadOrderWithHistory(normalizedOrderId);
+  const responseDto = toOrderDetailResponseDto(updatedOrder);
 
-  emitOrderStatusUpdatedEvent({
+  emitOrderStatusUpdated({
     orderId: normalizedOrderId,
-    status: normalizedTargetStatus,
-    time: new Date().toISOString(),
+    userId: responseDto.order.userId,
+    status: responseDto.order.status,
+    orderStatus: responseDto.order.orderStatus,
+    paymentStatus: responseDto.order.paymentStatus,
+    updatedAt: responseDto.order.updatedAt,
   });
 
-  const updatedOrder = await reloadOrderWithHistory(normalizedOrderId);
-  return toOrderDetailResponseDto(updatedOrder);
+  return responseDto;
 }
 
 export async function handlePaymentWebhook({
@@ -374,13 +379,3 @@ function toOrderDetailResponseDto(order) {
   };
 }
 
-function emitOrderStatusUpdatedEvent(payload) {
-  const io = globalThis?.io;
-
-  if (io && typeof io.emit === "function") {
-    io.emit("order_status_updated", payload);
-    return;
-  }
-
-  console.info("[Realtime] Websocket not configured, skip order_status_updated emit");
-}

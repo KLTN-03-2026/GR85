@@ -9,6 +9,7 @@ import {
   addProductToWishlistBySlug,
   batchUpdateProductDisplayOrder,
   createProductReviewBySlug,
+  replyToProductReview,
   createProduct,
   deleteProductById,
   getProductDetailBySlug,
@@ -160,8 +161,17 @@ router.get("/:slug", async (req, res) => {
 
 router.get("/:slug/reviews", async (req, res) => {
   try {
-    const data = await listProductReviewsBySlug(req.params.slug);
+    const data = await listProductReviewsBySlug(req.params.slug, req.query ?? {});
     return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:slug/reviews/:reviewId/replies", requireAuth, async (req, res) => {
+  try {
+    const data = await replyToProductReview(Number(req.auth?.sub), Number(req.params.reviewId), req.body ?? {});
+    return res.status(201).json(data);
   } catch (error) {
     return handleRouteError(error, res);
   }

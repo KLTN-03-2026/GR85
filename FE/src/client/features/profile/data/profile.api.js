@@ -106,6 +106,19 @@ export const profileApi = {
     return response.json();
   },
 
+  getMyReviews: async () => {
+    const response = await fetch(`${API_BASE}/auth/my-reviews`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải lịch sử đánh giá");
+    }
+
+    return response.json();
+  },
+
   getAddresses: async () => {
     const response = await fetch(`${API_BASE}/auth/addresses`, {
       headers: authHeaders(),

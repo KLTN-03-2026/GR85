@@ -15,7 +15,7 @@ import {
   saveCustomerVote,
   updateRoomStatus,
 } from "../repositories/chat.repository.js";
-import { emitNewMessage, emitRoomDone, getRoomPresence } from "../realtime/chat.socket.js";
+import { emitNewMessage, emitRoomDone, emitMessagesRead, getRoomPresence } from "../realtime/chat.socket.js";
 
 class AppError extends Error {
   constructor(message, statusCode = 400) {
@@ -191,6 +191,11 @@ export async function markRoomRead({ roomId, userId, isAdmin }) {
     conversationId: normalizedRoomId,
     userId: normalizedUserId,
   });
+
+  // Emit socket event for real-time updates
+  if (result.messageIds && result.messageIds.length > 0) {
+    emitMessagesRead(normalizedRoomId, result.messageIds, normalizedUserId);
+  }
 
   return {
     roomId: normalizedRoomId,

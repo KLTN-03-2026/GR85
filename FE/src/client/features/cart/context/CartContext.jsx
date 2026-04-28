@@ -158,7 +158,9 @@ export function CartProvider({ children }) {
   }, [callCartApi, isAuthenticated, isHydrated, readGuestCart, refreshCart, token, writeGuestCart]);
 
   const addToCart = useCallback(
-    async (component) => {
+    async (component, quantity = 1) => {
+      const normalizedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+
       if (!isAuthenticated || !token) {
         const normalized = normalizeGuestComponent(component);
         if (!normalized) {
@@ -174,12 +176,15 @@ export function CartProvider({ children }) {
             Number(item.productId) === Number(normalized.productId)
               ? {
                 ...item,
-                quantity: Math.min(Number(item.stock ?? 0) || 9999, Number(item.quantity ?? 0) + 1),
+                quantity: Math.min(
+                  Number(item.stock ?? 0) || 9999,
+                  Number(item.quantity ?? 0) + normalizedQuantity,
+                ),
               }
               : item,
           );
         } else {
-          nextItems = [...current, { ...normalized, quantity: 1 }];
+          nextItems = [...current, { ...normalized, quantity: normalizedQuantity }];
         }
 
         writeGuestCart(nextItems);
@@ -189,7 +194,7 @@ export function CartProvider({ children }) {
 
       const payload = await callCartApi("/items", {
         method: "POST",
-        body: JSON.stringify({ productId: Number(component.id), quantity: 1 }),
+        body: JSON.stringify({ productId: Number(component.id), quantity: normalizedQuantity }),
       });
       setCart(normalizeCartPayload(payload));
     },

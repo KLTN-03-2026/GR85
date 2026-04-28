@@ -92,6 +92,21 @@ export default function ChatPage() {
             }
           });
 
+          socket.on("messages_read", (payload) => {
+            if (Number(payload?.roomId) === Number(room.roomId)) {
+              const messageIds = Array.isArray(payload?.messageIds) ? payload.messageIds : [];
+              if (messageIds.length > 0) {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    messageIds.includes(msg.id)
+                      ? { ...msg, readByUserIds: [...(msg.readByUserIds || []), payload.userId] }
+                      : msg
+                  )
+                );
+              }
+            }
+          });
+
           socket.on("chat_room_presence", (payload) => {
             if (Number(payload?.roomId) === Number(room.roomId)) {
               setPresence({
