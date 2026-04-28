@@ -4,7 +4,12 @@ import {
   normalizeAndValidateFullName,
   normalizeAndValidatePhoneNumber,
 } from "../utils/validation.js";
-import { createWishlistCouponNotifications } from "./notification.service.js";
+import {
+  createReviewDeletedNotification,
+  createReviewModerationNotification,
+  createReviewReplyNotification,
+  createWishlistCouponNotifications,
+} from "./notification.service.js";
 
 export const adminPermissionCatalog = [
   {
@@ -342,6 +347,29 @@ export async function listReviewsForAdmin() {
           email: true,
         },
       },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      },
     },
   });
 
@@ -370,6 +398,16 @@ export async function moderateReviewByAdmin(
   const existing = await prisma.review.findUnique({ where: { id: reviewId } });
   if (!existing) {
     throw new Error("Review not found");
+  }
+
+  const unhideReason = String(input.reason ?? "").trim();
+  if (!isHidden) {
+    if (!unhideReason) {
+      throw new Error("Reason is required");
+    }
+    if (unhideReason.length > 2000) {
+      throw new Error("Reason is too long");
+    }
   }
 
   const updated = await prisma.review.update({
@@ -409,7 +447,38 @@ export async function moderateReviewByAdmin(
           email: true,
         },
       },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      },
     },
+  });
+
+  await createReviewModerationNotification({
+    userId: updated.userId,
+    reviewId: updated.id,
+    product: updated.product,
+    action: isHidden ? "HIDE" : "UNHIDE",
+    reason: isHidden ? hiddenReason || "" : unhideReason,
   });
 
   return serializeData(mapAdminReview(updated));
@@ -442,13 +511,182 @@ export async function replyReviewByAdmin(
     throw new Error("Review not found");
   }
 
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedReview = await tx.review.update({
+      where: { id: reviewId },
+      data: {
+        adminReply,
+        adminRepliedBy: replierId,
+        adminRepliedAt: new Date(),
+        threadStatus: "WAITING_CUSTOMER",
+        threadResolvedBy: null,
+        threadResolvedAt: null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        moderator: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        replier: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        resolver: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        replies: {
+          orderBy: { createdAt: "asc" },
+          take: 200,
+          include: {
+            sender: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        },
+      },
+    });
+
+    await tx.reviewReply.create({
+      data: {
+        reviewId: updatedReview.id,
+        senderId: replierId,
+        message: adminReply,
+      },
+    });
+
+    return tx.review.findUnique({
+      where: { id: updatedReview.id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        moderator: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        replier: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        resolver: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        replies: {
+          orderBy: { createdAt: "asc" },
+          take: 200,
+          include: {
+            sender: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        },
+      },
+    });
+  });
+
+  await createReviewReplyNotification({
+    userId: updated.userId,
+    reviewId: updated.id,
+    product: updated.product,
+    replyPreview: truncateText(adminReply, 160),
+  });
+
+  return serializeData(mapAdminReview(updated));
+}
+
+export async function resolveReviewThreadByAdmin(
+  adminUserId,
+  reviewIdInput,
+  input = {},
+) {
+  const reviewId = Number(reviewIdInput);
+  const resolverId = Number(adminUserId);
+  const resolved = Boolean(input.resolved);
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+  if (!Number.isFinite(resolverId) || resolverId <= 0) {
+    throw new Error("Invalid admin id");
+  }
+
+  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!existing) {
+    throw new Error("Review not found");
+  }
+
   const updated = await prisma.review.update({
     where: { id: reviewId },
-    data: {
-      adminReply,
-      adminRepliedBy: replierId,
-      adminRepliedAt: new Date(),
-    },
+    data: resolved
+      ? {
+          threadStatus: "RESOLVED",
+          threadResolvedBy: resolverId,
+          threadResolvedAt: new Date(),
+        }
+      : {
+          threadStatus: "OPEN",
+          threadResolvedBy: null,
+          threadResolvedAt: null,
+        },
     include: {
       user: {
         select: {
@@ -478,25 +716,82 @@ export async function replyReviewByAdmin(
           email: true,
         },
       },
+      resolver: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      },
     },
   });
 
   return serializeData(mapAdminReview(updated));
 }
 
-export async function deleteReviewByAdmin(reviewIdInput) {
+export async function deleteReviewByAdmin(reviewIdInput, input = {}) {
   const reviewId = Number(reviewIdInput);
   if (!Number.isFinite(reviewId) || reviewId <= 0) {
     throw new Error("Invalid review id");
   }
 
-  const existing = await prisma.review.findUnique({ where: { id: reviewId } });
+  const reason = String(input.reason ?? "").trim();
+  if (!reason) {
+    throw new Error("Reason is required");
+  }
+  if (reason.length > 2000) {
+    throw new Error("Reason is too long");
+  }
+
+  const existing = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+    },
+  });
   if (!existing) {
     throw new Error("Review not found");
   }
 
+  await createReviewDeletedNotification({
+    userId: existing.userId,
+    reviewId,
+    product: existing.product,
+    reason,
+  });
+
   await prisma.review.delete({ where: { id: reviewId } });
   return serializeData({ id: reviewId, deleted: true });
+}
+
+function truncateText(value, maxLen) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+  if (text.length <= maxLen) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLen - 1))}…`;
 }
 
 export async function updateRolePermissionsByAdmin(roleIdInput, input = {}) {
@@ -1519,6 +1814,8 @@ function buildBatchCode(productId, warehouseId) {
 }
 
 function mapAdminReview(review) {
+  const reviewUserId = Number(review.userId);
+
   return {
     id: review.id,
     rating: Number(review.rating ?? 0),
@@ -1528,8 +1825,18 @@ function mapAdminReview(review) {
     moderatedAt: review.moderatedAt,
     adminReply: review.adminReply ? String(review.adminReply) : "",
     adminRepliedAt: review.adminRepliedAt,
+    threadStatus: String(review.threadStatus ?? "OPEN"),
+    threadResolvedAt: review.threadResolvedAt,
+    images: Array.isArray(review.images)
+      ? review.images.map((image) => ({
+          id: image.id,
+          imageUrl: String(image.imageUrl ?? ""),
+          sortOrder: Number(image.sortOrder ?? 0),
+        }))
+      : [],
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
+    thread: buildReviewThread(review, reviewUserId),
     user: review.user
       ? {
           id: review.user.id,
@@ -1562,7 +1869,67 @@ function mapAdminReview(review) {
             String(review.replier.email ?? "Admin"),
         }
       : null,
+    resolver: review.resolver
+      ? {
+          id: review.resolver.id,
+          fullName:
+            String(review.resolver.fullName ?? "").trim() ||
+            String(review.resolver.email ?? "Admin"),
+        }
+      : null,
   };
+}
+
+function buildReviewThread(review, reviewUserId) {
+  const replies = Array.isArray(review?.replies) ? review.replies : [];
+  const thread = replies.map((reply) => {
+    const senderId = Number(reply.senderId);
+    const isStaff =
+      Number.isFinite(senderId) && senderId > 0 && senderId !== reviewUserId;
+
+    return {
+      id: reply.id,
+      senderId,
+      senderName:
+        String(reply.sender?.fullName ?? "").trim() ||
+        String(reply.sender?.email ?? "").trim() ||
+        (isStaff ? "Nhân viên" : "Khách hàng"),
+      isStaff,
+      message: String(reply.message ?? ""),
+      createdAt: reply.createdAt,
+    };
+  });
+
+  const fallbackAdminReply = String(review?.adminReply ?? "").trim();
+  const fallbackAdminRepliedAt = review?.adminRepliedAt
+    ? new Date(review.adminRepliedAt)
+    : null;
+  const fallbackAdminSenderId = Number(review?.adminRepliedBy);
+  const hasFallback =
+    Boolean(fallbackAdminReply) &&
+    !thread.some(
+      (item) => String(item.message ?? "").trim() === fallbackAdminReply,
+    );
+
+  if (hasFallback) {
+    thread.push({
+      id: `fallback-admin-${review.id}`,
+      senderId: Number.isFinite(fallbackAdminSenderId)
+        ? fallbackAdminSenderId
+        : null,
+      senderName: review?.replier?.fullName
+        ? String(review.replier.fullName)
+        : "Nhân viên",
+      isStaff: true,
+      message: fallbackAdminReply,
+      createdAt:
+        fallbackAdminRepliedAt || review?.updatedAt || review?.createdAt,
+    });
+  }
+
+  return thread.sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
 }
 
 function mapCoupon(coupon) {
