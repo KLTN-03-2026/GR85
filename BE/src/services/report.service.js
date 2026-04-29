@@ -39,7 +39,7 @@ export async function getAdminReports(filters = {}) {
   let cancelledOrders = 0;
 
   orders.forEach((order) => {
-    if (order.orderStatus === "COMPLETED" || order.orderStatus === "DELIVERED") {
+    if (["PROCESSING", "SHIPPING", "DELIVERED"].includes(order.orderStatus)) {
       totalRevenue += Number(order.totalAmount);
       successOrders++;
     } else if (order.orderStatus === "CANCELLED" || order.orderStatus === "RETURNED") {
@@ -55,7 +55,7 @@ export async function getAdminReports(filters = {}) {
   const categorySales = {};
 
   orders.forEach((order) => {
-    if (order.orderStatus !== "COMPLETED" && order.orderStatus !== "DELIVERED") return;
+    if (!["PROCESSING", "SHIPPING", "DELIVERED"].includes(order.orderStatus)) return;
 
     order.orderItems.forEach((item) => {
       const productId = item.productId;
@@ -105,7 +105,7 @@ export async function getAdminReports(filters = {}) {
   // 4. Báo cáo khách hàng VIP
   const customerSpending = {};
   orders.forEach((order) => {
-    if (order.orderStatus !== "COMPLETED" && order.orderStatus !== "DELIVERED") return;
+    if (!["PROCESSING", "SHIPPING", "DELIVERED"].includes(order.orderStatus)) return;
     if (!order.userId) return;
 
     if (!customerSpending[order.userId]) {
@@ -166,7 +166,7 @@ export async function getAdminReports(filters = {}) {
   const revenueChartMap = {};
 
   orders.forEach((order) => {
-    if (order.orderStatus !== "COMPLETED" && order.orderStatus !== "DELIVERED") return;
+    if (!["PROCESSING", "SHIPPING", "DELIVERED"].includes(order.orderStatus)) return;
     const dateKey = isDaily
       ? format(order.createdAt, "dd/MM/yyyy")
       : format(order.createdAt, "MM/yyyy");
