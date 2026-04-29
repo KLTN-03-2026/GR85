@@ -232,7 +232,7 @@ export async function getAdminDashboard() {
         replies: {
           orderBy: { createdAt: "asc" },
           include: {
-            user: true,
+            sender: true,
           },
         },
       },
