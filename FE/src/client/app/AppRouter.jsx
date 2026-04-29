@@ -13,6 +13,7 @@ import PaymentResultPage from "@/client/features/cart/pages/PaymentResultPage";
 import PayOSReturnPage from "@/client/features/cart/pages/PayOSReturnPage";
 import AdminPage from "@/client/features/admin/pages/AdminPage";
 import ProfilePage from "@/client/features/profile/pages/ProfilePage";
+import FavoritePage from "@/client/features/favorite/pages/FavoritePage";
 import NotFoundPage from "@/client/features/shared/pages/NotFoundPage";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -35,6 +36,7 @@ export function AppRouter() {
         <Route path="/ai-recommend" element={<UserRoute><AIRecommendPage /></UserRoute>} />
         <Route path="/ai-chat" element={<UserRoute><AIAdvisorChatPage /></UserRoute>} />
         <Route path="/cart" element={<UserRoute><CartPage /></UserRoute>} />
+        <Route path="/favorites" element={<UserRoute><FavoritePage /></UserRoute>} />
         <Route path="/payment-payos" element={<UserRoute><PayOSCheckoutPage /></UserRoute>} />
         <Route path="/payment-qr" element={<UserRoute><PaymentQrPage /></UserRoute>} />
         <Route path="/payment/success" element={<UserRoute><PayOSReturnPage /></UserRoute>} />

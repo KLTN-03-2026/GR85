@@ -21,6 +21,8 @@ import {
   listProducts,
   removeProductFromWishlistBySlug,
   updateProductById,
+  addProductToWishlistById,
+  removeProductFromWishlistById,
 } from "../../services/product.service.js";
 
 const router = Router();
@@ -215,6 +217,30 @@ router.delete("/:slug/wishlist", requireAuth, async (req, res) => {
     const data = await removeProductFromWishlistBySlug(
       Number(req.auth?.sub),
       req.params.slug,
+    );
+    return res.json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/:id/wishlist-by-id", requireAuth, async (req, res) => {
+  try {
+    const data = await addProductToWishlistById(
+      Number(req.auth?.sub),
+      Number(req.params.id),
+    );
+    return res.status(201).json(data);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.delete("/:id/wishlist-by-id", requireAuth, async (req, res) => {
+  try {
+    const data = await removeProductFromWishlistById(
+      Number(req.auth?.sub),
+      Number(req.params.id),
     );
     return res.json(data);
   } catch (error) {
