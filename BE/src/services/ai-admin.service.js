@@ -7,11 +7,15 @@ export async function getAiSettings() {
   });
 
   if (!settings) {
+    const defaultModel = process.env.GROQ_API_KEY
+      ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
+      : (process.env.AI_MODEL || "gpt-4o-mini");
+
     settings = await prisma.aiSetting.create({
       data: {
         id: 1,
         isEnabled: true,
-        model: "gpt-4o-mini",
+        model: defaultModel,
         temperature: 0.7,
         maxToken: 2000,
         systemPrompt: "Bạn là trợ lý AI chuyên gia về build PC của pc-perfect.",
@@ -23,15 +27,32 @@ export async function getAiSettings() {
 }
 
 export async function updateAiSettings(data) {
-  const settings = await prisma.aiSetting.upsert({
-    where: { id: 1 },
-    update: data,
-    create: {
-      id: 1,
-      ...data,
-    },
-  });
-  return settings;
+  // Ensure existing settings are updated; if not present, create with sensible defaults
+  const existing = await prisma.aiSetting.findUnique({ where: { id: 1 } });
+
+  if (existing) {
+    const updated = await prisma.aiSetting.update({
+      where: { id: 1 },
+      data: data,
+    });
+    return updated;
+  }
+
+  const defaultModel = process.env.GROQ_API_KEY
+    ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
+    : (process.env.AI_MODEL || "gpt-4o-mini");
+
+  const createData = {
+    id: 1,
+    isEnabled: data.isEnabled ?? true,
+    model: data.model ?? defaultModel,
+    temperature: data.temperature ?? 0.7,
+    maxToken: data.maxToken ?? 2000,
+    systemPrompt: data.systemPrompt ?? "Bạn là trợ lý AI chuyên gia về build PC của pc-perfect.",
+  };
+
+  const created = await prisma.aiSetting.create({ data: createData });
+  return created;
 }
 
 export async function isAiEnabled() {

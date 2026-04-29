@@ -336,9 +336,13 @@ export async function generateAiChatReply(input, userId = null) {
   // Load settings from DB
   let settings = await prisma.aiSetting.findUnique({ where: { id: 1 } });
   if (!settings) {
+    const defaultModel = process.env.GROQ_API_KEY
+      ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
+      : (process.env.AI_MODEL || "gpt-4o-mini");
+
     settings = {
       isEnabled: true,
-      model: "gpt-4o-mini",
+      model: defaultModel,
       temperature: 0.7,
       maxToken: 2000,
       systemPrompt: "Bạn là một chuyên gia tư vấn build PC am hiểu sâu về các linh kiện máy tính (CPU, GPU, RAM, Mainboard, v.v.). Người dùng sẽ hỏi bạn về các linh kiện cụ thể. Hãy tư vấn chi tiết, đánh giá ưu nhược điểm của từng linh kiện dựa trên nhu cầu của người dùng, KHÔNG TƯ VẤN NGUYÊN CẢ DÀN PC trừ khi được yêu cầu rõ ràng. Trả lời ngắn gọn, súc tích, dễ hiểu và chuyên nghiệp bằng tiếng Việt."
@@ -374,7 +378,20 @@ export async function generateAiChatReply(input, userId = null) {
         ? "https://api.groq.com/openai/v1/chat/completions"
         : "https://api.openai.com/v1/chat/completions";
         
-      const modelName = settings.model || process.env.AI_MODEL || (isGroq ? "llama-3.3-70b-versatile" : "gpt-3.5-turbo");
+      const configuredModel = settings.model || process.env.AI_MODEL;
+      const openAiDefaultModel = process.env.AI_MODEL || "gpt-4o-mini";
+      const groqDefaultModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+      let modelName = configuredModel || (isGroq ? groqDefaultModel : openAiDefaultModel);
+
+      // Prevent provider mismatch (for example: gpt-* model sent to Groq endpoint).
+      if (isGroq && /^gpt-/i.test(String(modelName))) {
+        modelName = groqDefaultModel;
+      }
+
+      if (!isGroq && /llama|mixtral|gemma/i.test(String(modelName))) {
+        modelName = openAiDefaultModel;
+      }
   
       const response = await fetch(endpoint, {
         method: "POST",
