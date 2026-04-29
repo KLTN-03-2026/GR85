@@ -85,7 +85,7 @@ export default function PaymentQrPage() {
         <Card className="mx-auto max-w-2xl border-border/70 p-6">
           <h1 className="text-2xl font-bold">Quét mã QR để thanh toán</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Quét mã VNPAY/VietQR bằng app ngân hàng hoặc ví điện tử, kiểm tra đúng số tiền và nội dung chuyển khoản rồi nhấn "Đã quét xong".
+            Quét mã VNPAY/SePay/VietQR bằng app ngân hàng hoặc ví điện tử, kiểm tra đúng số tiền và nội dung chuyển khoản rồi nhấn "Đã quét xong".
           </p>
 
           <div className="mt-6 space-y-5">

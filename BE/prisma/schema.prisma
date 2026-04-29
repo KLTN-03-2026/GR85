@@ -48,6 +48,7 @@ enum PaymentMethod {
     VNPAY
     MOMO
     BANK_TRANSFER
+    SEPAY
 }
 
 enum PaymentStatus {

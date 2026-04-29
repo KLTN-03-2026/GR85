@@ -2153,8 +2153,8 @@ function formatPaymentMethod(value) {
   if (normalized === "COD") {
     return "COD";
   }
-  if (normalized === "VNPAY" || normalized === "PAYOS") {
-    return "QR";
+  if (normalized === "VNPAY" || normalized === "PAYOS" || normalized === "SEPAY") {
+    return "Thanh toán qua mã QR";
   }
   return normalized || "UNKNOWN";
 }
@@ -2289,6 +2289,10 @@ function formatOrderHistoryNote(note) {
   }
   if (normalized.includes("VNPAY confirmed via")) {
     return "Thanh toán VNPAY đã xác nhận thành công.";
+  }
+
+  if (normalized.includes("SePay confirmed via") || normalized.includes("SePay")) {
+    return "Thanh toán SePay đã xác nhận thành công.";
   }
   if (
     normalized.includes("Cancelled: stock changed during payment confirmation")

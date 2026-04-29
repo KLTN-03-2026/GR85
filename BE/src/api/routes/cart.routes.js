@@ -35,7 +35,7 @@ const checkoutSchema = z.object({
   shippingCouponCode: z.string().max(50).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
   useWalletBalance: z.boolean().optional().default(true),
-  paymentMethod: z.enum(["VNPAY", "COD", "PAYOS"]).default("PAYOS"),
+  paymentMethod: z.enum(["VNPAY", "COD", "PAYOS", "SEPAY"]).default("PAYOS"),
   bankCode: z.string().optional(),
   provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
 });
@@ -47,7 +47,7 @@ const previewPricingSchema = z.object({
   addressId: z.number().int().positive().optional(),
   shippingAddress: z.string().max(500).optional(),
   provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
-  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS"]).optional(),
+  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS", "SEPAY"]).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
 });
 
@@ -57,7 +57,7 @@ const availableCouponsSchema = z.object({
   addressId: z.number().int().positive().optional(),
   shippingAddress: z.string().max(500).optional(),
   provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
-  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS"]).optional(),
+  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS", "SEPAY"]).optional(),
 });
 
 const shippingEstimateSchema = z.object({
@@ -65,7 +65,7 @@ const shippingEstimateSchema = z.object({
   shippingAddress: z.string().max(500).optional(),
   selectedCartItemIds: z.array(z.number().int().positive()).optional(),
   provider: z.enum(["GHN", "VIETTEL_POST", "VIETTEL", "VIETTELPOST"]).optional(),
-  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS"]).optional(),
+  paymentMethod: z.enum(["COD", "VNPAY", "PAYOS", "SEPAY"]).optional(),
 });
 
 const confirmMockPaymentSchema = z.object({
