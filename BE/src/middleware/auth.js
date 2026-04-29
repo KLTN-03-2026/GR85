@@ -56,6 +56,55 @@ export async function requireAuth(req, res, next) {
   }
 }
 
+export async function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET);
+    const userId = Number(payload?.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return next();
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (user) {
+      const permissions = resolveEffectivePermissions(user);
+      const role = resolveDisplayRoleFromPermissions(user, permissions);
+
+      req.auth = {
+        ...payload,
+        sub: user.id,
+        role,
+        permissions,
+      };
+    }
+
+    return next();
+  } catch {
+    return next();
+  }
+}
+
 export function requirePermission(permission) {
   return (req, res, next) => {
     if (!req.auth) {

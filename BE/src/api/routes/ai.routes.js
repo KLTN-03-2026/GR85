@@ -5,6 +5,7 @@ import {
   generateAiChatReply,
 } from "../../services/ai.service.js";
 import { askAiAdvisorHandler } from "../controllers/ai-advisor.controller.js";
+import { optionalAuth } from "../../middleware/auth.js";
 
 const router = Router();
 
@@ -52,10 +53,11 @@ router.post("/recommend-build", async (req, res) => {
 
 router.post("/ask", askAiAdvisorHandler);
 
-router.post("/chat-build", async (req, res) => {
+router.post("/chat-build", optionalAuth, async (req, res) => {
   try {
     const payload = chatSchema.parse(req.body);
-    const data = await generateAiChatReply(payload);
+    const userId = req.auth ? Number(req.auth.sub) : null;
+    const data = await generateAiChatReply(payload, userId);
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {

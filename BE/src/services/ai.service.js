@@ -325,12 +325,28 @@ export async function buildAiRecommendation(input) {
   });
 }
 
-export async function generateAiChatReply(input) {
+export async function generateAiChatReply(input, userId = null) {
   const message = String(input.message ?? "").trim();
   const history = Array.isArray(input.history) ? input.history : [];
 
   if (!message) {
     throw new Error("Message is required");
+  }
+
+  // Load settings from DB
+  let settings = await prisma.aiSetting.findUnique({ where: { id: 1 } });
+  if (!settings) {
+    settings = {
+      isEnabled: true,
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      maxToken: 2000,
+      systemPrompt: "Bạn là một chuyên gia tư vấn build PC am hiểu sâu về các linh kiện máy tính (CPU, GPU, RAM, Mainboard, v.v.). Người dùng sẽ hỏi bạn về các linh kiện cụ thể. Hãy tư vấn chi tiết, đánh giá ưu nhược điểm của từng linh kiện dựa trên nhu cầu của người dùng, KHÔNG TƯ VẤN NGUYÊN CẢ DÀN PC trừ khi được yêu cầu rõ ràng. Trả lời ngắn gọn, súc tích, dễ hiểu và chuyên nghiệp bằng tiếng Việt."
+    };
+  }
+
+  if (!settings.isEnabled) {
+    throw new Error("Hệ thống trợ lý AI hiện đang được tắt bởi quản trị viên.");
   }
 
   const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
@@ -340,7 +356,7 @@ export async function generateAiChatReply(input) {
 
   const systemMessage = {
     role: "system",
-    content: "Bạn là một chuyên gia tư vấn build PC am hiểu sâu về các linh kiện máy tính (CPU, GPU, RAM, Mainboard, v.v.). Người dùng sẽ hỏi bạn về các linh kiện cụ thể. Hãy tư vấn chi tiết, đánh giá ưu nhược điểm của từng linh kiện dựa trên nhu cầu của người dùng, KHÔNG TƯ VẤN NGUYÊN CẢ DÀN PC trừ khi được yêu cầu rõ ràng. Trả lời ngắn gọn, súc tích, dễ hiểu và chuyên nghiệp bằng tiếng Việt."
+    content: settings.systemPrompt
   };
 
   const messages = [
@@ -352,43 +368,68 @@ export async function generateAiChatReply(input) {
     { role: "user", content: message },
   ];
 
-  try {
-    const isGroq = Boolean(process.env.GROQ_API_KEY);
-    const endpoint = isGroq
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-      
-    const modelName = process.env.AI_MODEL || (isGroq ? "llama-3.3-70b-versatile" : "gpt-3.5-turbo");
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: messages,
-        max_tokens: 800,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || "";
-      if (response.status === 429 || errorMessage.toLowerCase().includes("quota")) {
-        throw new Error("Hệ thống AI hiện đã hết lượt sử dụng (quota exceeded) hoặc quá tải. Vui lòng kiểm tra lại API key.");
+    try {
+      const isGroq = Boolean(process.env.GROQ_API_KEY);
+      const endpoint = isGroq
+        ? "https://api.groq.com/openai/v1/chat/completions"
+        : "https://api.openai.com/v1/chat/completions";
+        
+      const modelName = settings.model || process.env.AI_MODEL || (isGroq ? "llama-3.3-70b-versatile" : "gpt-3.5-turbo");
+  
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: messages,
+          max_tokens: settings.maxToken || 800,
+          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error?.message || "";
+        if (response.status === 429 || errorMessage.toLowerCase().includes("quota")) {
+          throw new Error("Hệ thống AI hiện đã hết lượt sử dụng (quota exceeded) hoặc quá tải. Vui lòng kiểm tra lại API key.");
+        }
+        throw new Error(errorMessage || "Lỗi kết nối tới AI provider");
       }
-      throw new Error(errorMessage || "Lỗi kết nối tới AI provider");
-    }
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời lúc này.";
-
-    return serializeData({
-      reply,
-    });
+  
+      const data = await response.json();
+      const reply = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời lúc này.";
+  
+      // Calculate token usage and cost
+      const promptTokens = data.usage?.prompt_tokens || 0;
+      const completionTokens = data.usage?.completion_tokens || 0;
+      const totalTokens = data.usage?.total_tokens || 0;
+      
+      // Cost estimation based on typical gpt-4o-mini rates
+      const inputCostPer1K = isGroq ? 0.0005 : 0.00015;
+      const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
+      const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
+  
+      // Save log asynchronously
+      prisma.aiRequestLog.create({
+        data: {
+          userId: userId,
+          endpoint: "chat",
+          prompt: message,
+          response: reply,
+          modelUsed: modelName,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          cost,
+        }
+      }).catch(err => console.error("Error logging AI request", err));
+  
+      return serializeData({
+        reply,
+      });
   } catch (error) {
     if (error.message.includes("quota exceeded")) {
       throw error;
