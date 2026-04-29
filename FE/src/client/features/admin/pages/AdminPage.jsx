@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -46,6 +46,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
 import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
+import { AdminReportsPanel } from "@/client/features/admin/components/AdminReportsPanel.jsx";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
@@ -64,6 +65,7 @@ import {
 
 const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
+  { id: "reports", label: "Báo cáo & Thống kê", icon: Activity },
   { id: "users", label: "Người dùng", icon: Users },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
   { id: "products-create", label: "Thêm sản phẩm mới", icon: Plus },
@@ -86,7 +88,7 @@ const navGroups = [
   {
     id: "overview",
     label: "Tổng quan",
-    tabIds: ["dashboard"],
+    tabIds: ["dashboard", "reports"],
   },
   {
     id: "account",
@@ -126,6 +128,7 @@ const tabGroupByTabId = navGroups.reduce((accumulator, group) => {
 
 const tabPermissionMap = {
   dashboard: "admin_dashboard_view",
+  reports: "admin_dashboard_view",
   users: "admin_users_manage",
   "products-create": "admin_products_manage",
   "products-inventory": "admin_products_manage",
@@ -143,6 +146,8 @@ const tabPermissionMap = {
 
 // Mapping module base names -> permission module (users, products, orders, etc.)
 const permissionModuleMap = {
+  dashboard: "dashboard",
+  reports: "dashboard",
   users: "users",
   "products-create": "products",
   "products-inventory": "products",
@@ -4194,6 +4199,16 @@ export default function AdminPage() {
                 </div>
               </div>
             </Panel>
+          </section>
+
+          <section id="reports" className={sectionClassName("reports")}>
+            <SectionHeader
+              sectionId="reports"
+              icon={Activity}
+              title="Báo cáo & Thống kê"
+              subtitle="Phân tích doanh thu, sản phẩm và khách hàng chuyên sâu."
+            />
+            <AdminReportsPanel />
           </section>
 
           <section id="users" className={sectionClassName("users")}>

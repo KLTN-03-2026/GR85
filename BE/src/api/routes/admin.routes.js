@@ -21,6 +21,7 @@ import {
   updateUserPermissionsByAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
+import { getAdminReports } from "../../services/report.service.js";
 import {
   createCategoryByAdmin as createCategoryAdmin,
   deleteCategoryByAdmin as removeCategoryByAdmin,
@@ -515,6 +516,25 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.get("/reports", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_dashboard_view")) {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await getAdminReports(req.query);
+    return res.json(data);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Lỗi tạo báo cáo" });
   }
 });
 
