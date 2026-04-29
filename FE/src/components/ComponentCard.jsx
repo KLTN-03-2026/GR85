@@ -2,8 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Link, useNavigate } from "react-router-dom";
-import { Star, Plus, Eye, ShoppingCart } from "lucide-react";
+import { Star, Plus, Eye, ShoppingCart, Heart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useFavorite } from "@/client/features/favorite/context/FavoriteContext";
 import { useBuild } from "@/contexts/BuildContext";
 import {
   formatComponentPrice,
@@ -14,9 +15,15 @@ import {
 export function ComponentCard({ component, mode = "shop", compact = false }) {
   const { addToCart } = useCart();
   const { addComponent } = useBuild();
+  const { isFavorite, toggleFavorite } = useFavorite();
   const navigate = useNavigate();
   const fallbackImage = "/images/component-placeholder.svg";
   const isBuilderMode = mode === "builder";
+  const isFav = isFavorite(component.id);
+  const stock = Number(component.stock ?? component.stockQuantity ?? 0);
+  const categorySlug = typeof component.category === "object" ? component.category?.slug : component.category;
+  const brand = component.brand || component.specifications?.brand || component.supplier?.name || "PC Perfect";
+  const specs = component.specs || component.specifications || {};
 
   return (
       <Card
@@ -27,7 +34,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
         {/* Image */}
         <div className={`relative ${isBuilderMode ? "aspect-[16/10]" : compact ? "aspect-[16/11]" : "aspect-[4/3]"} bg-secondary/50 overflow-hidden`}>
           <img
-            src={component.image || fallbackImage}
+            src={component.image || component.imageUrl || fallbackImage}
             alt={component.name}
             className={`h-full w-full object-contain transition-transform duration-500 group-hover:scale-105 ${isBuilderMode ? "p-2" : compact ? "p-2.5" : "p-3"}`}
             onError={(event) => {
@@ -40,24 +47,36 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
 
           {/* Badges */}
           <div className="absolute left-2 top-2 flex flex-col gap-1.5">
-            <Badge className={`text-[11px] ${getComponentCategoryStyle(component.category)}`}>
-              {getComponentCategoryLabel(component.category)}
+            <Badge className={`text-[11px] ${getComponentCategoryStyle(categorySlug)}`}>
+              {getComponentCategoryLabel(categorySlug)}
             </Badge>
             {component.isNew && (
               <Badge className="bg-accent text-[11px] text-accent-foreground">Mới</Badge>
             )}
-            {Number(component.stock ?? 0) <= 0 && (
+            {stock <= 0 && (
               <Badge className="bg-rose-100 text-[11px] text-rose-700">Hết hàng</Badge>
             )}
           </div>
 
           {/* Quick Actions */}
-          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute right-2 top-2 flex flex-col gap-2">
+            <Button
+              variant="glass"
+              size="icon"
+              className={`h-8 w-8 ${isFav ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFavorite(component.id);
+              }}
+            >
+              <Heart className={`h-4 w-4 ${isFav ? 'fill-rose-500 text-rose-500' : ''}`} />
+            </Button>
             <Button
               asChild
               variant="glass"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
             >
               <Link to={`/components/${component.slug || component.id}`}>
                 <Eye className="h-3.5 w-3.5" />
@@ -81,7 +100,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
           {/* Brand & Rating */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-              {component.brand}
+              {brand}
             </span>
             <div className="flex items-center gap-1">
               <Star className="h-3.5 w-3.5 fill-accent text-accent" />
@@ -101,7 +120,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
 
           {/* Key Specs */}
           <div className="flex flex-wrap gap-1">
-            {Object.entries(component.specs)
+            {Object.entries(specs)
               .slice(0, isBuilderMode ? 1 : compact ? 2 : 3)
               .map(([key, value]) => (
                 <span
@@ -147,10 +166,10 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                       );
                     }
                   }}
-                  disabled={Number(component.stock ?? 0) <= 0}
+                  disabled={stock <= 0}
                 >
                   <ShoppingCart className="h-3.5 w-3.5" />
-                  {Number(component.stock ?? 0) <= 0 ? "Hết hàng" : "Thêm vào giỏ hàng"}
+                  {stock <= 0 ? "Hết hàng" : "Thêm vào giỏ hàng"}
                 </Button>
                 <Button
                   variant="hero"
@@ -169,7 +188,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
                       );
                     }
                   }}
-                  disabled={Number(component.stock ?? 0) <= 0}
+                  disabled={stock <= 0}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Mua ngay
