@@ -5877,6 +5877,23 @@ export default function AdminPage() {
                           }))
                         }
                       />
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                          base.setDate(base.getDate() + 1);
+                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                        }}>+1 Ngày</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                          base.setDate(base.getDate() + 7);
+                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                        }}>+1 Tuần</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                          base.setMonth(base.getMonth() + 1);
+                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                        }}>+1 Tháng</Button>
+                      </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -6045,6 +6062,23 @@ export default function AdminPage() {
                             }))
                           }
                         />
+                        <div className="flex gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => {
+                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                            base.setDate(base.getDate() + 1);
+                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                          }}>+1 Ngày</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => {
+                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                            base.setDate(base.getDate() + 7);
+                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                          }}>+1 Tuần</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => {
+                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
+                            base.setMonth(base.getMonth() + 1);
+                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
+                          }}>+1 Tháng</Button>
+                        </div>
                       </div>
 
                       <div className="grid gap-2">
