@@ -47,6 +47,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
 import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
 import { AdminReportsPanel } from "@/client/features/admin/components/AdminReportsPanel.jsx";
+import { AdminAIPanel } from "@/client/features/admin/components/AdminAIPanel.jsx";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
@@ -7327,9 +7328,11 @@ export default function AdminPage() {
             <SectionHeader
               sectionId="ai-build"
               icon={Sparkles}
-              title="Cấu hình AI"
-              description="Build được lưu gần đây"
+              title="Quản lý hệ thống AI"
+              description="Quản lý token, cài đặt model, và lịch sử phân tích"
             />
+            <AdminAIPanel />
+            <div className="mt-8"></div>
             <Panel
               title="Build đã lưu"
               description="Dữ liệu trực tiếp từ bảng AI_Saved_Builds"
