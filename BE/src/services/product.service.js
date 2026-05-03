@@ -241,9 +241,9 @@ export async function listProductReviewsBySlug(slug, input = {}) {
         message: String(reply.message ?? ""),
         createdAt: reply.createdAt,
         user: {
-          id: reply.user.id,
-          fullName: String(reply.user.fullName ?? "").trim() || String(reply.user.email ?? "Ẩn danh"),
-          role: reply.user.role?.name ?? null,
+          id: reply.sender.id,
+          fullName: String(reply.sender.fullName ?? "").trim() || String(reply.sender.email ?? "Ẩn danh"),
+          role: reply.sender.role?.name ?? null,
         },
       })),
     })),
@@ -461,6 +461,66 @@ export async function removeProductFromWishlistBySlug(userId, slug) {
     where: {
       userId: normalizedUserId,
       productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function addProductToWishlistById(userId, productId) {
+  const normalizedUserId = Number(userId);
+  const normalizedProductId = Number(productId);
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!Number.isFinite(normalizedProductId) || normalizedProductId <= 0) {
+    throw new Error("Product id is required");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: normalizedProductId },
+    select: { id: true },
+  });
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  await prisma.wishlistItem.upsert({
+    where: {
+      userId_productId: {
+        userId: normalizedUserId,
+        productId: product.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: normalizedUserId,
+      productId: product.id,
+    },
+  });
+
+  return serializeData({ success: true });
+}
+
+export async function removeProductFromWishlistById(userId, productId) {
+  const normalizedUserId = Number(userId);
+  const normalizedProductId = Number(productId);
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!Number.isFinite(normalizedProductId) || normalizedProductId <= 0) {
+    throw new Error("Product id is required");
+  }
+
+  await prisma.wishlistItem.deleteMany({
+    where: {
+      userId: normalizedUserId,
+      productId: normalizedProductId,
     },
   });
 

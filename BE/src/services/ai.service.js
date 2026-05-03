@@ -67,19 +67,24 @@ const USAGE_BUDGET_RATIO = {
 export async function buildAiRecommendation(input) {
   const usage = normalizeUsage(input.usage);
   const budget = Number(input.budget);
+  const targetCategories = Array.isArray(input.targetCategories) && input.targetCategories.length > 0
+    ? input.targetCategories.map((item) => String(item).trim()).filter(Boolean)
+    : null;
   const preferredBrands = Array.isArray(input.preferredBrands)
     ? input.preferredBrands.map((item) => String(item).trim()).filter(Boolean)
     : [];
 
   const ratioMap = USAGE_BUDGET_RATIO[usage] || USAGE_BUDGET_RATIO.general;
+  const categoriesToBuild = targetCategories || REQUIRED_CATEGORY_SLUGS;
+
   const targetBudgetMap = buildTargetBudgetMap({
     budget,
     ratioMap,
-    requiredSlugs: REQUIRED_CATEGORY_SLUGS,
+    requiredSlugs: categoriesToBuild,
   });
 
   const productsByCategory = await Promise.all(
-    REQUIRED_CATEGORY_SLUGS.map(async (categorySlug) => {
+    categoriesToBuild.map(async (categorySlug) => {
       const categoryBudget = Number(targetBudgetMap[categorySlug] ?? 0);
 
       const candidates = await prisma.product.findMany({
@@ -266,7 +271,7 @@ export async function buildAiRecommendation(input) {
     items,
     categoryAnalysis,
     budget,
-    expectedCount: REQUIRED_CATEGORY_SLUGS.length,
+    expectedCount: categoriesToBuild.length,
   });
 
   const strengths = deriveStrengths({
@@ -283,14 +288,14 @@ export async function buildAiRecommendation(input) {
     budget,
     totalPrice,
     buildScore,
-    requiredCategorySlugs: REQUIRED_CATEGORY_SLUGS,
+    requiredCategorySlugs: categoriesToBuild,
   });
 
   const recommendations = deriveRecommendations({
     items,
     weaknesses,
     usage,
-    requiredCategorySlugs: REQUIRED_CATEGORY_SLUGS,
+    requiredCategorySlugs: categoriesToBuild,
   });
 
   const fullCatalog = productsByCategory.map((group) => ({
@@ -320,25 +325,134 @@ export async function buildAiRecommendation(input) {
   });
 }
 
-export async function generateAiChatReply(input) {
+export async function generateAiChatReply(input, userId = null) {
   const message = String(input.message ?? "").trim();
+  const history = Array.isArray(input.history) ? input.history : [];
+
   if (!message) {
     throw new Error("Message is required");
   }
 
-  const budget = extractBudgetFromText(message);
+  // Load settings from DB
+  let settings = await prisma.aiSetting.findUnique({ where: { id: 1 } });
+  if (!settings) {
+    const defaultModel = process.env.GROQ_API_KEY
+      ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
+      : (process.env.AI_MODEL || "gpt-4o-mini");
 
-  const replyParts = [
-    "Minh da nhan cau hoi ve build PC.",
-    budget
-      ? `Voi ngan sach khoang ${new Intl.NumberFormat("vi-VN").format(budget)} VND, ban nen uu tien GPU va CPU truoc.`
-      : "Ban co the cho minh biet ngan sach va muc dich su dung (gaming, workstation, hoc tap) de tu van chinh xac hon.",
-    "Neu ban muon, hay vao trang AI goi y cau hinh de nhan danh sach linh kien chi tiet.",
+    settings = {
+      isEnabled: true,
+      model: defaultModel,
+      temperature: 0.7,
+      maxToken: 2000,
+      systemPrompt: "Bạn là một chuyên gia tư vấn build PC am hiểu sâu về các linh kiện máy tính (CPU, GPU, RAM, Mainboard, v.v.). Người dùng sẽ hỏi bạn về các linh kiện cụ thể. Hãy tư vấn chi tiết, đánh giá ưu nhược điểm của từng linh kiện dựa trên nhu cầu của người dùng, KHÔNG TƯ VẤN NGUYÊN CẢ DÀN PC trừ khi được yêu cầu rõ ràng. Trả lời ngắn gọn, súc tích, dễ hiểu và chuyên nghiệp bằng tiếng Việt."
+    };
+  }
+
+  if (!settings.isEnabled) {
+    throw new Error("Hệ thống trợ lý AI hiện đang được tắt bởi quản trị viên.");
+  }
+
+  const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key bị thiếu trong file .env (cần thêm GROQ_API_KEY hoặc OPENAI_API_KEY)");
+  }
+
+  const systemMessage = {
+    role: "system",
+    content: settings.systemPrompt
+  };
+
+  const messages = [
+    systemMessage,
+    ...history.map((msg) => ({
+      role: msg.role === "user" ? "user" : "assistant",
+      content: String(msg.content ?? ""),
+    })),
+    { role: "user", content: message },
   ];
 
-  return serializeData({
-    reply: replyParts.join(" "),
-  });
+    try {
+      const isGroq = Boolean(process.env.GROQ_API_KEY);
+      const endpoint = isGroq
+        ? "https://api.groq.com/openai/v1/chat/completions"
+        : "https://api.openai.com/v1/chat/completions";
+        
+      const configuredModel = settings.model || process.env.AI_MODEL;
+      const openAiDefaultModel = process.env.AI_MODEL || "gpt-4o-mini";
+      const groqDefaultModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+      let modelName = configuredModel || (isGroq ? groqDefaultModel : openAiDefaultModel);
+
+      // Prevent provider mismatch (for example: gpt-* model sent to Groq endpoint).
+      if (isGroq && /^gpt-/i.test(String(modelName))) {
+        modelName = groqDefaultModel;
+      }
+
+      if (!isGroq && /llama|mixtral|gemma/i.test(String(modelName))) {
+        modelName = openAiDefaultModel;
+      }
+  
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: messages,
+          max_tokens: settings.maxToken || 800,
+          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error?.message || "";
+        if (response.status === 429 || errorMessage.toLowerCase().includes("quota")) {
+          throw new Error("Hệ thống AI hiện đã hết lượt sử dụng (quota exceeded) hoặc quá tải. Vui lòng kiểm tra lại API key.");
+        }
+        throw new Error(errorMessage || "Lỗi kết nối tới AI provider");
+      }
+  
+      const data = await response.json();
+      const reply = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời lúc này.";
+  
+      // Calculate token usage and cost
+      const promptTokens = data.usage?.prompt_tokens || 0;
+      const completionTokens = data.usage?.completion_tokens || 0;
+      const totalTokens = data.usage?.total_tokens || 0;
+      
+      // Cost estimation based on typical gpt-4o-mini rates
+      const inputCostPer1K = isGroq ? 0.0005 : 0.00015;
+      const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
+      const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
+  
+      // Save log asynchronously
+      prisma.aiRequestLog.create({
+        data: {
+          userId: userId,
+          endpoint: "chat",
+          prompt: message,
+          response: reply,
+          modelUsed: modelName,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          cost,
+        }
+      }).catch(err => console.error("Error logging AI request", err));
+  
+      return serializeData({
+        reply,
+      });
+  } catch (error) {
+    if (error.message.includes("quota exceeded")) {
+      throw error;
+    }
+    throw new Error(`Lỗi kết nối AI: ${error.message}`);
+  }
 }
 
 function normalizeUsage(value) {
@@ -447,18 +561,24 @@ function buildTargetBudgetMap({ budget, ratioMap, requiredSlugs }) {
   const coreSlugs = requiredSlugs.filter((slug) => CORE_CATEGORY_SLUGS.includes(slug));
   const peripheralSlugs = requiredSlugs.filter((slug) => !CORE_CATEGORY_SLUGS.includes(slug));
 
-  let allocatedCoreRatio = 0;
+  let totalCoreRatio = 0;
   for (const slug of coreSlugs) {
-    const ratio = Number(ratioMap?.[slug] ?? 0);
-    targets[slug] = normalizedBudget * Math.max(0, ratio);
-    allocatedCoreRatio += Math.max(0, ratio);
+    totalCoreRatio += Math.max(0, Number(ratioMap?.[slug] ?? 0));
   }
 
-  const usedCoreBudget = normalizedBudget * Math.min(1, allocatedCoreRatio);
-  const remainBudget = Math.max(0, normalizedBudget - usedCoreBudget);
-  const perPeripheralBudget =
-    peripheralSlugs.length > 0 ? remainBudget / peripheralSlugs.length : 0;
+  // Allocate 15% per peripheral, up to max 50%
+  const perPeripheralRatio = peripheralSlugs.length > 0 ? 0.15 : 0;
+  const peripheralTotalRatio = Math.min(0.5, perPeripheralRatio * peripheralSlugs.length);
+  
+  const coreTotalBudget = coreSlugs.length > 0 ? normalizedBudget * (1 - peripheralTotalRatio) : 0;
+  const peripheralTotalBudget = coreSlugs.length > 0 ? normalizedBudget * peripheralTotalRatio : normalizedBudget;
 
+  for (const slug of coreSlugs) {
+    const ratio = Math.max(0, Number(ratioMap?.[slug] ?? 0));
+    targets[slug] = totalCoreRatio > 0 ? (ratio / totalCoreRatio) * coreTotalBudget : 0;
+  }
+
+  const perPeripheralBudget = peripheralSlugs.length > 0 ? peripheralTotalBudget / peripheralSlugs.length : 0;
   for (const slug of peripheralSlugs) {
     targets[slug] = perPeripheralBudget;
   }

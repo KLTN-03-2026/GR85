@@ -26,6 +26,7 @@ const envSchema = z.object({
   MOCK_QR_ACCOUNT_NAME: z.string().default("TECHBUILTAI"),
   MOCK_QR_TEMPLATE: z.string().default("compact2"),
   WEBHOOK_SECRET: z.string().default(""),
+  SEPAY_API_TOKEN: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
