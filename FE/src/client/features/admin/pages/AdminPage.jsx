@@ -2387,9 +2387,15 @@ export default function AdminPage() {
         body: JSON.stringify(payload),
       });
 
-      const responsePayload = await response.json().catch(() => null);
+      const responsePayload = await response.json().catch(() => {
+        console.error(`[SaveProduct] Response not JSON. Status: ${response.status}`);
+        return null;
+      });
+      
+      console.info(`[SaveProduct] Response status: ${response.status}`, responsePayload);
+      
       if (!response.ok) {
-        throw new Error(responsePayload?.message ?? "Lưu sản phẩm thất bại");
+        throw new Error(responsePayload?.message ?? `HTTP ${response.status}: Lưu sản phẩm thất bại`);
       }
 
       toast({
@@ -3911,6 +3917,17 @@ export default function AdminPage() {
   const isProductCreateTab = activeTab === "products-create";
   const isProductInventoryTab = activeTab === "products-inventory";
   const isProductEditTab = activeTab === "products-edit";
+  const selectedEditingProduct = useMemo(() => {
+    if (!editingProductId) {
+      return null;
+    }
+
+    return (
+      managedProducts.find(
+        (product) => Number(product.id) === Number(editingProductId),
+      ) ?? null
+    );
+  }, [editingProductId, managedProducts]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,1)_0%,_rgba(240,253,250,1)_100%)]">
@@ -4611,9 +4628,7 @@ export default function AdminPage() {
               }
             />
             <div className="grid gap-6">
-              <div
-                className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}
-              >
+              <div className={`${isProductInventoryTab ? "hidden" : ""}`}>
                 <Panel
                   title={
                     isProductEditTab
@@ -4631,6 +4646,37 @@ export default function AdminPage() {
                       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                         Chưa chọn sản phẩm để sửa. Vui lòng bấm "Sửa" ở danh
                         sách Kho sản phẩm.
+                      </div>
+                    ) : null}
+
+                    {isProductEditTab && editingProductId ? (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-emerald-300 shadow-inner">
+                        <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-800 pb-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                          <span>[EDIT MODE]</span>
+                          <span>
+                            #{editingProductId}
+                            {selectedEditingProduct?.slug
+                              ? ` / ${selectedEditingProduct.slug}`
+                              : ""}
+                          </span>
+                        </div>
+                        <div>
+                          <div>
+                            <span className="text-slate-400">name:</span>{" "}
+                            {selectedEditingProduct?.name || productForm.name ||
+                              "-"}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">category:</span>{" "}
+                            {selectedEditingProduct?.category?.name ||
+                              productForm.categorySlug ||
+                              "-"}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">status:</span>{" "}
+                            ready to update
+                          </div>
+                        </div>
                       </div>
                     ) : null}
 
