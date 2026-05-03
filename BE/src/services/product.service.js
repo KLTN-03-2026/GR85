@@ -1,10 +1,7 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
-import { OrderStatus, ReviewStatus } from "@prisma/client";
-import {
-  createSystemNotification,
-  createWishlistPriceDropNotifications,
-} from "./notification.service.js";
+import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { createWishlistPriceDropNotifications } from "./notification.service.js";
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
@@ -158,6 +155,8 @@ export async function listProductReviewsBySlug(slug, input = {}) {
     throw new Error("Không tim thấy sản phẩm");
   }
 
+  // Hybrid: show only the latest review per user on the public product page.
+  // Prisma `distinct` isn't deterministic on MySQL for "latest per group", so we filter in JS.
   const reviews = await prisma.review.findMany({
     where: {
       productId: product.id,
@@ -177,33 +176,44 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       },
       replies: {
         orderBy: { createdAt: "asc" },
+        take: 200,
         include: {
-          user: {
+          sender: {
             select: {
               id: true,
               fullName: true,
               email: true,
-              role: {
-                select: {
-                  name: true,
-                },
-              },
             },
           },
         },
       },
+      images: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      },
     },
-    orderBy: [{ rating: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ createdAt: "desc" }],
+    take: 500,
   });
 
-  const averageRating =
-    reviews.length > 0
-      ? reviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) /
-        reviews.length
-      : 0;
+  const seenUserIds = new Set();
+  const latestPerUser = [];
+  for (const review of reviews) {
+    if (seenUserIds.has(review.userId)) {
+      continue;
+    }
+    seenUserIds.add(review.userId);
+    latestPerUser.push(review);
+  }
 
+  const averageRating =
+    latestPerUser.length > 0
+      ? latestPerUser.reduce(
+          (sum, review) => sum + Number(review.rating ?? 0),
+          0,
+        ) / latestPerUser.length
+      : 0;
   return serializeData({
-    items: reviews.map((review) => ({
+    items: latestPerUser.map((review) => ({
       id: review.id,
       rating: Number(review.rating ?? 0),
       comment: review.comment ? String(review.comment) : "",
@@ -212,6 +222,14 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       createdAt: review.createdAt,
       adminReply: review.adminReply ? String(review.adminReply) : "",
       adminRepliedAt: review.adminRepliedAt,
+      images: Array.isArray(review.images)
+        ? review.images.map((image) => ({
+            id: image.id,
+            imageUrl: String(image.imageUrl ?? ""),
+            sortOrder: Number(image.sortOrder ?? 0),
+          }))
+        : [],
+      thread: mapPublicReviewThread(review),
       user: {
         id: review.user.id,
         fullName:
@@ -230,11 +248,60 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       })),
     })),
     summary: {
-      totalReviews: reviews.length,
+      totalReviews: latestPerUser.length,
       averageRating,
       ratingBreakdown: buildRatingBreakdown(reviews),
     },
   });
+}
+
+function mapPublicReviewThread(review) {
+  const reviewUserId = Number(review?.userId);
+  const replies = Array.isArray(review?.replies) ? review.replies : [];
+
+  const thread = replies.map((reply) => {
+    const senderId = Number(reply.senderId);
+    const isStaff =
+      Number.isFinite(senderId) && senderId > 0 && senderId !== reviewUserId;
+
+    return {
+      id: reply.id,
+      senderId,
+      senderName:
+        String(reply.sender?.fullName ?? "").trim() ||
+        String(reply.sender?.email ?? "").trim() ||
+        (isStaff ? "Nhân viên" : "Khách hàng"),
+      isStaff,
+      message: String(reply.message ?? ""),
+      createdAt: reply.createdAt,
+    };
+  });
+
+  const fallbackAdminReply = String(review?.adminReply ?? "").trim();
+  const fallbackAdminRepliedAt = review?.adminRepliedAt
+    ? new Date(review.adminRepliedAt)
+    : null;
+  const hasFallback =
+    Boolean(fallbackAdminReply) &&
+    !thread.some(
+      (item) => String(item.message ?? "").trim() === fallbackAdminReply,
+    );
+
+  if (hasFallback) {
+    thread.push({
+      id: `fallback-admin-${review.id}`,
+      senderId: Number(review?.adminRepliedBy) || null,
+      senderName: "Nhân viên",
+      isStaff: true,
+      message: fallbackAdminReply,
+      createdAt:
+        fallbackAdminRepliedAt || review?.updatedAt || review?.createdAt,
+    });
+  }
+
+  return thread.sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
 }
 
 export async function getProductReviewEligibilityBySlug(userId, slug) {
@@ -260,22 +327,31 @@ export async function getProductReviewEligibilityBySlug(userId, slug) {
     throw new Error("Product not found");
   }
 
-  const deliveredOrderItem = await prisma.orderItem.findFirst({
+  // Hybrid: can review if there's at least one DELIVERED+PAID order item for this product
+  // that hasn't been reviewed yet.
+  const eligibleOrderItem = await prisma.orderItem.findFirst({
     where: {
       productId: product.id,
       order: {
         userId: normalizedUserId,
         orderStatus: OrderStatus.DELIVERED,
+        paymentStatus: PaymentStatus.PAID,
+      },
+      reviews: {
+        none: {
+          userId: normalizedUserId,
+        },
       },
     },
     select: { id: true },
+    orderBy: { id: "asc" },
   });
 
   return serializeData({
-    canReview: Boolean(deliveredOrderItem),
-    reason: deliveredOrderItem
+    canReview: Boolean(eligibleOrderItem),
+    reason: eligibleOrderItem
       ? null
-      : "Bạn chỉ có thể đánh giá sau khi mua và đơn hàng đã giao thành công",
+      : "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã nhận hàng và thanh toán thành công",
   });
 }
 
@@ -429,7 +505,12 @@ export async function getWishlistStatusBySlug(userId, slug) {
   });
 }
 
-export async function createProductReviewBySlug(userId, slug, input = {}) {
+export async function createProductReviewBySlug(
+  userId,
+  slug,
+  input = {},
+  reviewImageUrls = [],
+) {
   const normalizedUserId = Number(userId);
   const normalizedSlug = String(slug ?? "")
     .trim()
@@ -453,6 +534,15 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
     throw new Error("Bình luận quá dài");
   }
 
+  const normalizedReviewImages = Array.isArray(reviewImageUrls)
+    ? reviewImageUrls
+        .map((imageUrl, index) => ({
+          imageUrl: String(imageUrl ?? "").trim(),
+          sortOrder: index,
+        }))
+        .filter((item) => Boolean(item.imageUrl))
+    : [];
+
   const product = await prisma.product.findUnique({
     where: { slug: normalizedSlug },
     select: { id: true },
@@ -462,71 +552,85 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
     throw new Error("Không tim thấy sản phẩm");
   }
 
-  const deliveredOrderItem = await prisma.orderItem.findFirst({
+  const eligibleOrderItem = await prisma.orderItem.findFirst({
     where: {
       productId: product.id,
       order: {
         userId: normalizedUserId,
         orderStatus: OrderStatus.DELIVERED,
+        paymentStatus: PaymentStatus.PAID,
+      },
+      reviews: {
+        none: {
+          userId: normalizedUserId,
+        },
       },
     },
     select: { id: true },
+    orderBy: { id: "asc" },
   });
 
-  if (!deliveredOrderItem) {
-    throw new Error("Chỉ có thể đánh giá khi đã mua và nhận hàng thành công");
+  if (!eligibleOrderItem) {
+    throw new Error(
+      "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã nhận hàng và thanh toán thành công",
+    );
   }
 
-  const existingReview = await prisma.review.findFirst({
-    where: {
-      userId: normalizedUserId,
-      productId: product.id,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
   let review;
+  try {
+    review = await prisma.$transaction(async (tx) => {
+      const createdReview = await tx.review.create({
+        data: {
+          userId: normalizedUserId,
+          productId: product.id,
+          orderItemId: eligibleOrderItem.id,
+          rating,
+          comment: comment || null,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      });
 
-  if (existingReview) {
-    review = await prisma.review.update({
-      where: { id: existingReview.id },
-      data: {
-        rating,
-        comment: comment || null,
-        status: ReviewStatus.VISIBLE,
-        moderationReason: null,
-        moderatedBy: null,
-        moderatedAt: null,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
+      if (normalizedReviewImages.length > 0) {
+        await tx.reviewImage.createMany({
+          data: normalizedReviewImages.map((item) => ({
+            reviewId: createdReview.id,
+            imageUrl: item.imageUrl,
+            sortOrder: item.sortOrder,
+          })),
+        });
+      }
+
+      return tx.review.findUnique({
+        where: { id: createdReview.id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+          images: {
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
           },
         },
-      },
+      });
     });
-  } else {
-    review = await prisma.review.create({
-      data: {
-        userId: normalizedUserId,
-        productId: product.id,
-        rating,
-        comment: comment || null,
-        status: ReviewStatus.VISIBLE,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-      },
-    });
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "P2002") {
+      throw new Error(
+        "Đơn hàng này đã được đánh giá rồi (review already exists)",
+      );
+    }
+    throw error;
   }
 
   return serializeData({
@@ -534,6 +638,13 @@ export async function createProductReviewBySlug(userId, slug, input = {}) {
     rating: Number(review.rating ?? 0),
     comment: review.comment ? String(review.comment) : "",
     createdAt: review.createdAt,
+    images: Array.isArray(review.images)
+      ? review.images.map((image) => ({
+          id: image.id,
+          imageUrl: String(image.imageUrl ?? ""),
+          sortOrder: Number(image.sortOrder ?? 0),
+        }))
+      : [],
     user: {
       id: review.user.id,
       fullName:

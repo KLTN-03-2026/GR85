@@ -6,10 +6,13 @@ import {
   deleteUserAddress,
   getMyOrderDetail,
   getCurrentUser,
+  getMyReviewThread,
+  listMyPendingReviews,
+  listMyReviewHistory,
   loginUser,
   listUserAddresses,
-  listMyReviews,
   listMyOrders,
+  replyToMyReview,
   resendVerificationCode,
   requestPasswordReset,
   registerUser,
@@ -68,7 +71,10 @@ const updateProfileSchema = z.object({
       message: "Họ và tên không được chứa số",
     })
     .optional(),
-  phone: z.string().regex(/^\d{10}$/).optional(),
+  phone: z
+    .string()
+    .regex(/^\d{10}$/)
+    .optional(),
   address: z.string().max(500).optional(),
 });
 
@@ -79,9 +85,13 @@ const changePasswordSchema = z.object({
 
 const addressSchema = z.object({
   label: z.string().max(100).optional(),
-  receiverName: z.string().min(2).max(100).refine((value) => !/\d/.test(value), {
-    message: "Tên người nhận không được chứa số",
-  }),
+  receiverName: z
+    .string()
+    .min(2)
+    .max(100)
+    .refine((value) => !/\d/.test(value), {
+      message: "Tên người nhận không được chứa số",
+    }),
   phoneNumber: z.string().regex(/^\d{10}$/),
   addressLine: z.string().min(5).max(500),
   isDefault: z.boolean().optional(),
@@ -95,6 +105,10 @@ const topUpWalletSchema = z.object({
 const returnRequestSchema = z.object({
   orderId: z.number().int().positive(),
   reason: z.string().min(10).max(2000),
+});
+
+const reviewReplySchema = z.object({
+  message: z.string().min(1).max(2000),
 });
 
 router.post("/register", async (req, res) => {
@@ -217,8 +231,43 @@ router.get("/my-orders/:orderId", requireAuth, async (req, res) => {
 
 router.get("/my-reviews", requireAuth, async (req, res) => {
   try {
-    const result = await listMyReviews(Number(req.auth?.sub));
+    const result = await listMyReviewHistory(Number(req.auth?.sub));
     return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/my-reviews/pending", requireAuth, async (req, res) => {
+  try {
+    const result = await listMyPendingReviews(Number(req.auth?.sub));
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.get("/my-reviews/:reviewId/thread", requireAuth, async (req, res) => {
+  try {
+    const result = await getMyReviewThread(
+      Number(req.auth?.sub),
+      Number(req.params.reviewId),
+    );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/my-reviews/:reviewId/reply", requireAuth, async (req, res) => {
+  try {
+    const parsed = reviewReplySchema.parse(req.body ?? {});
+    const result = await replyToMyReview(
+      Number(req.auth?.sub),
+      Number(req.params.reviewId),
+      parsed,
+    );
+    return res.status(201).json(result);
   } catch (error) {
     return handleRouteError(error, res);
   }
@@ -320,24 +369,30 @@ router.post("/change-password", requireAuth, async (req, res) => {
 router.get("/notifications", requireAuth, async (req, res) => {
   try {
     const limit = req.query?.limit;
-    const result = await listNotificationsForUser(Number(req.auth?.sub), { limit });
+    const result = await listNotificationsForUser(Number(req.auth?.sub), {
+      limit,
+    });
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);
   }
 });
 
-router.patch("/notifications/:notificationId/read", requireAuth, async (req, res) => {
-  try {
-    const result = await markNotificationAsRead(
-      Number(req.auth?.sub),
-      Number(req.params.notificationId),
-    );
-    return res.json(result);
-  } catch (error) {
-    return handleRouteError(error, res);
-  }
-});
+router.patch(
+  "/notifications/:notificationId/read",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const result = await markNotificationAsRead(
+        Number(req.auth?.sub),
+        Number(req.params.notificationId),
+      );
+      return res.json(result);
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  },
+);
 
 router.post("/notifications/mark-all-read", requireAuth, async (req, res) => {
   try {
@@ -352,7 +407,10 @@ function handleRouteError(error, res) {
   if (error instanceof z.ZodError) {
     return res
       .status(400)
-      .json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+      .json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
   }
 
   if (error instanceof Error) {
@@ -360,24 +418,28 @@ function handleRouteError(error, res) {
       error.message === "Email đã tồn tại"
         ? 409
         : error.message === "Email không tồn tại"
-        ? 404
-        : error.message === "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
-          ? 502
-          : error.message === "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
+          ? 404
+          : error.message ===
+              "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
             ? 502
-            : error.message === "Người dùng không tồn tại"
-              ? 404
-              : error.message === "Vui lòng xác nhận email trước khi đăng nhập"
-                ? 403
-                : error.message === "Không thể gửi email xác nhận"
-                  ? 502
-                  : error.message === "Mã xác minh không hợp lệ hoặc đã hết hạn"
-                    ? 400
-                    : error.message === "Mật khẩu hiện tại không chính xác"
-                      ? 401
-                      : error.message.includes("Không hợp lệ")
+            : error.message ===
+                "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
+              ? 502
+              : error.message === "Người dùng không tồn tại"
+                ? 404
+                : error.message ===
+                    "Vui lòng xác nhận email trước khi đăng nhập"
+                  ? 403
+                  : error.message === "Không thể gửi email xác nhận"
+                    ? 502
+                    : error.message ===
+                        "Mã xác minh không hợp lệ hoặc đã hết hạn"
+                      ? 400
+                      : error.message === "Mật khẩu hiện tại không chính xác"
                         ? 401
-                        : 400;
+                        : error.message.includes("Không hợp lệ")
+                          ? 401
+                          : 400;
     return res.status(status).json({ message: error.message });
   }
 

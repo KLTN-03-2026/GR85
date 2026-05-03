@@ -162,7 +162,9 @@ export const profileApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(extractApiErrorMessage(error, "Không thể cập nhật địa chỉ"));
+      throw new Error(
+        extractApiErrorMessage(error, "Không thể cập nhật địa chỉ"),
+      );
     }
 
     return response.json();
@@ -245,9 +247,12 @@ export const profileApi = {
   },
 
   getNotifications: async (limit = 20) => {
-    const response = await fetch(`${API_BASE}/auth/notifications?limit=${limit}`, {
-      headers: authHeaders(),
-    });
+    const response = await fetch(
+      `${API_BASE}/auth/notifications?limit=${limit}`,
+      {
+        headers: authHeaders(),
+      },
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
@@ -258,13 +263,16 @@ export const profileApi = {
   },
 
   markNotificationAsRead: async (notificationId) => {
-    const response = await fetch(`${API_BASE}/auth/notifications/${notificationId}/read`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
+    const response = await fetch(
+      `${API_BASE}/auth/notifications/${notificationId}/read`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
@@ -275,17 +283,83 @@ export const profileApi = {
   },
 
   markAllNotificationsAsRead: async () => {
-    const response = await fetch(`${API_BASE}/auth/notifications/mark-all-read`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
+    const response = await fetch(
+      `${API_BASE}/auth/notifications/mark-all-read`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.message || "Không thể đánh dấu tất cả thông báo");
+    }
+
+    return response.json();
+  },
+
+  getMyReviews: async () => {
+    const response = await fetch(`${API_BASE}/auth/my-reviews`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải lịch sử đánh giá");
+    }
+
+    return response.json();
+  },
+
+  getMyPendingReviews: async () => {
+    const response = await fetch(`${API_BASE}/auth/my-reviews/pending`, {
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải danh sách chưa đánh giá");
+    }
+
+    return response.json();
+  },
+
+  getMyReviewThread: async (reviewId) => {
+    const response = await fetch(
+      `${API_BASE}/auth/my-reviews/${reviewId}/thread`,
+      {
+        headers: authHeaders(),
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể tải hội thoại đánh giá");
+    }
+
+    return response.json();
+  },
+
+  replyToMyReview: async (reviewId, message) => {
+    const response = await fetch(
+      `${API_BASE}/auth/my-reviews/${reviewId}/reply`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ message }),
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(extractApiErrorMessage(error, "Không thể gửi phản hồi"));
     }
 
     return response.json();
