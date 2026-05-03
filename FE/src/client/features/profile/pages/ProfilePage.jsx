@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import { profileApi } from "@/client/features/profile/data/profile.api";
+import ReturnRequestModal from "@/components/ReturnRequestModal";
 
 const profileValidation = {
   fullName: (value) => {
@@ -94,6 +95,10 @@ export default function ProfilePage() {
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
+  const [returnRequestModalOpen, setReturnRequestModalOpen] = useState(false);
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState(null);
+  const [returnRequests, setReturnRequests] = useState([]);
+  const [returnRequestsLoading, setReturnRequestsLoading] = useState(false);
   const [reorderingOrderId, setReorderingOrderId] = useState(null);
   const [myReviews, setMyReviews] = useState([]);
   const [myReviewsLoading, setMyReviewsLoading] = useState(false);
@@ -316,6 +321,43 @@ export default function ProfilePage() {
     }
   }
 
+  async function loadMyReturnRequests() {
+    try {
+      setReturnRequestsLoading(true);
+      const data = await profileApi.getMyReturnRequests();
+      setReturnRequests(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setReturnRequests([]);
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể tải tiến trình trả hàng",
+      });
+    } finally {
+      setReturnRequestsLoading(false);
+    }
+  }
+
+  const returnRequestByOrderId = useMemo(() => {
+    const mapping = new Map();
+    for (const request of returnRequests) {
+      const orderId = Number(request?.orderId);
+      if (!Number.isFinite(orderId)) {
+        continue;
+      }
+      const existing = mapping.get(orderId);
+      if (!existing) {
+        mapping.set(orderId, request);
+        continue;
+      }
+      const existingTime = new Date(existing?.requestedAt ?? 0).getTime();
+      const currentTime = new Date(request?.requestedAt ?? 0).getTime();
+      if (currentTime > existingTime) {
+        mapping.set(orderId, request);
+      }
+    }
+    return mapping;
+  }, [returnRequests]);
+
   async function loadMyReviews() {
     try {
       setMyReviewsLoading(true);
@@ -397,22 +439,22 @@ export default function ProfilePage() {
   }
 
   async function handleRequestReturn(orderId) {
-    const reason = window.prompt(
-      "Nhập lý do trả hàng (tối thiểu 10 ký tự):",
-      "Sản phẩm bị lỗi hoặc không đúng mô tả",
-    );
-    if (!reason) {
-      return;
+    const order = orders.find((o) => o.id === orderId);
+    if (order) {
+      setSelectedOrderForReturn(order);
+      setReturnRequestModalOpen(true);
     }
+  }
 
+  async function handleSubmitReturnRequest(formData) {
     try {
-      setSubmittingReturnOrderId(orderId);
-      await profileApi.requestReturn({ orderId, reason });
+      setSubmittingReturnOrderId(formData.orderId);
+      await profileApi.requestReturn(formData);
       setMessage({
         type: "success",
-        text: `Đã gửi yêu cầu trả hàng cho đơn #${orderId}. Chờ admin duyệt.`,
+        text: `Đã gửi yêu cầu trả hàng cho đơn #${formData.orderId}. Chờ admin duyệt.`,
       });
-      await loadMyOrders();
+      await Promise.all([loadMyOrders(), loadMyReturnRequests()]);
     } catch (error) {
       setMessage({
         type: "error",
@@ -503,7 +545,7 @@ export default function ProfilePage() {
       return;
     }
 
-    loadMyOrders();
+    Promise.all([loadMyOrders(), loadMyReturnRequests()]);
   }, [activeTab]);
 
   async function loadMyReviews() {
@@ -1392,11 +1434,16 @@ export default function ProfilePage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {pagedOrders.map((order) => (
-                              <tr
-                                key={order.id}
-                                className="border-b border-border/40"
-                              >
+                            {pagedOrders.map((order) => {
+                              const orderReturnRequest = returnRequestByOrderId.get(
+                                Number(order.id),
+                              );
+
+                              return (
+                                <tr
+                                  key={order.id}
+                                  className="border-b border-border/40"
+                                >
                                 <td className="px-3 py-3">#{order.id}</td>
                                 <td className="px-3 py-3">
                                   {formatDate(order.createdAt)}
@@ -1426,7 +1473,19 @@ export default function ProfilePage() {
                                   </Button>
                                 </td>
                                 <td className="px-3 py-3">
-                                  {canRequestReturn(order) ? (
+                                  {orderReturnRequest ? (
+                                    <div className="space-y-2">
+                                      <Badge
+                                        variant="outline"
+                                        className={getReturnBadgeClass(orderReturnRequest.status)}
+                                      >
+                                        {formatReturnStatus(orderReturnRequest.status)}
+                                      </Badge>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {getReturnStatusHint(orderReturnRequest)}
+                                      </p>
+                                    </div>
+                                  ) : canRequestReturn(order) ? (
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1447,11 +1506,18 @@ export default function ProfilePage() {
                                     </span>
                                   )}
                                 </td>
-                              </tr>
-                            ))}
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
+
+                      {returnRequestsLoading ? (
+                        <p className="text-xs text-muted-foreground">
+                          Đang đồng bộ tiến trình trả hàng...
+                        </p>
+                      ) : null}
 
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs text-muted-foreground">
@@ -1563,6 +1629,80 @@ export default function ProfilePage() {
                           </div>
                         </div>
                       </div>
+
+                      {(() => {
+                        const orderReturnRequest = returnRequestByOrderId.get(
+                          Number(selectedOrderDetail.id),
+                        );
+
+                        if (!orderReturnRequest) {
+                          return null;
+                        }
+
+                        const returnSteps = buildReturnTrackingSteps(orderReturnRequest);
+
+                        return (
+                          <div className="mt-4 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-yellow-50 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-orange-900">
+                                Theo dõi trả hàng A-Z
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className={getReturnBadgeClass(orderReturnRequest.status)}
+                              >
+                                {formatReturnStatus(orderReturnRequest.status)}
+                              </Badge>
+                            </div>
+
+                            <p className="mb-3 text-xs text-orange-900/80">
+                              {getReturnStatusHint(orderReturnRequest)}
+                            </p>
+
+                            <div className="grid gap-3 md:grid-cols-5">
+                              {returnSteps.map((step) => (
+                                <div
+                                  key={`return-step-${step.key}`}
+                                  className={`rounded-lg border p-3 text-xs ${
+                                    step.state === "done"
+                                      ? "border-emerald-300 bg-emerald-100/70"
+                                      : step.state === "active"
+                                        ? "border-orange-300 bg-orange-100/70"
+                                        : "border-slate-200 bg-white"
+                                  }`}
+                                >
+                                  <p className="font-semibold text-slate-900">
+                                    {step.title}
+                                  </p>
+                                  <p className="mt-1 text-slate-600">
+                                    {step.description}
+                                  </p>
+                                  {step.time ? (
+                                    <p className="mt-2 text-[11px] text-slate-500">
+                                      {step.time}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+
+                            {orderReturnRequest.rejectReason ? (
+                              <Alert className="mt-4 border-red-300 bg-red-50">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                  Lý do từ chối: {orderReturnRequest.rejectReason}
+                                </AlertDescription>
+                              </Alert>
+                            ) : null}
+
+                            {orderReturnRequest.note ? (
+                              <div className="mt-3 rounded-lg border border-orange-200 bg-white p-3 text-xs text-slate-700">
+                                Ghi chú xử lý: {orderReturnRequest.note}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
 
                       <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div>
@@ -2269,6 +2409,18 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Return Request Modal */}
+      <ReturnRequestModal
+        isOpen={returnRequestModalOpen}
+        onClose={() => {
+          setReturnRequestModalOpen(false);
+          setSelectedOrderForReturn(null);
+        }}
+        order={selectedOrderForReturn}
+        onSubmit={handleSubmitReturnRequest}
+        isSubmitting={submittingReturnOrderId !== null}
+      />
     </div>
   );
 }
@@ -2545,6 +2697,153 @@ function getTrackingHeadline(order) {
   }
 
   return "Đơn hàng đã bị hủy";
+}
+
+function formatReturnStatus(statusValue) {
+  const status = String(statusValue ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (status === "PENDING") {
+    return "Chờ duyệt";
+  }
+  if (status === "APPROVED") {
+    return "Đã duyệt";
+  }
+  if (status === "SHIPPING_BACK") {
+    return "Đang gửi trả";
+  }
+  if (status === "RECEIVED") {
+    return "Đã nhận hàng trả";
+  }
+  if (status === "REFUNDED") {
+    return "Đã hoàn tiền";
+  }
+  if (status === "REJECTED") {
+    return "Bị từ chối";
+  }
+  if (status === "CANCELLED") {
+    return "Đã hủy";
+  }
+
+  return formatEnum(status);
+}
+
+function getReturnBadgeClass(statusValue) {
+  const status = String(statusValue ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (status === "REFUNDED") {
+    return "border-emerald-300 text-emerald-700";
+  }
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return "border-red-300 text-red-700";
+  }
+  if (status === "RECEIVED") {
+    return "border-sky-300 text-sky-700";
+  }
+  if (status === "APPROVED" || status === "SHIPPING_BACK") {
+    return "border-orange-300 text-orange-700";
+  }
+
+  return "border-amber-300 text-amber-700";
+}
+
+function getReturnStatusHint(request) {
+  const status = String(request?.status ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (status === "PENDING") {
+    return "Shop đang kiểm tra yêu cầu của bạn. Vui lòng chờ duyệt.";
+  }
+  if (status === "APPROVED") {
+    return "Yêu cầu đã duyệt. Vui lòng đóng gói và gửi hàng về shop.";
+  }
+  if (status === "SHIPPING_BACK") {
+    return "Hàng trả đang được vận chuyển về kho của shop.";
+  }
+  if (status === "RECEIVED") {
+    return "Shop đã nhận hàng trả và đang xử lý hoàn tiền.";
+  }
+  if (status === "REFUNDED") {
+    return "Hoàn tiền thành công vào tài khoản bạn đã cung cấp.";
+  }
+  if (status === "REJECTED") {
+    return "Yêu cầu bị từ chối. Xem lý do chi tiết bên dưới.";
+  }
+  if (status === "CANCELLED") {
+    return "Yêu cầu trả hàng đã bị hủy.";
+  }
+
+  return "Đang cập nhật trạng thái xử lý trả hàng.";
+}
+
+function buildReturnTrackingSteps(request) {
+  const status = String(request?.status ?? "")
+    .trim()
+    .toUpperCase();
+
+  const steps = [
+    {
+      key: "requested",
+      title: "1. Đã gửi yêu cầu",
+      description: "Bạn đã tạo yêu cầu trả hàng.",
+      time: formatDate(request?.requestedAt),
+    },
+    {
+      key: "approved",
+      title: "2. Shop duyệt yêu cầu",
+      description: "Shop xác nhận yêu cầu trả hàng.",
+      time: request?.reviewedAt ? formatDate(request.reviewedAt) : null,
+    },
+    {
+      key: "shipping_back",
+      title: "3. Bạn gửi hàng trả",
+      description: "Đơn trả đang trên đường về shop.",
+      time: null,
+    },
+    {
+      key: "received",
+      title: "4. Shop nhận hàng trả",
+      description: "Shop kiểm tra hàng hoàn về.",
+      time: request?.receivedAt ? formatDate(request.receivedAt) : null,
+    },
+    {
+      key: "refunded",
+      title: "5. Hoàn tiền",
+      description: "Tiền được chuyển vào tài khoản hoàn tiền.",
+      time: request?.refundedAt ? formatDate(request.refundedAt) : null,
+    },
+  ];
+
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return steps.map((step, index) => ({
+      ...step,
+      state: index === 0 ? "done" : "pending",
+    }));
+  }
+
+  const activeIndexMap = {
+    PENDING: 0,
+    APPROVED: 1,
+    SHIPPING_BACK: 2,
+    RECEIVED: 3,
+    REFUNDED: 4,
+  };
+
+  const activeIndex = activeIndexMap[status] ?? 0;
+
+  return steps.map((step, index) => ({
+    ...step,
+    state:
+      index < activeIndex
+        ? "done"
+        : index === activeIndex
+          ? "active"
+          : "pending",
+  }));
 }
 
 function canRequestReturn(order) {

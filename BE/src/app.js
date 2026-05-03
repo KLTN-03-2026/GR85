@@ -24,7 +24,11 @@ export function createServer() {
 
   app.use((error, _req, res, _next) => {
     console.error(error);
-    return res.status(500).json({ message: "Lỗi máy chủ nội bộ" });
+
+    const status = error?.status || error?.statusCode || (error?.expose ? 400 : 500);
+    const message = error?.expose && error?.message ? error.message : (status === 500 ? "Lỗi máy chủ nội bộ" : error?.message ?? "Lỗi yêu cầu");
+
+    return res.status(status).json({ message });
   });
 
   return app;
