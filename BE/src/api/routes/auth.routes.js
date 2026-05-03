@@ -105,6 +105,9 @@ const topUpWalletSchema = z.object({
 const returnRequestSchema = z.object({
   orderId: z.number().int().positive(),
   reason: z.string().min(10).max(2000),
+  bankName: z.string().min(2).max(100),
+  bankAccountNumber: z.string().min(8).max(20),
+  bankAccountName: z.string().min(3).max(200),
 });
 
 const reviewReplySchema = z.object({

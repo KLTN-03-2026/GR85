@@ -1296,6 +1296,58 @@ async function main() {
   console.log(`Total upserted product details: ${detailUpsertCount}`);
   console.log(`Total upserted product images: ${imageUpsertCount}`);
   console.log(`User role id: ${userRole.id}`);
+
+    // Seed Banks and BankAccounts for account verification demo
+    const banks = [
+      { code: "VCB", name: "Ngân hàng Vietcombank" },
+      { code: "BIDV", name: "Ngân hàng BIDV" },
+      { code: "TCB", name: "Ngân hàng Techcombank" },
+      { code: "MBB", name: "Ngân hàng MB" },
+      { code: "ACB", name: "Ngân hàng ACB" },
+      { code: "VPB", name: "Ngân hàng VP Bank" },
+      { code: "STB", name: "Ngân hàng Sacombank" },
+    ];
+
+    for (const b of banks) {
+      await prisma.bank.upsert({
+        where: { code: b.code },
+        update: { name: b.name, isActive: true },
+        create: { code: b.code, name: b.name, isActive: true },
+      });
+    }
+
+    // Create demo bank accounts (realistic test data)
+    const bankMap = await prisma.bank.findMany();
+    const bankByCode = bankMap.reduce((acc, cur) => ({ ...acc, [cur.code]: cur }), {});
+
+    const demoAccounts = [
+      { bankCode: "MBB", accountNumber: "0397199215", accountName: "Trần Minh Huy", isVerified: true },
+      { bankCode: "VCB", accountNumber: "1234567890", accountName: "Nguyễn Văn A", isVerified: true },
+      { bankCode: "VCB", accountNumber: "9876543210", accountName: "Trần Thị B", isVerified: true },
+      { bankCode: "BIDV", accountNumber: "1111222233", accountName: "Lê Văn D", isVerified: true },
+      { bankCode: "TCB", accountNumber: "7777888899", accountName: "Võ Văn F", isVerified: true },
+    ];
+
+    for (const acc of demoAccounts) {
+      const bank = bankByCode[acc.bankCode];
+      if (!bank) continue;
+      await prisma.bankAccount.upsert({
+        where: { accountNumber: acc.accountNumber },
+        update: {
+          accountName: acc.accountName,
+          accountHolder: acc.accountName,
+          isVerified: acc.isVerified,
+          bankId: bank.id,
+        },
+        create: {
+          bankId: bank.id,
+          accountNumber: acc.accountNumber,
+          accountName: acc.accountName,
+          accountHolder: acc.accountName,
+          isVerified: acc.isVerified,
+        },
+      });
+    }
 }
 
 main()
