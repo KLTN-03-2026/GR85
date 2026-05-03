@@ -18,6 +18,7 @@ import { env } from "../config/env.js";
 import { estimateShippingFromCartItems } from "./shipping.service.js";
 import { payos } from "../config/payos.config.js";
 import { createSystemNotification } from "./notification.service.js";
+import { createSepayQrCode } from "./sepay.service.js";
 
 function resolveFrontendBaseUrl() {
   const candidate = String(env.FE_DOMAIN ?? env.FRONTEND_URL ?? "").trim();
@@ -280,6 +281,7 @@ export async function checkoutCart(userId, input) {
     .trim()
     .toUpperCase();
   const isPayosCheckout = paymentMethodInput === "PAYOS";
+  const isSepayCheckout = paymentMethodInput === "SEPAY";
   const paymentMethod = isPayosCheckout ? PaymentMethod.VNPAY : paymentMethodInput;
   const productCouponCode = String(input.productCouponCode ?? input.couponCode ?? "")
     .trim()
@@ -355,7 +357,7 @@ export async function checkoutCart(userId, input) {
     },
   });
 
-  if (![PaymentMethod.VNPAY, PaymentMethod.COD].includes(paymentMethod)) {
+  if (![PaymentMethod.VNPAY, PaymentMethod.COD, PaymentMethod.SEPAY].includes(paymentMethod)) {
     throw new Error("Unsupported payment method");
   }
 
@@ -439,7 +441,9 @@ export async function checkoutCart(userId, input) {
             ? "Order placed with COD and waiting for delivery"
             : isPayosCheckout
               ? "Order created and waiting for PayOS payment"
-              : "Order created and waiting for VNPAY payment",
+              : isSepayCheckout
+                ? "Order created and waiting for SEPAY payment"
+                : "Order created and waiting for VNPAY payment",
       },
     });
 
@@ -573,6 +577,54 @@ export async function checkoutCart(userId, input) {
       payosStatus: payosPayment?.status ?? null,
       payosOrderCode: Number(result.id),
       isPayosPayment: true,
+    });
+  }
+
+  if (isSepayCheckout) {
+    const transferContent = `SEPAY ${result.id}`;
+    const mockQrData = createSepayQrCode({
+      orderId: result.id,
+      amount: remainingPayableAmount,
+      transferContent,
+    });
+
+    let userEmail = user.email ?? "";
+    try {
+      userEmail = String(userEmail || "").trim();
+    } catch (error) {
+      console.error("Error fetching user email:", error);
+    }
+
+    if (userEmail) {
+      try {
+        await sendPaymentCodeEmail(userEmail, {
+          paymentCode: transferContent,
+          orderId: result.id,
+          totalAmount: remainingPayableAmount,
+          qrCodeDataUrl: mockQrData.qrCodeDataUrl,
+          bankTransfer: mockQrData.bankTransfer,
+        });
+      } catch (error) {
+        console.error("Không thể gửi email thanh toán:", error);
+      }
+    }
+
+    return serializeData({
+      message: "Đã khởi tạo thanh toán qua SePay",
+      paymentMethod,
+      paymentProvider: "SEPAY",
+      orderId: result.id,
+      subtotal,
+      discountAmount,
+      shippingFee,
+      shippingDiscountAmount,
+      totalAmount: result.totalAmount,
+      walletUsedAmount,
+      remainingPayableAmount,
+      paymentCode: transferContent,
+      qrCodeDataUrl: mockQrData.qrCodeDataUrl,
+      bankTransfer: mockQrData.bankTransfer,
+      isSepayPayment: true,
     });
   }
 

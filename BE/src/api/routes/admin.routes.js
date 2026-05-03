@@ -21,6 +21,7 @@ import {
   updateUserPermissionsByAdmin,
   updateUserByAdmin,
 } from "../../services/admin.service.js";
+import { getAdminReports } from "../../services/report.service.js";
 import {
   createCategoryByAdmin as createCategoryAdmin,
   deleteCategoryByAdmin as removeCategoryByAdmin,
@@ -35,6 +36,13 @@ import {
   listReturnRequestsForAdmin,
   reviewReturnRequestByAdmin,
 } from "../../services/wallet.service.js";
+import {
+  getAiSettings,
+  updateAiSettings,
+  listAiLogs,
+  deleteAiLog,
+  getAiStats,
+} from "../../services/ai-admin.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 const router = Router();
@@ -518,6 +526,25 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/reports", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_dashboard_view")) {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await getAdminReports(req.query);
+    return res.json(data);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Lỗi tạo báo cáo" });
+  }
+});
+
 router.patch("/users/:userId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
@@ -961,6 +988,76 @@ router.patch("/roles/:roleId/permissions", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ message: "Unexpected server error" });
+  }
+});
+
+// AI Admin Endpoints
+router.get("/ai-settings", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) return res.status(403).json({ message: "Forbidden" });
+    if (!hasPermission(req, "admin_ai_build_manage")) return res.status(403).json({ message: "Forbidden" });
+    
+    const settings = await getAiSettings();
+    return res.json(settings);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch("/ai-settings", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) return res.status(403).json({ message: "Forbidden" });
+    if (!hasPermission(req, "admin_ai_build_manage")) return res.status(403).json({ message: "Forbidden" });
+    
+    const schema = z.object({
+      isEnabled: z.boolean().optional(),
+      model: z.string().optional(),
+      temperature: z.number().min(0).max(2).optional(),
+      maxToken: z.number().positive().optional(),
+      systemPrompt: z.string().optional(),
+    });
+
+    const parsed = schema.parse(req.body);
+    const settings = await updateAiSettings(parsed);
+    return res.json(settings);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+});
+
+router.get("/ai-logs", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) return res.status(403).json({ message: "Forbidden" });
+    if (!hasPermission(req, "admin_ai_build_manage")) return res.status(403).json({ message: "Forbidden" });
+    
+    const logs = await listAiLogs(req.query);
+    return res.json(logs);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete("/ai-logs/:id", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) return res.status(403).json({ message: "Forbidden" });
+    if (!hasPermission(req, "admin_ai_build_manage")) return res.status(403).json({ message: "Forbidden" });
+    
+    await deleteAiLog(req.params.id);
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+router.get("/ai-stats", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) return res.status(403).json({ message: "Forbidden" });
+    if (!hasPermission(req, "admin_ai_build_manage")) return res.status(403).json({ message: "Forbidden" });
+    
+    const stats = await getAiStats();
+    return res.json(stats);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 });
 

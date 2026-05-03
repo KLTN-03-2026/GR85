@@ -1,4 +1,4 @@
-﻿import { Navbar } from "@/components/Navbar";
+import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1160,6 +1160,7 @@ export default function CartPage() {
                       onChange={(event) => setPaymentMethod(event.target.value)}
                     >
                       <option value="PAYOS">PayOS (thanh toán online)</option>
+                      <option value="SEPAY">SePay (Thanh toán tự động)</option>
                       <option value="VNPAY">VNPAY QR</option>
                       <option value="COD">Thanh toán khi nhận hàng (COD)</option>
                     </select>
@@ -1334,7 +1335,7 @@ export default function CartPage() {
                           return;
                         }
 
-                        if (paymentMethod === "VNPAY" && result?.isMockPayment) {
+                        if ((paymentMethod === "VNPAY" && result?.isMockPayment) || (paymentMethod === "SEPAY" && result?.isSepayPayment)) {
                           navigate("/payment-qr", {
                             state: {
                               paymentData: result,

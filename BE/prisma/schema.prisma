@@ -48,6 +48,7 @@ enum PaymentMethod {
     VNPAY
     MOMO
     BANK_TRANSFER
+    SEPAY
 }
 
 enum PaymentStatus {
@@ -135,6 +136,7 @@ model User {
     notifications  Notification[]
     couponAccesses CouponUser[]
     resolvedChatRooms ChatRoomMeta[] @relation("ChatRoomResolver")
+    aiRequestLogs  AiRequestLog[]
 
     @@map("Users")
 }
@@ -599,6 +601,37 @@ model AiBuildItem {
     product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
     @@map("AI_Build_Items")
+}
+
+model AiSetting {
+    id           Int      @id @default(1)
+    isEnabled    Boolean  @default(true) @map("is_enabled")
+    model        String   @default("gpt-4o-mini")
+    temperature  Float    @default(0.7)
+    maxToken     Int      @default(2000) @map("max_token")
+    systemPrompt String   @db.Text @map("system_prompt")
+    updatedAt    DateTime @updatedAt @map("updated_at")
+
+    @@map("AI_Settings")
+}
+
+model AiRequestLog {
+    id             Int      @id @default(autoincrement())
+    userId         Int?     @map("user_id")
+    endpoint       String
+    prompt         String   @db.Text
+    response       String   @db.Text
+    modelUsed      String   @map("model_used")
+    promptTokens   Int      @map("prompt_tokens")
+    completionTokens Int    @map("completion_tokens")
+    totalTokens    Int      @map("total_tokens")
+    cost           Decimal  @db.Decimal(15, 6)
+    createdAt      DateTime @default(now()) @map("created_at")
+
+    user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    @@index([createdAt])
+    @@map("AI_Request_Logs")
 }
 
 model EmailVerification {

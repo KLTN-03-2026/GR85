@@ -111,7 +111,7 @@ async function markOrderPaid(orderId, note) {
     });
 
     const couponIdsToIncrease = [order.couponId, order.shippingCouponId]
-      .filter((value, index, arr) => Number.isFinite(Number(value)) && arr.indexOf(value) === index);
+      .filter((value, index, arr) => value != null && Number.isFinite(Number(value)) && arr.indexOf(value) === index);
 
     for (const couponId of couponIdsToIncrease) {
       await tx.coupon.update({
@@ -346,5 +346,49 @@ export async function receiveWebhook(req, res) {
   } catch (error) {
     console.error("[PayOS] Lỗi receiveWebhook:", error);
     return res.status(400).json({ success: false, message: "Webhook không hợp lệ" });
+  }
+}
+
+export async function receiveSepayWebhook(req, res) {
+  try {
+    const data = req.body;
+    
+    if (!data || !data.content) {
+       return res.status(400).json({ success: false, message: "Dữ liệu webhook không hợp lệ" });
+    }
+
+    const content = String(data.content).toUpperCase();
+    const match = content.match(/SEPAY\s*(\d+)/);
+    
+    if (!match || !match[1]) {
+      return res.status(200).json({ success: true, message: "Không phải giao dịch của hệ thống" });
+    }
+
+    const orderId = Number(match[1]);
+    const transferAmount = Number(data.transferAmount);
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, totalAmount: true, paymentStatus: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng" });
+    }
+
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      return res.status(200).json({ success: true, message: "Đơn hàng đã được thanh toán trước đó" });
+    }
+
+    if (transferAmount >= Number(order.totalAmount)) {
+      await markOrderPaid(orderId, `SePay confirmed via webhook. Ref=${data.referenceCode || data.id || ""}`);
+    } else {
+       console.info(`[SePay] order=${orderId} received partial payment ${transferAmount}/${order.totalAmount}`);
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("[SePay] Lỗi receiveSepayWebhook:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server xử lý webhook" });
   }
 }

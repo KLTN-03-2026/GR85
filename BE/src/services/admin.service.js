@@ -165,7 +165,10 @@ export async function getAdminDashboard() {
     prisma.user.count(),
     prisma.order.count(),
     prisma.product.count(),
-    prisma.order.aggregate({ _sum: { totalAmount: true } }),
+    prisma.order.aggregate({ 
+      _sum: { totalAmount: true },
+      where: { orderStatus: { in: ["PROCESSING", "SHIPPING", "DELIVERED"] } }
+    }),
     prisma.order.groupBy({
       by: ["orderStatus"],
       _count: { orderStatus: true },
@@ -232,7 +235,7 @@ export async function getAdminDashboard() {
         replies: {
           orderBy: { createdAt: "asc" },
           include: {
-            user: true,
+            sender: true,
           },
         },
       },

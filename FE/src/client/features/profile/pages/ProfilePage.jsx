@@ -90,6 +90,7 @@ export default function ProfilePage() {
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderFilter, setOrderFilter] = useState("ALL");
+  const [showPendingOrders, setShowPendingOrders] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const [submittingReturnOrderId, setSubmittingReturnOrderId] = useState(null);
@@ -130,8 +131,83 @@ export default function ProfilePage() {
     receiverName: "",
     phoneNumber: "",
     addressLine: "",
+    city: "",
+    district: "",
     isDefault: false,
   });
+  const [districtOptions, setDistrictOptions] = useState([]);
+  const CITY_DISTRICTS = {
+    "Hà Nội": [],
+    "Hồ Chí Minh": [],
+    "Đà Nẵng": [
+      "Hải Châu",
+      "Thanh Khê",
+      "Sơn Trà",
+      "Ngũ Hành Sơn",
+      "Liên Chiểu",
+      "Cẩm Lệ",
+      "Hòa Vang",
+    ],
+    "Hải Phòng": [],
+    "Cần Thơ": [],
+    "An Giang": [],
+    "Bà Rịa - Vũng Tàu": [],
+    "Bạc Liêu": [],
+    "Bắc Kạn": [],
+    "Bắc Giang": [],
+    "Bắc Ninh": [],
+    "Bến Tre": [],
+    "Bình Định": [],
+    "Bình Dương": [],
+    "Bình Phước": [],
+    "Bình Thuận": [],
+    "Cà Mau": [],
+    "Cao Bằng": [],
+    "Đắk Lắk": [],
+    "Đắk Nông": [],
+    "Điện Biên": [],
+    "Đồng Nai": [],
+    "Đồng Tháp": [],
+    "Gia Lai": [],
+    "Hà Giang": [],
+    "Hà Nam": [],
+    "Hà Tĩnh": [],
+    "Hậu Giang": [],
+    "Hòa Bình": [],
+    "Hưng Yên": [],
+    "Khánh Hòa": [],
+    "Kiên Giang": [],
+    "Kon Tum": [],
+    "Lai Châu": [],
+    "Lâm Đồng": [],
+    "Lạng Sơn": [],
+    "Lào Cai": [],
+    "Long An": [],
+    "Nam Định": [],
+    "Nghệ An": [],
+    "Ninh Bình": [],
+    "Ninh Thuận": [],
+    "Phú Thọ": [],
+    "Phú Yên": [],
+    "Quảng Bình": [],
+    "Quảng Nam": [],
+    "Quảng Ngãi": [],
+    "Quảng Ninh": [],
+    "Quảng Trị": [],
+    "Sóc Trăng": [],
+    "Sơn La": [],
+    "Tây Ninh": [],
+    "Thái Bình": [],
+    "Thái Nguyên": [],
+    "Thanh Hóa": [],
+    "Thừa Thiên Huế": [],
+    "Tiền Giang": [],
+    "Trà Vinh": [],
+    "Tuyên Quang": [],
+    "Vĩnh Long": [],
+    "Vĩnh Phúc": [],
+    "Yên Bái": [],
+  };
   const [addressFeedback, setAddressFeedback] = useState(null);
   const [isLocatingAddress, setIsLocatingAddress] = useState(false);
 
@@ -257,16 +333,22 @@ export default function ProfilePage() {
   }
 
   const filteredOrders = useMemo(
-    () =>
-      orderFilter === "ALL"
-        ? orders
-        : orders.filter((order) => getOrderFilterKey(order) === orderFilter),
-    [orderFilter, orders],
+    () => {
+      let result = orders;
+      if (!showPendingOrders) {
+        result = result.filter((order) => getOrderFilterKey(order) !== "PENDING_PAYMENT");
+      }
+      if (orderFilter !== "ALL") {
+        result = result.filter((order) => getOrderFilterKey(order) === orderFilter);
+      }
+      return result;
+    },
+    [orderFilter, orders, showPendingOrders],
   );
 
   const sortedVisibleOrders = useMemo(
     () =>
-      [...visibleOrders].sort(
+      [...filteredOrders].sort(
         (a, b) =>
           new Date(b?.createdAt ?? 0).getTime() -
           new Date(a?.createdAt ?? 0).getTime(),
@@ -555,8 +637,30 @@ export default function ProfilePage() {
       receiverName: next.receiverName || formData.fullName || "",
       phoneNumber: next.phoneNumber || formData.phone || "",
       addressLine: next.addressLine || "",
+      city: next.city || "",
+      district: next.district || "",
       isDefault: Boolean(next.isDefault),
     });
+  }
+
+  function loadDistrictsForCity(city) {
+    const list = CITY_DISTRICTS[city] || [];
+    setDistrictOptions(list);
+    // If current selected district is not in new list, reset it
+    setAddressForm((prev) => ({
+      ...prev,
+      district: list.includes(prev.district) ? prev.district : "",
+    }));
+  }
+
+  function handleSelectCity(city) {
+    setAddressForm((prev) => ({ ...prev, city }));
+    loadDistrictsForCity(city);
+  }
+
+  function handleQuickDaNang() {
+    // Quick-fill city = Đà Nẵng and load its districts
+    handleSelectCity("Đà Nẵng");
   }
 
   async function reloadAddresses() {
@@ -579,6 +683,8 @@ export default function ProfilePage() {
     setAddressEditingId(item.id);
     resetAddressForm(item);
     setAddressFeedback(null);
+    // load district options for existing city if available
+    if (item?.city) loadDistrictsForCity(item.city);
   }
 
   async function submitAddressForm(e) {
@@ -604,11 +710,14 @@ export default function ProfilePage() {
         throw new Error(addressError);
       }
 
+      // Compose full address including district and city for storage
+      const composedAddressLine = `${String(addressForm.addressLine ?? "").trim()}${addressForm.district ? `, ${addressForm.district}` : ""}${addressForm.city ? `, ${addressForm.city}` : ""}`.trim();
+
       const payload = {
         label: String(addressForm.label ?? "").trim(),
         receiverName: String(addressForm.receiverName ?? "").trim(),
         phoneNumber: String(addressForm.phoneNumber ?? "").trim(),
-        addressLine: String(addressForm.addressLine ?? "").trim(),
+        addressLine: composedAddressLine,
         isDefault: Boolean(addressForm.isDefault),
       };
 
@@ -1705,30 +1814,80 @@ export default function ProfilePage() {
                     }
                   />
                   <div className="flex gap-2">
-                    <Input
-                      placeholder="Địa chỉ đầy đủ"
-                      value={addressForm.addressLine}
-                      onChange={(event) =>
-                        setAddressForm((prev) => ({
-                          ...prev,
-                          addressLine: event.target.value,
-                        }))
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={fillAddressFromGps}
-                      disabled={isLocatingAddress}
-                      className="gap-2"
-                    >
-                      {isLocatingAddress ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Navigation className="h-4 w-4" />
-                      )}
-                      GPS
-                    </Button>
+                    <div className="flex w-full gap-2">
+                      <div className="w-1/3">
+                        <input
+                          list="cities-list"
+                          placeholder="Chọn tỉnh/thành"
+                          value={addressForm.city}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setAddressForm((prev) => ({ ...prev, city: v }));
+                            if (CITY_DISTRICTS[v]) loadDistrictsForCity(v);
+                          }}
+                          className="border rounded-md px-3 py-2 w-full"
+                        />
+                        <datalist id="cities-list">
+                          {Object.keys(CITY_DISTRICTS).map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <select
+                        value={addressForm.district}
+                        onChange={(e) =>
+                          setAddressForm((prev) => ({
+                            ...prev,
+                            district: e.target.value,
+                          }))
+                        }
+                        className="border rounded-md px-3 py-2 w-1/3"
+                      >
+                        <option value="">Chọn quận/huyện</option>
+                        {districtOptions.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+
+                      <Input
+                        placeholder="Địa chỉ đầy đủ"
+                        value={addressForm.addressLine}
+                        onChange={(event) =>
+                          setAddressForm((prev) => ({
+                            ...prev,
+                            addressLine: event.target.value,
+                          }))
+                        }
+                        className="w-1/3"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={fillAddressFromGps}
+                        disabled={isLocatingAddress}
+                        className="gap-2"
+                      >
+                        {isLocatingAddress ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Navigation className="h-4 w-4" />
+                        )}
+                        GPS
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleQuickDaNang}
+                        className="gap-2"
+                      >
+                        Nhập Đ
+                      </Button>
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <input
@@ -2146,8 +2305,8 @@ function formatPaymentMethod(value) {
   if (normalized === "COD") {
     return "COD";
   }
-  if (normalized === "VNPAY" || normalized === "PAYOS") {
-    return "QR";
+  if (normalized === "VNPAY" || normalized === "PAYOS" || normalized === "SEPAY") {
+    return "Thanh toán qua mã QR";
   }
   return normalized || "UNKNOWN";
 }
@@ -2282,6 +2441,10 @@ function formatOrderHistoryNote(note) {
   }
   if (normalized.includes("VNPAY confirmed via")) {
     return "Thanh toán VNPAY đã xác nhận thành công.";
+  }
+
+  if (normalized.includes("SePay confirmed via") || normalized.includes("SePay")) {
+    return "Thanh toán SePay đã xác nhận thành công.";
   }
   if (
     normalized.includes("Cancelled: stock changed during payment confirmation")

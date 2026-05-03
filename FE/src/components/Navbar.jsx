@@ -10,8 +10,10 @@ import {
   ShoppingCart,
   User,
   X,
+  Heart,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useFavorite } from "@/client/features/favorite/context/FavoriteContext";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -31,6 +33,7 @@ import {
 
 export function Navbar() {
   const { totalItems } = useCart();
+  const { favoriteCount } = useFavorite();
   const { isAuthenticated, user, logout, isHydrated } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -168,6 +171,19 @@ export function Navbar() {
               >
                 <MessageCircle className="h-5 w-5" />
               </Button>
+            )}
+
+            {(!isAdminPage || !canAccessAdmin) && (
+              <Link to="/favorites">
+                <Button variant="ghost" size="icon" className="relative">
+                  <Heart className="h-5 w-5" />
+                  {favoriteCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-xs font-bold text-white">
+                      {favoriteCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
             )}
 
             {(!isAdminPage || !canAccessAdmin) && (
