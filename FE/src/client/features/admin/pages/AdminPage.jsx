@@ -3613,6 +3613,8 @@ export default function AdminPage() {
     const dedupedByAction = new Map();
 
     for (const item of navItems) {
+      // Skip the roles tab itself — we don't want a "Phân quyền" toggle
+      if (String(item.id) === "roles") continue;
       const actionName = tabPermissionMap[item.id];
       if (!actionName || dedupedByAction.has(actionName)) {
         continue;
