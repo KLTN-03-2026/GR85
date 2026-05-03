@@ -35,6 +35,9 @@ import {
 import {
   listReturnRequestsForAdmin,
   reviewReturnRequestByAdmin,
+  markReturnAsShippingBack,
+  markReturnAsReceived,
+  processReturnRefund,
 } from "../../services/wallet.service.js";
 import {
   getAiSettings,
@@ -759,6 +762,30 @@ router.post("/warehouses", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/warehouse/overview", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_warehouse_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await getWarehouseOverviewByAdmin();
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
 router.patch("/warehouses/:warehouseId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
@@ -877,6 +904,90 @@ router.patch("/returns/:requestId/review", requireAuth, async (req, res) => {
       });
     }
 
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.patch("/returns/:requestId/shipping-back", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_orders_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await markReturnAsShippingBack(
+      Number(req.auth?.sub),
+      Number(req.params.requestId),
+    );
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.patch("/returns/:requestId/received", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_orders_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await markReturnAsReceived(
+      Number(req.auth?.sub),
+      Number(req.params.requestId),
+    );
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.patch("/returns/:requestId/refund", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_orders_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const data = await processReturnRefund(
+      Number(req.auth?.sub),
+      Number(req.params.requestId),
+    );
+    return res.json(data);
+  } catch (error) {
     if (error instanceof Error) {
       const status = error.message.includes("not found") ? 404 : 400;
       return res.status(status).json({ message: error.message });

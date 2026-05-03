@@ -2,16 +2,18 @@ import {
   OrderStatus,
   PaymentStatus,
   ReturnRequestStatus,
-  WalletTransactionType,
 } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
 
-const RETURN_WINDOW_DAYS = 15;
+const RETURN_WINDOW_DAYS = 3;
 
 export async function requestOrderReturn(userId, input = {}) {
   const orderId = Number(input.orderId);
   const reason = String(input.reason ?? "").trim();
+  const bankName = String(input.bankName ?? "").trim();
+  const bankAccountNumber = String(input.bankAccountNumber ?? "").trim();
+  const bankAccountName = String(input.bankAccountName ?? "").trim();
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
     throw new Error("ID đơn hàng không hợp lệ");
@@ -19,6 +21,18 @@ export async function requestOrderReturn(userId, input = {}) {
 
   if (reason.length < 10) {
     throw new Error("Lý do trả hàng phải có ít nhất 10 ký tự");
+  }
+
+  if (!bankName || bankName.length < 2) {
+    throw new Error("Tên ngân hàng không hợp lệ");
+  }
+
+  if (!bankAccountNumber || bankAccountNumber.length < 8) {
+    throw new Error("Số tài khoản ngân hàng không hợp lệ");
+  }
+
+  if (!bankAccountName || bankAccountName.length < 3) {
+    throw new Error("Tên chủ tài khoản không hợp lệ");
   }
 
   const order = await prisma.order.findFirst({
@@ -49,7 +63,7 @@ export async function requestOrderReturn(userId, input = {}) {
   const limit = RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   if (elapsed > limit) {
-    throw new Error("Chỉ được yêu cầu trả hàng trong vòng 15 ngày sau khi giao");
+    throw new Error("Chỉ được yêu cầu trả hàng trong vòng 3 ngày sau khi giao");
   }
 
   const existing = await prisma.returnRequest.findFirst({
@@ -70,6 +84,9 @@ export async function requestOrderReturn(userId, input = {}) {
       orderId,
       userId,
       reason,
+      bankName,
+      bankAccountNumber,
+      bankAccountName,
       status: ReturnRequestStatus.PENDING,
     },
   });
@@ -131,7 +148,6 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   const requestId = Number(requestIdInput);
   const action = String(input.action ?? "").trim().toUpperCase();
   const rejectReason = String(input.rejectReason ?? "").trim();
-  const refundAmountInput = input.refundAmount;
 
   if (!Number.isFinite(requestId) || requestId <= 0) {
     throw new Error("ID yêu cầu trả hàng không hợp lệ");
@@ -175,53 +191,123 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
     });
   }
 
-  const refundAmount =
-    refundAmountInput === undefined || refundAmountInput === null
-      ? Number(request.order.totalAmount)
-      : Number(refundAmountInput);
+  // APPROVE action - move to APPROVED status, awaiting return shipping
+  const updated = await prisma.returnRequest.update({
+    where: { id: requestId },
+    data: {
+      status: ReturnRequestStatus.APPROVED,
+      reviewedBy: adminUserId,
+      reviewedAt: new Date(),
+    },
+  });
 
-  if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
-    throw new Error("Số tiền hoàn trả phải lớn hơn 0");
+  return serializeData({
+    message: "Yêu cầu trả hàng đã được phê duyệt. Khách hàng sẽ gửi hàng trả về",
+    request: mapReturnRequest(updated),
+  });
+}
+
+export async function markReturnAsShippingBack(adminUserId, requestIdInput) {
+  const requestId = Number(requestIdInput);
+
+  if (!Number.isFinite(requestId) || requestId <= 0) {
+    throw new Error("ID yêu cầu trả hàng không hợp lệ");
   }
 
-  if (refundAmount > Number(request.order.totalAmount)) {
-    throw new Error("Số tiền hoàn trả không được vượt quá tổng tiền đơn hàng");
+  const request = await prisma.returnRequest.findUnique({
+    where: { id: requestId },
+  });
+
+  if (!request) {
+    throw new Error("Không tìm thấy yêu cầu trả hàng");
   }
+
+  if (request.status !== ReturnRequestStatus.APPROVED) {
+    throw new Error("Chỉ các yêu cầu đã phê duyệt mới có thể đánh dấu là đang gửi trả");
+  }
+
+  const updated = await prisma.returnRequest.update({
+    where: { id: requestId },
+    data: {
+      status: ReturnRequestStatus.SHIPPING_BACK,
+    },
+  });
+
+  return serializeData({
+    message: "Đã đánh dấu trạng thái: Đang gửi trả",
+    request: mapReturnRequest(updated),
+  });
+}
+
+export async function markReturnAsReceived(adminUserId, requestIdInput) {
+  const requestId = Number(requestIdInput);
+
+  if (!Number.isFinite(requestId) || requestId <= 0) {
+    throw new Error("ID yêu cầu trả hàng không hợp lệ");
+  }
+
+  const request = await prisma.returnRequest.findUnique({
+    where: { id: requestId },
+  });
+
+  if (!request) {
+    throw new Error("Không tìm thấy yêu cầu trả hàng");
+  }
+
+  if (![ReturnRequestStatus.APPROVED, ReturnRequestStatus.SHIPPING_BACK].includes(request.status)) {
+    throw new Error("Chỉ các yêu cầu đã phê duyệt hoặc đang gửi trả mới có thể đánh dấu là đã nhận");
+  }
+
+  const updated = await prisma.returnRequest.update({
+    where: { id: requestId },
+    data: {
+      status: ReturnRequestStatus.RECEIVED,
+      receivedAt: new Date(),
+    },
+  });
+
+  return serializeData({
+    message: "Đã đánh dấu: Hàng trả đã được nhận. Bây giờ cần xử lý hoàn tiền",
+    request: mapReturnRequest(updated),
+  });
+}
+
+export async function processReturnRefund(adminUserId, requestIdInput) {
+  const requestId = Number(requestIdInput);
+
+  if (!Number.isFinite(requestId) || requestId <= 0) {
+    throw new Error("ID yêu cầu trả hàng không hợp lệ");
+  }
+
+  const request = await prisma.returnRequest.findUnique({
+    where: { id: requestId },
+    include: { order: true },
+  });
+
+  if (!request) {
+    throw new Error("Không tìm thấy yêu cầu trả hàng");
+  }
+
+  if (request.status !== ReturnRequestStatus.RECEIVED) {
+    throw new Error("Chỉ các yêu cầu đã nhận được hàng trả mới có thể xử lý hoàn tiền");
+  }
+
+  if (!request.bankName || !request.bankAccountNumber || !request.bankAccountName) {
+    throw new Error("Thông tin ngân hàng không đầy đủ. Không thể xử lý hoàn tiền");
+  }
+
+  const refundAmount = Number(request.order.totalAmount);
 
   const updated = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({
-      where: { id: request.userId },
-      select: { walletBalance: true },
-    });
-
-    if (!user) {
-      throw new Error("Không tìm thấy người dùng");
-    }
-
-    const nextBalance = Number(user.walletBalance ?? 0) + refundAmount;
-
-    await tx.user.update({
-      where: { id: request.userId },
-      data: { walletBalance: nextBalance },
-    });
-
-    await tx.walletTransaction.create({
-      data: {
-        userId: request.userId,
-        orderId: request.orderId,
-        amount: refundAmount,
-        type: WalletTransactionType.REFUND_CREDIT,
-        note: `Hoàn tiền cho đơn hàng trả lại #${request.orderId}`,
-      },
-    });
-
     const returnRequest = await tx.returnRequest.update({
       where: { id: requestId },
       data: {
         status: ReturnRequestStatus.REFUNDED,
-        reviewedBy: adminUserId,
-        reviewedAt: new Date(),
+        refundedAt: new Date(),
         refundAmount,
+        note: request.note
+          ? request.note + `\n[Admin] Đã xử lý hoàn tiền vào tài khoản: ${request.bankAccountNumber} (${request.bankName})`
+          : `[Admin] Đã xử lý hoàn tiền vào tài khoản: ${request.bankAccountNumber} (${request.bankName})`,
       },
     });
 
@@ -239,7 +325,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
         fromStatus: request.order.orderStatus,
         toStatus: OrderStatus.CANCELLED,
         changedBy: adminUserId,
-        note: `Đã duyệt trả hàng và hoàn ${refundAmount.toFixed(2)} vào ví`,
+        note: `Hoàn tiền ${refundAmount.toFixed(2)} VND vào tài khoản ngân hàng: ${request.bankAccountNumber} (${request.bankName})`,
       },
     });
 
@@ -247,7 +333,7 @@ export async function reviewReturnRequestByAdmin(adminUserId, requestIdInput, in
   });
 
   return serializeData({
-    message: "Đã duyệt trả hàng và hoàn tiền vào ví người dùng",
+    message: "Yêu cầu hoàn tiền đã được xử lý. Tiền sẽ được chuyển vào tài khoản ngân hàng của khách hàng",
     request: mapReturnRequest(updated),
   });
 }
@@ -262,7 +348,13 @@ function mapReturnRequest(item) {
     reviewedBy: item.reviewedBy,
     rejectReason: item.rejectReason,
     refundAmount: item.refundAmount != null ? Number(item.refundAmount) : null,
+    bankName: item.bankName,
+    bankAccountNumber: item.bankAccountNumber,
+    bankAccountName: item.bankAccountName,
+    note: item.note,
     requestedAt: item.requestedAt,
     reviewedAt: item.reviewedAt,
+    receivedAt: item.receivedAt,
+    refundedAt: item.refundedAt,
   };
 }
