@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -36,19 +36,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
 import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
-import { AdminReportsPanel } from "@/client/features/admin/components/AdminReportsPanel.jsx";
-import { AdminAIPanel } from "@/client/features/admin/components/AdminAIPanel.jsx";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
 import {
   BarChart,
@@ -67,7 +58,6 @@ import {
 
 const navItems = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
-  { id: "reports", label: "Báo cáo & Thống kê", icon: Activity },
   { id: "users", label: "Người dùng", icon: Users },
   { id: "roles", label: "Phân quyền", icon: ShieldCheck },
   { id: "products-create", label: "Thêm sản phẩm mới", icon: Plus },
@@ -91,7 +81,7 @@ const navGroups = [
   {
     id: "overview",
     label: "Tổng quan",
-    tabIds: ["dashboard", "reports"],
+    tabIds: ["dashboard"],
   },
   {
     id: "account",
@@ -131,7 +121,6 @@ const tabGroupByTabId = navGroups.reduce((accumulator, group) => {
 
 const tabPermissionMap = {
   dashboard: "admin_dashboard_view",
-  reports: "admin_dashboard_view",
   users: "admin_users_manage",
   "products-create": "admin_products_manage",
   "products-inventory": "admin_products_manage",
@@ -147,33 +136,6 @@ const tabPermissionMap = {
   verification: "admin_verification_view",
   roles: "admin_roles_manage",
 };
-
-// Mapping module base names -> permission module (users, products, orders, etc.)
-const permissionModuleMap = {
-  dashboard: "dashboard",
-  reports: "dashboard",
-  users: "users",
-  "products-create": "products",
-  "products-inventory": "products",
-  "products-edit": "products",
-  orders: "orders",
-  returns: "orders",
-  catalog: "catalog",
-  vouchers: "vouchers",
-  warehouse: "warehouse",
-  reviews: "reviews",
-  chat: "chat",
-  "ai-build": "ai_build",
-  roles: "roles",
-};
-
-// Permission levels for each module: view -> edit -> manage (hierarchical)
-const PERMISSION_LEVELS = [
-  { value: "none", label: "Không có quyền", icon: "🚫" },
-  { value: "view", label: "Chỉ xem", icon: "👁️" },
-  { value: "edit", label: "Xem + sửa", icon: "✏️" },
-  { value: "manage", label: "Quản lý (toàn quyền)", icon: "🔑" },
-];
 
 const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 
@@ -767,18 +729,13 @@ export default function AdminPage() {
   const [reviewSortBy, setReviewSortBy] = useState("newest");
   const [reviewStatusFilter, setReviewStatusFilter] = useState("all");
   const [reviewQuickFilter, setReviewQuickFilter] = useState("all");
-  const [reviewDetailTab, setReviewDetailTab] = useState("overview");
   const [selectedReviewId, setSelectedReviewId] = useState(null);
   const [adminReviews, setAdminReviews] = useState([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
-  const [resolvingReviewId, setResolvingReviewId] = useState(null);
   const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
-  const [deleteReviewDialogOpen, setDeleteReviewDialogOpen] = useState(false);
-  const [deleteReviewTarget, setDeleteReviewTarget] = useState(null);
-  const [deleteReviewReason, setDeleteReviewReason] = useState("");
 
   useEffect(() => {
     const tabIdFromUrl = resolveTabIdFromLocation();
@@ -1409,22 +1366,14 @@ export default function AdminPage() {
     }
 
     const reviewId = Number(review.id);
-    const promptText = shouldHide
-      ? "Nhập lý do ẩn đánh giá (không bắt buộc):"
-      : "Nhập lý do hiện lại đánh giá (bắt buộc):";
-    const promptDefault = shouldHide ? String(review.hiddenReason ?? "") : "";
-    const reasonInput = window.prompt(promptText, promptDefault);
-    if (reasonInput === null) {
-      return;
-    }
+    const hiddenReason = shouldHide
+      ? window.prompt(
+        "Nhập lý do ẩn đánh giá (không bắt buộc):",
+        String(review.hiddenReason ?? ""),
+      )
+      : "";
 
-    const normalizedReason = String(reasonInput ?? "").trim();
-    if (!shouldHide && !normalizedReason) {
-      toast({
-        title: "Thiếu lý do",
-        description: "Vui lòng nhập lý do để hiện lại đánh giá",
-        variant: "destructive",
-      });
+    if (hiddenReason === null) {
       return;
     }
 
@@ -1438,8 +1387,7 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           isHidden: Boolean(shouldHide),
-          hiddenReason: shouldHide ? normalizedReason || undefined : undefined,
-          reason: shouldHide ? undefined : normalizedReason,
+          hiddenReason: String(hiddenReason ?? "").trim() || undefined,
         }),
       });
 
@@ -1519,88 +1467,26 @@ export default function AdminPage() {
     }
   }
 
-  async function resolveReviewThread(reviewId, resolved = true) {
-    if (!token || !reviewId) {
-      return;
-    }
-
-    const numericReviewId = Number(reviewId);
-    setResolvingReviewId(numericReviewId);
-    try {
-      const response = await fetch(
-        `/api/admin/reviews/${numericReviewId}/resolve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ resolved: Boolean(resolved) }),
-        },
-      );
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          payload?.message ?? "Không thể cập nhật trạng thái xử lý",
-        );
-      }
-
-      setAdminReviews((prev) =>
-        prev.map((item) =>
-          Number(item.id) === numericReviewId ? payload : item,
-        ),
-      );
-
-      toast({
-        title: resolved ? "Đã đánh dấu xử lý xong" : "Đã mở lại hội thoại",
-      });
-    } catch (error) {
-      toast({
-        title: "Cập nhật trạng thái xử lý thất bại",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setResolvingReviewId(null);
-    }
-  }
-
   async function removeReview(review) {
     if (!token || !review?.id) {
       return;
     }
 
-    setDeleteReviewTarget(review);
-    setDeleteReviewReason("Đánh giá vi phạm quy định của cửa hàng");
-    setDeleteReviewDialogOpen(true);
-  }
-
-  async function confirmDeleteReview() {
-    if (!token || !deleteReviewTarget?.id) {
+    const shouldDelete = window.confirm(
+      `Bạn có chắc muốn xóa đánh giá #${review.id}? Hành động này không thể hoàn tác.`,
+    );
+    if (!shouldDelete) {
       return;
     }
 
-    const normalizedReason = String(deleteReviewReason ?? "").trim();
-    if (!normalizedReason) {
-      toast({
-        title: "Thiếu lý do",
-        description: "Vui lòng nhập lý do xóa để gửi log cho khách",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reviewId = Number(deleteReviewTarget.id);
+    const reviewId = Number(review.id);
     setDeletingReviewId(reviewId);
     try {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
         method: "DELETE",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ reason: normalizedReason }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1611,9 +1497,6 @@ export default function AdminPage() {
       setAdminReviews((prev) =>
         prev.filter((item) => Number(item.id) !== reviewId),
       );
-      setDeleteReviewDialogOpen(false);
-      setDeleteReviewTarget(null);
-      setDeleteReviewReason("");
       toast({ title: "Đã xóa đánh giá" });
     } catch (error) {
       toast({
@@ -3336,127 +3219,19 @@ export default function AdminPage() {
     return filtered;
   }, [dashboard, voucherSearchKeyword, voucherStatusFilter]);
 
-  const getReviewThread = useCallback((review) => {
-    return Array.isArray(review?.thread) ? review.thread : [];
-  }, []);
-
-  const getReviewThreadStatus = useCallback(
-    (review) => {
-      const normalized = String(review?.threadStatus ?? "")
-        .trim()
-        .toUpperCase();
-
-      if (
-        normalized === "OPEN" ||
-        normalized === "WAITING_ADMIN" ||
-        normalized === "WAITING_CUSTOMER" ||
-        normalized === "RESOLVED"
-      ) {
-        return normalized;
-      }
-
-      const thread = getReviewThread(review);
-      if (thread.length === 0) {
-        return "OPEN";
-      }
-
-      const lastMessage = thread[thread.length - 1];
-      return lastMessage?.isStaff ? "WAITING_CUSTOMER" : "WAITING_ADMIN";
-    },
-    [getReviewThread],
-  );
-
-  const formatThreadStatusLabel = useCallback((status) => {
-    if (status === "RESOLVED") {
-      return "Đã xử lý";
-    }
-    if (status === "WAITING_CUSTOMER") {
-      return "Chờ khách phản hồi";
-    }
-    if (status === "WAITING_ADMIN") {
-      return "Chờ admin phản hồi";
-    }
-    return "Open";
-  }, []);
-
-  const hasStaffReply = useCallback(
-    (review) => {
-      const thread = getReviewThread(review);
-      if (thread.some((item) => Boolean(item?.isStaff))) {
-        return true;
-      }
-
-      return Boolean(String(review?.adminReply ?? "").trim());
-    },
-    [getReviewThread],
-  );
-
-  const isWaitingForAdminReply = useCallback(
-    (review) => {
-      const status = getReviewThreadStatus(review);
-      if (status === "WAITING_ADMIN" || status === "OPEN") {
-        return true;
-      }
-      if (status === "WAITING_CUSTOMER" || status === "RESOLVED") {
-        return false;
-      }
-
-      const thread = getReviewThread(review);
-      if (thread.length === 0) {
-        return !hasStaffReply(review);
-      }
-
-      const lastMessage = thread[thread.length - 1];
-      return !Boolean(lastMessage?.isStaff);
-    },
-    [getReviewThread, getReviewThreadStatus, hasStaffReply],
-  );
-
-  const getLatestCustomerReplyMessage = useCallback(
-    (review) => {
-      const thread = getReviewThread(review);
-      for (let index = thread.length - 1; index >= 0; index -= 1) {
-        const message = thread[index];
-        const content = String(message?.message ?? "").trim();
-        if (!message?.isStaff && content) {
-          return {
-            text: content,
-            createdAt: message?.createdAt ?? null,
-          };
-        }
-      }
-
-      return null;
-    },
-    [getReviewThread],
-  );
-
   const filteredReviews = useMemo(() => {
     let filtered = Array.isArray(adminReviews) ? [...adminReviews] : [];
 
     if (reviewSearchKeyword.trim()) {
       const keyword = reviewSearchKeyword.toLowerCase().trim();
-      filtered = filtered.filter((item) => {
-        const thread = getReviewThread(item);
-        const hasMatchedThread = thread.some(
-          (message) =>
-            String(message?.message ?? "")
-              .toLowerCase()
-              .includes(keyword) ||
-            String(message?.senderName ?? "")
-              .toLowerCase()
-              .includes(keyword),
-        );
-
-        return (
+      filtered = filtered.filter(
+        (item) =>
           (item.user?.fullName ?? "").toLowerCase().includes(keyword) ||
           (item.user?.email ?? "").toLowerCase().includes(keyword) ||
           (item.product?.name ?? "").toLowerCase().includes(keyword) ||
           (item.comment ?? "").toLowerCase().includes(keyword) ||
-          (item.adminReply ?? "").toLowerCase().includes(keyword) ||
-          hasMatchedThread
-        );
-      });
+          (item.adminReply ?? "").toLowerCase().includes(keyword),
+      );
     }
 
     if (reviewStatusFilter === "visible") {
@@ -3467,14 +3242,8 @@ export default function AdminPage() {
     }
 
     if (reviewQuickFilter === "needs-reply") {
-      filtered = filtered.filter((item) => isWaitingForAdminReply(item));
-    } else if (reviewQuickFilter === "waiting-customer") {
       filtered = filtered.filter(
-        (item) => getReviewThreadStatus(item) === "WAITING_CUSTOMER",
-      );
-    } else if (reviewQuickFilter === "resolved") {
-      filtered = filtered.filter(
-        (item) => getReviewThreadStatus(item) === "RESOLVED",
+        (item) => !String(item.adminReply ?? "").trim(),
       );
     } else if (reviewQuickFilter === "low-rating") {
       filtered = filtered.filter((item) => Number(item.rating ?? 0) <= 2);
@@ -3485,10 +3254,9 @@ export default function AdminPage() {
         return Number.isFinite(createdAt) && createdAt >= cutoff;
       });
     } else if (reviewQuickFilter === "replied") {
-      filtered = filtered.filter((item) => {
-        const status = getReviewThreadStatus(item);
-        return status === "WAITING_CUSTOMER" || status === "RESOLVED";
-      });
+      filtered = filtered.filter((item) =>
+        Boolean(String(item.adminReply ?? "").trim()),
+      );
     }
 
     if (reviewSortBy === "newest") {
@@ -3504,9 +3272,6 @@ export default function AdminPage() {
     return filtered;
   }, [
     adminReviews,
-    getReviewThread,
-    getReviewThreadStatus,
-    isWaitingForAdminReply,
     reviewQuickFilter,
     reviewSearchKeyword,
     reviewSortBy,
@@ -3521,14 +3286,16 @@ export default function AdminPage() {
     return {
       total: items.length,
       hidden: items.filter((item) => Boolean(item.isHidden)).length,
-      waitingReply: items.filter((item) => isWaitingForAdminReply(item)).length,
+      waitingReply: items.filter(
+        (item) => !String(item.adminReply ?? "").trim(),
+      ).length,
       lowRating: items.filter((item) => Number(item.rating ?? 0) <= 2).length,
       recent24h: items.filter((item) => {
         const createdAt = new Date(item.createdAt).getTime();
         return Number.isFinite(createdAt) && now - createdAt <= oneDay;
       }).length,
     };
-  }, [adminReviews, isWaitingForAdminReply]);
+  }, [adminReviews]);
 
   const selectedReview = useMemo(
     () =>
@@ -3539,104 +3306,6 @@ export default function AdminPage() {
       null,
     [filteredReviews, selectedReviewId],
   );
-
-  const selectedReviewThread = useMemo(
-    () => getReviewThread(selectedReview),
-    [getReviewThread, selectedReview],
-  );
-
-  const selectedReviewNeedsReply = useMemo(
-    () => (selectedReview ? isWaitingForAdminReply(selectedReview) : false),
-    [isWaitingForAdminReply, selectedReview],
-  );
-
-  const selectedReviewThreadStatus = useMemo(
-    () => (selectedReview ? getReviewThreadStatus(selectedReview) : "OPEN"),
-    [getReviewThreadStatus, selectedReview],
-  );
-
-  const latestCustomerReply = useMemo(() => {
-    if (!Array.isArray(selectedReviewThread) || selectedReviewThread.length === 0) {
-      return null;
-    }
-
-    const customerMessages = selectedReviewThread.filter(
-      (message) => !message?.isStaff,
-    );
-
-    return customerMessages.length > 0
-      ? customerMessages[customerMessages.length - 1]
-      : null;
-  }, [selectedReviewThread]);
-
-  const hasActiveReviewFilters = useMemo(
-    () =>
-      reviewQuickFilter !== "all" ||
-      reviewSortBy !== "newest" ||
-      reviewStatusFilter !== "all" ||
-      Boolean(reviewSearchKeyword.trim()),
-    [reviewQuickFilter, reviewSearchKeyword, reviewSortBy, reviewStatusFilter],
-  );
-
-  const reviewReplyTemplates = useMemo(
-    () => [
-      {
-        id: "thanks",
-        label: "Cảm ơn",
-        text: "Cảm ơn bạn đã mua hàng và dành thời gian đánh giá. Team đã ghi nhận góp ý của bạn.",
-      },
-      {
-        id: "sorry",
-        label: "Xin lỗi & hỗ trợ",
-        text: "Shop xin lỗi vì trải nghiệm chưa tốt. Mình đã chuyển kỹ thuật kiểm tra và sẽ liên hệ bạn sớm để hỗ trợ dứt điểm.",
-      },
-      {
-        id: "resolved",
-        label: "Đã xử lý",
-        text: "Vấn đề đã được team xử lý xong. Nếu bạn cần hỗ trợ thêm, bạn phản hồi trực tiếp tại đây để shop hỗ trợ ngay.",
-      },
-      {
-        id: "warranty",
-        label: "Hướng dẫn bảo hành",
-        text: "Bạn vui lòng gửi mã đơn hàng + video/lỗi thực tế để shop hỗ trợ bảo hành nhanh trong ngày.",
-      },
-    ],
-    [],
-  );
-
-  const filteredReturnRequests = useMemo(() => {
-    let filtered = Array.isArray(adminReturnRequests) ? adminReturnRequests : [];
-
-    if (returnStatusFilter !== "all") {
-      filtered = filtered.filter(
-        (item) => String(item.status ?? "").toUpperCase() === returnStatusFilter,
-      );
-    }
-
-    if (returnSearchKeyword.trim()) {
-      const keyword = returnSearchKeyword.toLowerCase().trim();
-      filtered = filtered.filter((item) => {
-        const searchableText = [
-          item.id,
-          item.orderId,
-          item.reason,
-          item.rejectReason,
-          item.bankName,
-          item.bankAccountNumber,
-          item.bankAccountName,
-          item.user?.fullName,
-          item.user?.email,
-        ]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase())
-          .join(" ");
-
-        return searchableText.includes(keyword);
-      });
-    }
-
-    return filtered;
-  }, [adminReturnRequests, returnSearchKeyword, returnStatusFilter]);
 
   useEffect(() => {
     if (selectedReview) {
@@ -4242,8 +3911,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => setActiveTab(item.id)}
                           className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
-                              ? "bg-primary text-primary-foreground"
-                              : "text-slate-700 hover:bg-secondary hover:text-primary"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-slate-700 hover:bg-secondary hover:text-primary"
                             }`}
                         >
                           <span className="flex items-center gap-3">
@@ -4307,8 +3976,8 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
                       className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "hover:border-primary/50"
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "hover:border-primary/50"
                         }`}
                     >
                       <p className="text-sm text-muted-foreground">
@@ -4371,16 +4040,6 @@ export default function AdminPage() {
                 </div>
               </div>
             </Panel>
-          </section>
-
-          <section id="reports" className={sectionClassName("reports")}>
-            <SectionHeader
-              sectionId="reports"
-              icon={Activity}
-              title="Báo cáo & Thống kê"
-              subtitle="Phân tích doanh thu, sản phẩm và khách hàng chuyên sâu."
-            />
-            <AdminReportsPanel />
           </section>
 
           <section id="users" className={sectionClassName("users")}>
@@ -4537,7 +4196,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => openUserOrders(item)}
                       >
@@ -4545,7 +4204,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => loadUserDetail(item.id)}
                       >
@@ -4889,26 +4548,28 @@ export default function AdminPage() {
           <section
             id="products"
             className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
-                ? "block"
-                : "hidden"
+              ? "block"
+              : "hidden"
               }`}
           >
-            {!isProductInventoryTab ? (
-              <SectionHeader
-                sectionId={activeTab}
-                icon={Package}
-                title={
-                  isProductCreateTab
-                    ? "Thêm sản phẩm mới"
+            <SectionHeader
+              sectionId={activeTab}
+              icon={Package}
+              title={
+                isProductCreateTab
+                  ? "Thêm sản phẩm mới"
+                  : isProductInventoryTab
+                    ? "Danh mục sản phẩm"
                     : "Chỉnh sửa sản phẩm"
-                }
-                description={
-                  isProductCreateTab
-                    ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
+              }
+              description={
+                isProductCreateTab
+                  ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
+                  : isProductInventoryTab
+                    ? "Quản lý các loại sản phẩm như CPU, RAM, SSD, Mainboard và danh mục liên quan"
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
-                }
-              />
-            ) : null}
+              }
+            />
             <div className="grid gap-6">
               <div
                 className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}
@@ -6051,23 +5712,6 @@ export default function AdminPage() {
                           }))
                         }
                       />
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => {
-                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                          base.setDate(base.getDate() + 1);
-                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                        }}>+1 Ngày</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => {
-                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                          base.setDate(base.getDate() + 7);
-                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                        }}>+1 Tuần</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => {
-                          const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                          base.setMonth(base.getMonth() + 1);
-                          setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                        }}>+1 Tháng</Button>
-                      </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -6236,23 +5880,6 @@ export default function AdminPage() {
                             }))
                           }
                         />
-                        <div className="flex gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => {
-                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                            base.setDate(base.getDate() + 1);
-                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                          }}>+1 Ngày</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => {
-                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                            base.setDate(base.getDate() + 7);
-                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                          }}>+1 Tuần</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => {
-                            const base = voucherForm.startDate ? new Date(voucherForm.startDate) : new Date();
-                            base.setMonth(base.getMonth() + 1);
-                            setVoucherForm(prev => ({ ...prev, endDate: new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }));
-                          }}>+1 Tháng</Button>
-                        </div>
                       </div>
 
                       <div className="grid gap-2">
@@ -7138,8 +6765,8 @@ export default function AdminPage() {
               title="Quản lý đánh giá"
               description="Theo dõi, kiểm duyệt và phản hồi đánh giá khách hàng"
             />
-            <div className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
                   <p className="text-2xl font-bold">{reviewOverview.total}</p>
                 </Panel>
@@ -7169,8 +6796,7 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
-                  <div className="grid gap-3 md:grid-cols-5">
+                <div className="mb-4 grid gap-3 md:grid-cols-4">
                   <div className="grid gap-2">
                     <label className="text-xs font-medium">Tìm kiếm</label>
                     <input
@@ -7206,35 +6832,19 @@ export default function AdminPage() {
                       <option value="hidden">Đã ẩn</option>
                     </select>
                   </div>
-                  <div className="flex items-end justify-between gap-2 md:col-span-2">
+                  <div className="flex items-end">
                     <span className="text-xs text-muted-foreground">
                       Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
                       giá
                     </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!hasActiveReviewFilters}
-                      onClick={() => {
-                        setReviewSearchKeyword("");
-                        setReviewSortBy("newest");
-                        setReviewStatusFilter("all");
-                        setReviewQuickFilter("all");
-                      }}
-                    >
-                      Xóa bộ lọc
-                    </Button>
-                  </div>
                   </div>
                 </div>
 
-                <div className="mb-3 flex flex-wrap gap-2">
+                <div className="mb-4 flex flex-wrap gap-2">
                   {[
                     { id: "all", label: "Tất cả" },
                     { id: "needs-reply", label: "Chờ phản hồi" },
-                    { id: "waiting-customer", label: "Chờ khách phản hồi" },
                     { id: "replied", label: "Đã phản hồi" },
-                    { id: "resolved", label: "Đã xử lý" },
                     { id: "low-rating", label: "Sao thấp (<=2)" },
                     { id: "recent-24h", label: "Mới trong 24h" },
                   ].map((chip) => (
@@ -7243,8 +6853,8 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
                       className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
                         }`}
                     >
                       {chip.label}
@@ -7261,33 +6871,19 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-3 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.18fr)] xl:items-start">
-                    <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1 xl:sticky xl:top-5">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
-                        const waitingReply = isWaitingForAdminReply(item);
-                        const threadStatus = getReviewThreadStatus(item);
-                        const latestCustomerReply =
-                          getLatestCustomerReplyMessage(item);
-                        const previewText =
-                          latestCustomerReply?.text ||
-                          String(item.comment ?? "").trim() ||
-                          "Không có nội dung";
-                        const previewTimestamp =
-                          latestCustomerReply?.createdAt ?? item.createdAt;
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
                             type="button"
-                            onClick={() => {
-                              setSelectedReviewId(Number(item.id));
-                              setReviewDetailTab("overview");
-                            }}
-                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
-                              isSelected
-                                ? "border-primary bg-primary/5 shadow-sm"
-                                : "border-border/70 bg-background hover:border-primary/40"
+                            onClick={() => setSelectedReviewId(Number(item.id))}
+                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${isSelected
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border/70 bg-background hover:border-primary/40"
                               }`}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -7308,322 +6904,112 @@ export default function AdminPage() {
                             <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
                               <span>•</span>
-                              <span>{formatDate(previewTimestamp)}</span>
-                              <span>•</span>
-                              <span
-                                className={
-                                  waitingReply
-                                    ? "text-amber-700"
-                                    : "text-emerald-700"
-                                }
-                              >
-                                {formatThreadStatusLabel(threadStatus)}
-                              </span>
+                              <span>{formatDate(item.createdAt)}</span>
                             </div>
-                            <p className="mt-2 line-clamp-2 break-words text-sm text-slate-700">
-                              {previewText}
+                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">
+                              {item.comment || "Không có nội dung"}
                             </p>
                           </button>
                         );
                       })}
                     </div>
 
-                    <div className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm xl:sticky xl:top-5 xl:max-h-[calc(100vh-260px)] xl:overflow-y-auto">
+                    <div className="rounded-2xl border border-border/60 bg-background p-4">
                       {selectedReview ? (
                         <div className="space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <h4 className="truncate text-base font-semibold">
-                                  {selectedReview.product?.name ?? "Sản phẩm"}
-                                </h4>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {selectedReview.user?.fullName ??
-                                    selectedReview.user?.email ??
-                                    "Ẩn danh"}
-                                </p>
-                              </div>
-                              <div className="flex flex-col items-end gap-1">
-                                {statusBadge(
-                                  selectedReview.isHidden
-                                    ? "Đã ẩn"
-                                    : "Đang hiển thị",
-                                )}
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    selectedReviewNeedsReply
-                                      ? "bg-amber-50 text-amber-700"
-                                      : "bg-emerald-50 text-emerald-700"
-                                  }`}
-                                >
-                                  {formatThreadStatusLabel(
-                                    selectedReviewThreadStatus,
-                                  )}
-                                </span>
-                              </div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h4 className="text-base font-semibold">
+                                {selectedReview.product?.name ?? "Sản phẩm"}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                {selectedReview.user?.fullName ??
+                                  selectedReview.user?.email ??
+                                  "Ẩn danh"}
+                              </p>
                             </div>
-
-                            <Tabs
-                              value={reviewDetailTab}
-                              onValueChange={setReviewDetailTab}
-                              className="space-y-3"
-                            >
-                              <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-secondary/50 p-1">
-                                <TabsTrigger value="overview" className="text-xs">
-                                  Tổng quan
-                                </TabsTrigger>
-                                <TabsTrigger
-                                  value="conversation"
-                                  className="text-xs"
-                                >
-                                  Hội thoại
-                                </TabsTrigger>
-                                <TabsTrigger value="reply" className="text-xs">
-                                  Phản hồi
-                                </TabsTrigger>
-                              </TabsList>
-
-                              <TabsContent value="overview" className="mt-0 space-y-3">
-                                <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
-                                  <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
-                                  <p className="mt-1 whitespace-pre-wrap">
-                                    {selectedReview.comment ||
-                                      "Không có nội dung đánh giá"}
-                                  </p>
-                                </div>
-
-                                <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                                  <div>
-                                    Tạo lúc: {formatDate(selectedReview.createdAt)}
-                                  </div>
-                                  <div>
-                                    Cập nhật: {formatDate(selectedReview.updatedAt)}
-                                  </div>
-                                  <div>
-                                    Kiểm duyệt:{" "}
-                                    {selectedReview.moderatedAt
-                                      ? formatDate(selectedReview.moderatedAt)
-                                      : "Chưa"}
-                                  </div>
-                                  <div>
-                                    Người kiểm duyệt:{" "}
-                                    {selectedReview.moderator?.fullName ?? "-"}
-                                  </div>
-                                  <div>
-                                    Trạng thái thread:{" "}
-                                    {formatThreadStatusLabel(
-                                      selectedReviewThreadStatus,
-                                    )}
-                                  </div>
-                                  <div>
-                                    Người xử lý:{" "}
-                                    {selectedReview.resolver?.fullName ?? "-"}
-                                  </div>
-                                  <div>
-                                    Xử lý lúc:{" "}
-                                    {selectedReview.threadResolvedAt
-                                      ? formatDate(selectedReview.threadResolvedAt)
-                                      : "-"}
-                                  </div>
-                                </div>
-
-                                {selectedReview.hiddenReason ? (
-                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                    Lý do ẩn: {selectedReview.hiddenReason}
-                                  </div>
-                                ) : null}
-
-                                {Array.isArray(selectedReview.images) &&
-                                selectedReview.images.length > 0 ? (
-                                  <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-xs font-semibold">
-                                      <ImagePlus className="h-3.5 w-3.5" />
-                                      Ảnh đính kèm
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                                      {selectedReview.images.map((image) => (
-                                        <a
-                                          key={image.id}
-                                          href={image.imageUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="overflow-hidden rounded-lg border border-border/60 bg-secondary/20"
-                                        >
-                                          <img
-                                            src={image.imageUrl}
-                                            alt="Ảnh đánh giá"
-                                            className="h-16 w-full object-cover"
-                                          />
-                                        </a>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </TabsContent>
-
-                              <TabsContent
-                                value="conversation"
-                                className="mt-0 space-y-2"
-                              >
-                                <label className="text-xs font-semibold">
-                                  Hội thoại phản hồi
-                                </label>
-
-                                {selectedReviewThread.length > 0 ? (
-                                  <div className="min-h-[220px] max-h-[28rem] space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-secondary/20 p-3">
-                                    {selectedReviewThread.map((message) => (
-                                      <div
-                                        key={`${selectedReview.id}-${message.id}`}
-                                        className={`rounded-xl border px-3 py-2 text-sm ${
-                                          message.isStaff
-                                            ? "ml-6 border-sky-200 bg-sky-50/80"
-                                            : "mr-6 border-emerald-200 bg-emerald-50/80"
-                                        }`}
-                                      >
-                                        <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                          <span className="font-medium text-slate-700">
-                                            {message.isStaff
-                                              ? "Nhân viên"
-                                              : "Khách hàng"}
-                                            {message.senderName
-                                              ? ` • ${message.senderName}`
-                                              : ""}
-                                          </span>
-                                          <span>
-                                            {formatDate(message.createdAt)}
-                                          </span>
-                                        </div>
-                                        <p className="whitespace-pre-wrap text-slate-800">
-                                          {message.message}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                                    Chưa có phản hồi hai chiều cho đánh giá này.
-                                  </div>
-                                )}
-                              </TabsContent>
-
-                              <TabsContent value="reply" className="mt-0 space-y-3">
-                                <div className="rounded-xl border border-border/60 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-3">
-                                  <div className="rounded-lg border border-sky-100 bg-white/80 px-3 py-2">
-                                    <p className="text-xs font-semibold text-sky-700">
-                                      Phản hồi gần nhất từ khách
-                                    </p>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                      {latestCustomerReply?.message ||
-                                        selectedReview.comment ||
-                                        "Khách chưa để lại nội dung phản hồi."}
-                                    </p>
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                      {latestCustomerReply?.createdAt
-                                        ? `Lúc ${formatDate(latestCustomerReply.createdAt)}`
-                                        : "Đang hiển thị nội dung đánh giá ban đầu"}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-2">
-                                    {reviewReplyTemplates.map((template) => (
-                                      <Button
-                                        key={template.id}
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 rounded-full px-3 text-xs"
-                                        onClick={() =>
-                                          setReviewReplyDraftById((prev) => ({
-                                            ...prev,
-                                            [selectedReview.id]: template.text,
-                                          }))
-                                        }
-                                      >
-                                        {template.label}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                  <textarea
-                                    className="mt-2 min-h-[130px] w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                                    rows={5}
-                                    placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
-                                    value={
-                                      reviewReplyDraftById[selectedReview.id] ??
-                                      ""
-                                    }
-                                    onChange={(event) =>
-                                      setReviewReplyDraftById((prev) => ({
-                                        ...prev,
-                                        [selectedReview.id]: event.target.value,
-                                      }))
-                                    }
-                                  />
-                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                    <span className="text-xs text-muted-foreground">
-                                      {selectedReview.adminRepliedAt
-                                        ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
-                                        : "Chưa có phản hồi"}
-                                    </span>
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-xs text-muted-foreground">
-                                        {
-                                          String(
-                                            reviewReplyDraftById[
-                                              selectedReview.id
-                                            ] ?? "",
-                                          ).trim().length
-                                        }
-                                        /2000 ký tự
-                                      </span>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={
-                                          replyingReviewId ===
-                                          Number(selectedReview.id)
-                                        }
-                                        onClick={() =>
-                                          saveReviewReply(
-                                            Number(selectedReview.id),
-                                          )
-                                        }
-                                      >
-                                        {replyingReviewId ===
-                                        Number(selectedReview.id)
-                                          ? "Đang lưu..."
-                                          : "Lưu phản hồi"}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </TabsContent>
-                            </Tabs>
+                            {statusBadge(
+                              selectedReview.isHidden
+                                ? "Đã ẩn"
+                                : "Đang hiển thị",
+                            )}
                           </div>
 
-                          <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border/60 bg-background/95 pt-3 backdrop-blur-sm">
-                            <Button
-                              size="sm"
-                              variant={
-                                selectedReviewThreadStatus === "RESOLVED"
-                                  ? "outline"
-                                  : "default"
+                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
+                            <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
+                            <p className="mt-1 whitespace-pre-wrap">
+                              {selectedReview.comment ||
+                                "Không có nội dung đánh giá"}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                            <div>
+                              Tạo lúc: {formatDate(selectedReview.createdAt)}
+                            </div>
+                            <div>
+                              Cập nhật: {formatDate(selectedReview.updatedAt)}
+                            </div>
+                            <div>
+                              Kiểm duyệt:{" "}
+                              {selectedReview.moderatedAt
+                                ? formatDate(selectedReview.moderatedAt)
+                                : "Chưa"}
+                            </div>
+                            <div>
+                              Người kiểm duyệt:{" "}
+                              {selectedReview.moderator?.fullName ?? "-"}
+                            </div>
+                          </div>
+
+                          {selectedReview.hiddenReason ? (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                              Lý do ẩn: {selectedReview.hiddenReason}
+                            </div>
+                          ) : null}
+
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold">
+                              Phản hồi quản trị
+                            </label>
+                            <textarea
+                              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                              rows={4}
+                              placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
+                              value={
+                                reviewReplyDraftById[selectedReview.id] ?? ""
                               }
-                              disabled={
-                                resolvingReviewId === Number(selectedReview.id)
+                              onChange={(event) =>
+                                setReviewReplyDraftById((prev) => ({
+                                  ...prev,
+                                  [selectedReview.id]: event.target.value,
+                                }))
                               }
-                              onClick={() =>
-                                resolveReviewThread(
-                                  Number(selectedReview.id),
-                                  selectedReviewThreadStatus !== "RESOLVED",
-                                )
-                              }
-                            >
-                              {resolvingReviewId === Number(selectedReview.id)
-                                ? "Đang cập nhật..."
-                                : selectedReviewThreadStatus === "RESOLVED"
-                                  ? "Mở lại hội thoại"
-                                  : "Đánh dấu đã xử lý"}
-                            </Button>
+                            />
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {selectedReview.adminRepliedAt
+                                  ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
+                                  : "Chưa có phản hồi"}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={
+                                  replyingReviewId === Number(selectedReview.id)
+                                }
+                                onClick={() =>
+                                  saveReviewReply(Number(selectedReview.id))
+                                }
+                              >
+                                {replyingReviewId === Number(selectedReview.id)
+                                  ? "Đang lưu..."
+                                  : "Lưu phản hồi"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
                             <Button
                               size="sm"
                               variant="outline"
@@ -7665,67 +7051,6 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <Dialog
-            open={deleteReviewDialogOpen}
-            onOpenChange={(open) => {
-              setDeleteReviewDialogOpen(open);
-              if (!open) {
-                setDeleteReviewTarget(null);
-                setDeleteReviewReason("");
-              }
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Xóa đánh giá</DialogTitle>
-                <DialogDescription>
-                  Nhập lý do xóa để lưu lại log và thông báo cho khách hàng.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-3">
-                <div className="rounded-md border border-border/60 bg-secondary/20 px-3 py-2 text-sm">
-                  <p className="font-medium">
-                    {deleteReviewTarget?.product?.name ?? "Sản phẩm"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    #{deleteReviewTarget?.id ?? "-"} •{" "}
-                    {deleteReviewTarget?.user?.fullName ??
-                      deleteReviewTarget?.user?.email ??
-                      "Ẩn danh"}
-                  </p>
-                </div>
-
-                <Textarea
-                  value={deleteReviewReason}
-                  onChange={(event) =>
-                    setDeleteReviewReason(event.target.value)
-                  }
-                  placeholder="Nhập lý do xóa đánh giá..."
-                  className="min-h-[120px]"
-                />
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setDeleteReviewDialogOpen(false)}
-                  >
-                    Hủy
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    disabled={Boolean(deletingReviewId)}
-                    onClick={confirmDeleteReview}
-                  >
-                    {deletingReviewId ? "Đang xóa..." : "Xác nhận xóa"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
           <section id="chat" className={sectionClassName("chat")}>
             <SectionHeader
               sectionId="chat"
@@ -7740,11 +7065,9 @@ export default function AdminPage() {
             <SectionHeader
               sectionId="ai-build"
               icon={Sparkles}
-              title="Quản lý hệ thống AI"
-              description="Quản lý token, cài đặt model, và lịch sử phân tích"
+              title="Cấu hình AI"
+              description="Build được lưu gần đây"
             />
-            <AdminAIPanel />
-            <div className="mt-8"></div>
             <Panel
               title="Build đã lưu"
               description="Dữ liệu trực tiếp từ bảng AI_Saved_Builds"
@@ -7851,161 +7174,69 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">
-                      Quyền theo module
+                      Quyền theo menu
                     </span>
                     {selectedPermissionTarget ? (
                       <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                        {Array.isArray(effectiveSelectedPermissionDraft)
-                          ? effectiveSelectedPermissionDraft.length
-                          : 0}{" "}
-                        quyền
+                        {
+                          menuPermissionOptions.filter((item) =>
+                            effectiveSelectedPermissionDraft.includes(
+                              item.actionName,
+                            ),
+                          ).length
+                        }{" "}
+                        mục
                       </span>
                     ) : null}
                   </div>
 
-                  <div className="grid gap-2 lg:grid-cols-2">
-                    {navItems
-                      .reduce((acc, item) => {
-                        const module = permissionModuleMap[item.id];
-                        if (module && !acc.some((m) => m === module)) {
-                          acc.push(module);
-                        }
-                        return acc;
-                      }, [])
-                      .map((module) => {
-                        const isSuperAdmin =
-                          String(selectedPermissionTarget?.email ?? "")
-                            .trim()
-                            .toLowerCase() === "admin@gmail.com";
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {menuPermissionOptions.map((permissionItem) => {
+                      const actionName = String(
+                        permissionItem.actionName ?? "",
+                      );
+                      const isSuperAdmin =
+                        String(selectedPermissionTarget?.email ?? "")
+                          .trim()
+                          .toLowerCase() === "admin@gmail.com";
+                      const checked = isSuperAdmin
+                        ? true
+                        : effectiveSelectedPermissionDraft.includes(actionName);
 
-                        const hasManage = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_manage`,
-                        );
-                        const hasEdit = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_edit`,
-                        );
-                        const hasView = effectiveSelectedPermissionDraft.includes(
-                          `admin_${module}_view`,
-                        );
+                      return (
+                        <label
+                          key={actionName}
+                          className="flex cursor-pointer items-start gap-2 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isSuperAdmin || !selectedPermissionTarget}
+                            onChange={(event) =>
+                              selectedPermissionTarget
+                                ? toggleUserPermission(
+                                  selectedPermissionTarget.id,
+                                  actionName,
+                                  event.target.checked,
+                                )
+                                : null
+                            }
+                            className="mt-1"
+                          />
+                          <span className="flex flex-col gap-1">
+                            <span className="font-medium">
+                              {permissionItem.label}
+                            </span>
 
-                        let currentLevel = "none";
-                        if (hasManage) {
-                          currentLevel = "manage";
-                        } else if (hasEdit) {
-                          currentLevel = "edit";
-                        } else if (hasView) {
-                          currentLevel = "view";
-                        }
-
-                        // Find label for this module
-                        const moduleLabel = navItems.find(
-                          (item) => permissionModuleMap[item.id] === module,
-                        )?.label || module;
-
-                        return (
-                          <div
-                            key={module}
-                            className="rounded-lg border border-border/60 bg-secondary/40 p-2.5"
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold">
-                                {moduleLabel}
-                              </div>
-                              <span className="text-[10px] text-muted-foreground">
-                                {currentLevel === "manage"
-                                  ? "🔑 Quản lý"
-                                  : currentLevel === "edit"
-                                    ? "✏️ Sửa"
-                                    : currentLevel === "view"
-                                      ? "👁️ Xem"
-                                      : "🚫 Không có"}
+                            {permissionItem.description ? (
+                              <span className="text-xs text-muted-foreground">
+                                {permissionItem.description}
                               </span>
-                            </div>
-
-                            {isSuperAdmin ? (
-                              <div className="text-[10px] text-muted-foreground">
-                                Siêu quản trị có toàn quyền
-                              </div>
-                            ) : !selectedPermissionTarget ? (
-                              <div className="text-[10px] text-muted-foreground">
-                                Vui lòng chọn tài khoản
-                              </div>
-                            ) : (
-                              <div className="flex flex-row gap-1 flex-wrap">
-                                {[
-                                  { value: "none", label: "🚫 Không có" },
-                                  { value: "view", label: "👁️ Chỉ xem" },
-                                  { value: "edit", label: "✏️ Xem + sửa" },
-                                  {
-                                    value: "manage",
-                                    label: "🔑 Quản lý toàn bộ",
-                                  },
-                                ].map((levelOption) => (
-                                  <button
-                                    key={levelOption.value}
-                                    type="button"
-                                    onClick={() => {
-                                      const newPermissions = new Set(
-                                        effectiveSelectedPermissionDraft,
-                                      );
-
-                                      // Remove all levels
-                                      newPermissions.delete(
-                                        `admin_${module}_view`,
-                                      );
-                                      newPermissions.delete(
-                                        `admin_${module}_edit`,
-                                      );
-                                      newPermissions.delete(
-                                        `admin_${module}_manage`,
-                                      );
-
-                                      // Add selected level
-                                      if (levelOption.value === "view") {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                      } else if (levelOption.value === "edit") {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_edit`,
-                                        );
-                                      } else if (levelOption.value === "manage") {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_edit`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_manage`,
-                                        );
-                                      }
-
-                                      setPermissionDraftByUserId((prev) => ({
-                                        ...prev,
-                                        [selectedPermissionTarget.id]: Array.from(
-                                          newPermissions,
-                                        ),
-                                      }));
-                                    }}
-                                    disabled={isSuperAdmin}
-                                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                                      currentLevel === levelOption.value
-                                        ? "border-emerald-500 bg-emerald-100 text-emerald-700"
-                                        : "border-border/60 bg-background text-muted-foreground hover:border-emerald-300"
-                                    }`}
-                                  >
-                                    {levelOption.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
 
                   <Button
