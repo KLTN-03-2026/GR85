@@ -10,12 +10,6 @@ export function CategoryManagementPanel() {
   const { token, isAuthenticated, isHydrated } = useAuth();
   const { toast } = useToast();
   const [items, setItems] = useState([]);
-  const [topCategories, setTopCategories] = useState([]);
-  const [summary, setSummary] = useState({
-    totalCategories: 0,
-    activeCategories: 0,
-    inactiveCategories: 0,
-  });
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: PAGE_SIZE,
@@ -30,6 +24,9 @@ export function CategoryManagementPanel() {
   const [status, setStatus] = useState("all");
   const [editingId, setEditingId] = useState(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [categoryProducts, setCategoryProducts] = useState([]);
+  const [isProductsLoading, setIsProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState("");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -70,14 +67,6 @@ export function CategoryManagementPanel() {
         }
 
         setItems(Array.isArray(payload.items) ? payload.items : []);
-        setTopCategories(Array.isArray(payload.topCategories) ? payload.topCategories : []);
-        setSummary(
-          payload.summary ?? {
-            totalCategories: 0,
-            activeCategories: 0,
-            inactiveCategories: 0,
-          },
-        );
         setPagination((prev) => ({
           ...prev,
           ...(payload.pagination ?? {}),
@@ -85,7 +74,6 @@ export function CategoryManagementPanel() {
       } catch (error) {
         if (!cancelled) {
           setItems([]);
-          setTopCategories([]);
           toast({
             title: "Không tải được danh mục",
             description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
@@ -126,6 +114,60 @@ export function CategoryManagementPanel() {
       setSelectedCategoryId(null);
     }
   }, [items, selectedCategoryId]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadProductsByCategory() {
+      setIsProductsLoading(true);
+      setProductsError("");
+      try {
+        const query = new URLSearchParams({
+          page: "1",
+          pageSize: "12",
+          sort: "display_order",
+        });
+
+        if (selectedCategory?.slug) {
+          query.set("category", selectedCategory.slug);
+        }
+
+        const response = await fetch(`/api/products?${query.toString()}`);
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Khong tai duoc danh sach san pham");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setCategoryProducts(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setCategoryProducts([]);
+        setProductsError(error instanceof Error ? error.message : "Da xay ra loi khi tai san pham");
+      } finally {
+        if (!cancelled) {
+          setIsProductsLoading(false);
+        }
+      }
+    }
+
+    loadProductsByCategory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isHydrated, selectedCategory]);
 
   useEffect(() => {
     if (!editingCategory) {
@@ -266,14 +308,6 @@ export function CategoryManagementPanel() {
 
     const payload = await response.json();
     setItems(Array.isArray(payload.items) ? payload.items : []);
-    setTopCategories(Array.isArray(payload.topCategories) ? payload.topCategories : []);
-    setSummary(
-      payload.summary ?? {
-        totalCategories: 0,
-        activeCategories: 0,
-        inactiveCategories: 0,
-      },
-    );
     setPagination((prev) => ({
       ...prev,
       ...(payload.pagination ?? {}),
@@ -296,31 +330,11 @@ export function CategoryManagementPanel() {
   }
 
   return (
-    <div className="space-y-6 rounded-3xl border border-border/60 bg-white/85 p-5 shadow-sm">
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatCard title="Tổng danh mục" value={summary.totalCategories} />
-        <StatCard title="Đang hoạt động" value={summary.activeCategories} />
-        <StatCard title="Tạm ngừng / đã xóa" value={summary.inactiveCategories} />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold">Quản lý danh mục sản phẩm</h3>
-              <p className="text-sm text-muted-foreground">
-                Tạo mới, sửa, tạm ngừng và tìm kiếm danh mục.
-              </p>
-            </div>
-            <Button variant="outline" className="gap-2" onClick={clearForm}>
-              <Plus className="h-4 w-4" />
-              Tạo mới
-            </Button>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium">Tìm theo tên</label>
+    <div className="rounded-3xl border border-border/60 bg-white/85 p-3 shadow-sm">
+      <div className="space-y-3 rounded-2xl border border-border/60 bg-background/80 p-3">
+          <div className="grid gap-2 lg:grid-cols-12">
+            <div className="lg:col-span-7">
+              <label className="mb-1 block text-xs font-medium">Tim theo ten</label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -333,12 +347,13 @@ export function CategoryManagementPanel() {
                         setPagination((prev) => ({ ...prev, page: 1 }));
                       }
                     }}
-                    placeholder="Nhập tên danh mục..."
-                    className="w-full rounded-xl border border-border/60 bg-background py-2 pl-9 pr-3 text-sm"
+                    placeholder="Nhap ten danh muc..."
+                    className="h-9 w-full rounded-xl border border-border/60 bg-background py-2 pl-9 pr-3 text-sm"
                   />
                 </div>
                 <Button
                   variant="outline"
+                  className="h-9 px-3"
                   onClick={() => {
                     setSearch(searchInput.trim());
                     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -349,151 +364,215 @@ export function CategoryManagementPanel() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium">Trạng thái</label>
+            <div className="lg:col-span-3">
+              <label className="mb-1 block text-xs font-medium">Trang thai</label>
               <select
                 value={status}
                 onChange={(event) => {
                   setStatus(event.target.value);
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
+                className="h-9 w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
               >
                 <option value="all">Tất cả</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
             </div>
+
+            <div className="flex items-end justify-end lg:col-span-2">
+              <Button variant="outline" className="h-9 gap-2" onClick={clearForm}>
+              <Plus className="h-4 w-4" />
+              Tao moi
+            </Button>
+            </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="grid gap-1">
-              <label className="text-xs font-medium">Tên danh mục</label>
+          <div className="grid gap-2 lg:grid-cols-12">
+            <div className="grid gap-1 lg:col-span-3">
+              <label className="text-xs font-medium">Ten danh muc</label>
               <input
                 value={form.name}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                className="rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
-                placeholder="Ví dụ: CPU, Mainboard..."
+                className="h-9 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
+                placeholder="Vi du: CPU, Mainboard..."
               />
             </div>
-            <div className="grid gap-1 md:col-span-2">
-              <label className="text-xs font-medium">Mô tả</label>
+            <div className="grid gap-1 lg:col-span-5">
+              <label className="text-xs font-medium">Mo ta</label>
               <input
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                className="rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
-                placeholder="Mô tả ngắn gọn cho danh mục"
+                className="h-9 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm"
+                placeholder="Mo ta ngan gon cho danh muc"
               />
+            </div>
+            <div className="flex items-end lg:col-span-2">
+              <label className="flex h-9 w-full items-center gap-2 rounded-xl border border-border/60 bg-background px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
+                />
+                Active
+              </label>
+            </div>
+            <div className="flex items-end justify-end gap-2 lg:col-span-2">
+              <Button onClick={handleSave} disabled={savingId !== null} className="h-9 gap-2 px-3">
+                {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {editingId ? "Cap nhat" : "Tao"}
+              </Button>
+              <Button variant="outline" onClick={clearForm} disabled={savingId !== null} className="h-9 px-3">
+                Huy
+              </Button>
             </div>
           </div>
 
-          <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
-            />
-            Active
-          </label>
-
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={handleSave} disabled={savingId !== null} className="gap-2">
-              {editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {editingId ? "Cập nhật" : "Tạo danh mục"}
-            </Button>
-            <Button variant="outline" onClick={clearForm} disabled={savingId !== null}>
-              Hủy
-            </Button>
-          </div>
-
           <div className="overflow-hidden rounded-2xl border border-border/60">
-            <div className="space-y-4 p-4">
-              <div>
-                <h4 className="text-sm font-semibold">Danh mục</h4>
-                <p className="text-xs text-muted-foreground">Danh sách loại sản phẩm như CPU, RAM, SSD, Mainboard...</p>
-              </div>
-
-              {isLoading ? (
-                <div className="rounded-xl border border-border/60 bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-                  Đang tải danh mục...
-                </div>
-              ) : items.length === 0 ? (
-                <div className="rounded-xl border border-border/60 bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-                  Không có danh mục phù hợp.
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategoryId(null)}
-                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${selectedCategoryId === null
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : "border-border/70 bg-background hover:border-emerald-300"
-                      }`}
-                  >
-                    Tất cả
-                  </button>
-
-                  {items.map((category) => (
-                    <button
-                      key={category.id}
-                      type="button"
-                      onClick={() => setSelectedCategoryId(category.id)}
-                      className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${selectedCategoryId === category.id
-                        ? "border-emerald-500 bg-emerald-500 text-white"
-                        : "border-border/70 bg-background hover:border-emerald-300"
-                        }`}
-                    >
-                      {category.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="rounded-xl border border-border/60 bg-background p-3 text-sm">
-                {selectedCategory ? (
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-base font-semibold">{selectedCategory.name}</p>
-                        <p className="text-xs text-muted-foreground">{selectedCategory.description || "Không có mô tả"}</p>
-                      </div>
-                      <StatusBadge category={selectedCategory} />
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-lg border border-border/60 px-3 py-2">
-                        <p className="text-xs text-muted-foreground">Số sản phẩm</p>
-                        <p className="text-sm font-semibold">{selectedCategory.productCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-border/60 px-3 py-2">
-                        <p className="text-xs text-muted-foreground">Slug</p>
-                        <p className="text-sm font-semibold">{selectedCategory.slug}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" className="gap-1" onClick={() => startEditing(selectedCategory)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                        Sửa danh mục
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 text-rose-600"
-                        onClick={() => handleDelete(selectedCategory)}
-                        disabled={deletingId === selectedCategory.id}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Xóa danh mục
-                      </Button>
-                    </div>
+            <div className="space-y-2 p-3">
+              <div className="grid gap-2 lg:grid-cols-2">
+                <div className="rounded-xl border border-border/60 bg-background">
+                  <div className="border-b border-border/60 px-3 py-2">
+                    <p className="text-sm font-semibold">Bang danh muc</p>
                   </div>
-                ) : (
-                  <div className="text-muted-foreground">
-                    Chọn một danh mục để xem chi tiết và thao tác nhanh.
+                  <div className="h-[48vh] min-h-[300px] max-h-[460px] overflow-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="sticky top-0 z-10 bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2.5">Danh muc</th>
+                          <th className="px-3 py-2.5">So SP</th>
+                          <th className="px-3 py-2.5">Trang thai</th>
+                          <th className="px-3 py-2.5">Thao tac</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          className={`cursor-pointer border-t border-border/60 ${selectedCategoryId === null ? "bg-emerald-50" : "hover:bg-muted/20"}`}
+                          onClick={() => setSelectedCategoryId(null)}
+                        >
+                          <td className="px-3 py-2.5 font-semibold">Tat ca</td>
+                          <td className="px-3 py-2.5">-</td>
+                          <td className="px-3 py-2.5">-</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground">Bo loc</td>
+                        </tr>
+
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                              Dang tai danh muc...
+                            </td>
+                          </tr>
+                        ) : items.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                              Khong co danh muc phu hop.
+                            </td>
+                          </tr>
+                        ) : (
+                          items.map((category) => (
+                            <tr
+                              key={category.id}
+                              className={`cursor-pointer border-t border-border/60 ${selectedCategoryId === category.id ? "bg-emerald-50" : "hover:bg-muted/20"}`}
+                              onClick={() => setSelectedCategoryId(category.id)}
+                            >
+                              <td className="px-3 py-2.5 font-medium">{category.name}</td>
+                              <td className="px-3 py-2.5">{category.productCount}</td>
+                              <td className="px-3 py-2.5"><StatusBadge category={category} /></td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-wrap gap-1.5" onClick={(event) => event.stopPropagation()}>
+                                  <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => startEditing(category)}>
+                                    <Pencil className="h-3 w-3" />
+                                    Sua
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-1 px-2 text-xs text-rose-600"
+                                    onClick={() => handleDelete(category)}
+                                    disabled={deletingId === category.id}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                    Xoa
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                )}
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-background">
+                  <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {selectedCategory ? `Bang san pham: ${selectedCategory.name}` : "Bang san pham: Tat ca"}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-border/60 px-2 py-1 text-xs font-medium text-muted-foreground">
+                      {categoryProducts.length}
+                    </span>
+                  </div>
+
+                  {productsError ? (
+                    <div className="m-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+                      {productsError}
+                    </div>
+                  ) : (
+                    <div className="h-[48vh] min-h-[300px] max-h-[460px] overflow-auto">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="sticky top-0 z-10 bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2.5">San pham</th>
+                            <th className="px-3 py-2.5">Ma</th>
+                            <th className="px-3 py-2.5">Gia</th>
+                            <th className="px-3 py-2.5">Ton</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {isProductsLoading ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                Dang tai san pham...
+                              </td>
+                            </tr>
+                          ) : categoryProducts.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                Khong co san pham trong danh muc nay.
+                              </td>
+                            </tr>
+                          ) : (
+                            categoryProducts.map((product) => (
+                              <tr key={product.id} className="border-t border-border/60">
+                                <td className="max-w-[220px] px-3 py-2.5 font-medium">
+                                  <span className="line-clamp-1">{product.name}</span>
+                                </td>
+                                <td className="px-3 py-2.5 text-xs text-muted-foreground">{product.productCode}</td>
+                                <td className="px-3 py-2.5 font-semibold text-emerald-700">{formatCurrency(product.price)}</td>
+                                <td className="px-3 py-2.5">
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      Number(product.stockQuantity ?? 0) > 0
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-rose-100 text-rose-700"
+                                    }`}
+                                  >
+                                    {Number(product.stockQuantity ?? 0) > 0
+                                      ? Number(product.stockQuantity ?? 0)
+                                      : "Het"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -526,34 +605,6 @@ export function CategoryManagementPanel() {
               </Button>
             </div>
           </div>
-        </div>
-
-        <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-4">
-          <div>
-            <h3 className="text-lg font-semibold">Danh mục dùng nhiều</h3>
-            <p className="text-sm text-muted-foreground">Top danh mục theo số sản phẩm</p>
-          </div>
-
-          <div className="space-y-3">
-            {topCategories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
-            ) : (
-              topCategories.map((category, index) => (
-                <div key={category.id} className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
-                  <div>
-                    <div className="text-sm font-medium">{index + 1}. {category.name}</div>
-                    <div className="text-xs text-muted-foreground">{category.status}</div>
-                  </div>
-                  <div className="text-sm font-semibold">{category.productCount}</div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-            Sản phẩm vẫn được gán danh mục trong màn thêm/sửa sản phẩm.
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -575,11 +626,12 @@ function StatusBadge({ category }) {
   return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${className}`}>{label}</span>;
 }
 
-function StatCard({ title, value }) {
-  return (
-    <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{title}</div>
-      <div className="mt-2 text-2xl font-bold">{value}</div>
-    </div>
-  );
+function formatCurrency(value) {
+  const number = Number(value ?? 0);
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(number) ? number : 0);
 }
+

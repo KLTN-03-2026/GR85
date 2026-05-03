@@ -8,6 +8,9 @@ import {
   deleteCouponByAdmin,
   getAdminDashboard,
   listReviewsForAdmin,
+  moderateReviewByAdmin,
+  resolveReviewThreadByAdmin,
+  replyReviewByAdmin,
   getWarehouseOverviewByAdmin,
   getUserDetailByAdmin,
   listCouponsForAdmin,
@@ -83,11 +86,9 @@ const reviewReplySchema = z.object({
 router.get("/users/:userId/detail", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
 
     const data = await getUserDetailByAdmin(req.params.userId);
@@ -183,6 +184,11 @@ const updateUserPermissionsSchema = z.object({
 const moderateReviewSchema = z.object({
   isHidden: z.boolean(),
   hiddenReason: z.string().max(2000).optional(),
+  reason: z.string().max(2000).optional(),
+});
+
+const reviewResolveSchema = z.object({
+  resolved: z.boolean().default(true),
 });
 
 function isAdminRole(role) {
@@ -215,11 +221,9 @@ function canManageCategories(req) {
 router.get("/reviews", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -324,11 +328,9 @@ router.delete("/categories/:categoryId", requireAuth, async (req, res) => {
 router.patch("/reviews/:reviewId/moderate", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -345,12 +347,10 @@ router.patch("/reviews/:reviewId/moderate", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -365,7 +365,9 @@ router.patch("/reviews/:reviewId/moderate", requireAuth, async (req, res) => {
 router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res.status(403).json({ message: "Chỉ quản trị viên mới có thể truy cập endpoint này" });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
@@ -402,7 +404,10 @@ router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -414,53 +419,12 @@ router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
   }
 });
 
-router.patch(
-  "/returns/:requestId/review",
-  requireAuth,
-  async (req, res) => {
-    try {
-      if (!isAdminRole(req.auth.role)) {
-        return res.status(403).json({ message: "Chỉ quản trị viên mới có thể truy cập endpoint này" });
-      }
-      if (!hasPermission(req, "admin_orders_manage")) {
-        return res.status(403).json({ message: "Bạn không có quyền thực hiện chức năng này" });
-      }
-
-      const parsed = reviewReturnSchema.parse(req.body);
-      const data = await reviewReturnRequestByAdmin(
-        Number(req.auth?.sub),
-        Number(req.params.requestId),
-        parsed,
-      );
-      return res.json(data);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res
-          .status(400)
-          .json({
-            message: "Dữ liệu yêu cầu không hợp lệ",
-            issues: error.flatten(),
-          });
-      }
-
-      if (error instanceof Error) {
-        const status = error.message.includes("not found") ? 404 : 400;
-        return res.status(status).json({ message: error.message });
-      }
-
-      return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
-    }
-  },
-);
-
-router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
+router.patch("/reviews/:reviewId/resolve", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -468,9 +432,58 @@ router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
         .json({ message: "Bạn không có quyền thực hiện chức năng này" });
     }
 
-    const data = await deleteReviewByAdmin(req.params.reviewId);
+    const parsed = reviewResolveSchema.parse(req.body ?? {});
+    const data = await resolveReviewThreadByAdmin(
+      Number(req.auth?.sub),
+      req.params.reviewId,
+      parsed,
+    );
     return res.json(data);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
+    }
+
+    if (error instanceof Error) {
+      const status = error.message.includes("not found") ? 404 : 400;
+      return res.status(status).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_reviews_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const deleteReviewSchema = z.object({
+      reason: z.string().min(1).max(2000),
+    });
+
+    const parsed = deleteReviewSchema.parse(req.body ?? {});
+    const data = await deleteReviewByAdmin(req.params.reviewId, parsed);
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
+    }
+
     if (error instanceof Error) {
       const status = error.message.includes("not found") ? 404 : 400;
       return res.status(status).json({ message: error.message });
@@ -484,11 +497,9 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   try {
     // Check if user is Admin
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_dashboard_view")) {
       return res
@@ -510,11 +521,9 @@ router.get("/dashboard", requireAuth, async (req, res) => {
 router.patch("/users/:userId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_users_manage")) {
       return res
@@ -542,11 +551,9 @@ router.patch("/users/:userId", requireAuth, async (req, res) => {
 router.get("/coupons", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_vouchers_manage")) {
       return res
@@ -568,11 +575,9 @@ router.get("/coupons", requireAuth, async (req, res) => {
 router.post("/coupons", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_vouchers_manage")) {
       return res
@@ -585,12 +590,10 @@ router.post("/coupons", requireAuth, async (req, res) => {
     return res.status(201).json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -605,11 +608,9 @@ router.post("/coupons", requireAuth, async (req, res) => {
 router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -626,7 +627,10 @@ router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Dữ liệu yêu cầu không hợp lệ", issues: error.flatten() });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -641,11 +645,9 @@ router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
 router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -677,11 +679,9 @@ router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
 router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -693,8 +693,39 @@ router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof Error) {
-      const status = error.message.includes("not found") ? 404 : 400;
-      return res.status(status).json({ message: error.message });
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.post("/warehouses", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
+    }
+    if (!hasPermission(req, "admin_warehouse_manage")) {
+      return res
+        .status(403)
+        .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+    }
+
+    const parsed = warehouseSchema.parse(req.body);
+    const data = await createWarehouseByAdmin(parsed);
+    return res.status(201).json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
+    }
+
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
     }
 
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
@@ -704,11 +735,9 @@ router.delete("/reviews/:reviewId", requireAuth, async (req, res) => {
 router.patch("/warehouses/:warehouseId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_warehouse_manage")) {
       return res
@@ -721,12 +750,10 @@ router.patch("/warehouses/:warehouseId", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -741,11 +768,9 @@ router.patch("/warehouses/:warehouseId", requireAuth, async (req, res) => {
 router.post("/warehouse/import-batch", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_warehouse_manage")) {
       return res
@@ -758,12 +783,10 @@ router.post("/warehouse/import-batch", requireAuth, async (req, res) => {
     return res.status(201).json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -778,11 +801,9 @@ router.post("/warehouse/import-batch", requireAuth, async (req, res) => {
 router.get("/returns", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_orders_manage")) {
       return res
@@ -804,11 +825,9 @@ router.get("/returns", requireAuth, async (req, res) => {
 router.patch("/returns/:requestId/review", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_orders_manage")) {
       return res
@@ -825,12 +844,10 @@ router.patch("/returns/:requestId/review", requireAuth, async (req, res) => {
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -848,11 +865,9 @@ router.delete(
   async (req, res) => {
     try {
       if (!isAdminRole(req.auth.role)) {
-        return res
-          .status(403)
-          .json({
-            message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-          });
+        return res.status(403).json({
+          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+        });
       }
       if (!hasPermission(req, "admin_users_manage")) {
         return res

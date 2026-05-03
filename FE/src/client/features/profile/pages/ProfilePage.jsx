@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -38,7 +39,8 @@ const profileValidation = {
   },
   phone: (value) => {
     if (!value?.trim()) return "";
-    if (!/^\d{10}$/.test(value.trim())) return "Số điện thoại phải đúng 10 chữ số";
+    if (!/^\d{10}$/.test(value.trim()))
+      return "Số điện thoại phải đúng 10 chữ số";
     return "";
   },
   address: (value) => {
@@ -133,6 +135,14 @@ export default function ProfilePage() {
   const [addressFeedback, setAddressFeedback] = useState(null);
   const [isLocatingAddress, setIsLocatingAddress] = useState(false);
 
+  const [reviewView, setReviewView] = useState("history");
+  const [pendingReviews, setPendingReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [selectedReviewId, setSelectedReviewId] = useState(null);
+  const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
+  const [sendingReviewReplyId, setSendingReviewReplyId] = useState(null);
+
   useEffect(() => {
     if (!isHydrated) return;
     if (!isAuthenticated) {
@@ -179,10 +189,7 @@ export default function ProfilePage() {
   function validatePasswordForm() {
     const newErrors = {};
     Object.entries(passwordForm).forEach(([key, value]) => {
-      const error = passwordValidation[key]?.(
-        value,
-        passwordForm.newPassword
-      );
+      const error = passwordValidation[key]?.(value, passwordForm.newPassword);
       if (error) newErrors[key] = error;
     });
     setErrors(newErrors);
@@ -259,8 +266,10 @@ export default function ProfilePage() {
 
   const sortedVisibleOrders = useMemo(
     () =>
-      [...filteredOrders].sort(
-        (a, b) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime(),
+      [...visibleOrders].sort(
+        (a, b) =>
+          new Date(b?.createdAt ?? 0).getTime() -
+          new Date(a?.createdAt ?? 0).getTime(),
       ),
     [filteredOrders],
   );
@@ -273,7 +282,10 @@ export default function ProfilePage() {
     [myReviewFilter, myReviews],
   );
 
-  const totalOrderPages = Math.max(1, Math.ceil(sortedVisibleOrders.length / ORDERS_PER_PAGE));
+  const totalOrderPages = Math.max(
+    1,
+    Math.ceil(sortedVisibleOrders.length / ORDERS_PER_PAGE),
+  );
 
   const pagedOrders = useMemo(() => {
     const startIndex = (currentOrderPage - 1) * ORDERS_PER_PAGE;
@@ -303,7 +315,10 @@ export default function ProfilePage() {
   }
 
   async function handleRequestReturn(orderId) {
-    const reason = window.prompt("Nhập lý do trả hàng (tối thiểu 10 ký tự):", "Sản phẩm bị lỗi hoặc không đúng mô tả");
+    const reason = window.prompt(
+      "Nhập lý do trả hàng (tối thiểu 10 ký tự):",
+      "Sản phẩm bị lỗi hoặc không đúng mô tả",
+    );
     if (!reason) {
       return;
     }
@@ -409,60 +424,100 @@ export default function ProfilePage() {
     loadMyOrders();
   }, [activeTab]);
 
+  async function loadMyReviews() {
+    try {
+      setReviewsLoading(true);
+      const payload = await profileApi.getMyReviews();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setMyReviews(items);
+      setReviewReplyDraftById((prev) => {
+        const next = { ...prev };
+        items.forEach((review) => {
+          const id = Number(review?.id);
+          if (!Number.isFinite(id) || id <= 0) {
+            return;
+          }
+          if (next[id] === undefined) {
+            next[id] = "";
+          }
+        });
+        return next;
+      });
+    } catch (error) {
+      setMyReviews([]);
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể tải lịch sử đánh giá",
+      });
+    } finally {
+      setReviewsLoading(false);
+    }
+  }
+
+  async function loadMyPendingReviews() {
+    try {
+      setPendingLoading(true);
+      const payload = await profileApi.getMyPendingReviews();
+      setPendingReviews(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setPendingReviews([]);
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể tải danh sách chưa đánh giá",
+      });
+    } finally {
+      setPendingLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (activeTab !== "reviews") {
       return;
     }
 
     loadMyReviews();
+    loadMyPendingReviews();
   }, [activeTab]);
-  
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token || activeTab !== "orders") {
+
+  async function sendReviewReply(reviewId) {
+    const id = Number(reviewId);
+    if (!Number.isFinite(id) || id <= 0) {
       return;
     }
 
-    const currentUserId = Number(user?.id);
-    if (!Number.isFinite(currentUserId) || currentUserId <= 0) {
+    const messageText = String(reviewReplyDraftById[id] ?? "").trim();
+    if (!messageText) {
+      setMessage({
+        type: "error",
+        text: "Vui lòng nhập nội dung phản hồi",
+      });
       return;
     }
 
-    const socket = connectChatSocket(token);
-    if (!socket) {
-      return;
+    try {
+      setSendingReviewReplyId(id);
+      const payload = await profileApi.replyToMyReview(id, messageText);
+      const thread = Array.isArray(payload?.thread) ? payload.thread : [];
+
+      setMyReviews((prev) =>
+        prev.map((item) =>
+          Number(item?.id) === id ? { ...item, thread } : item,
+        ),
+      );
+      setReviewReplyDraftById((prev) => ({ ...prev, [id]: "" }));
+      setMessage({
+        type: "success",
+        text: "Đã gửi phản hồi",
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể gửi phản hồi",
+      });
+    } finally {
+      setSendingReviewReplyId(null);
     }
-
-    const handleOrderStatusUpdated = (payload) => {
-      if (Number(payload?.userId) !== currentUserId) {
-        return;
-      }
-
-      loadMyOrders();
-
-      const changedOrderId = Number(payload?.orderId);
-      if (
-        Number.isFinite(changedOrderId) &&
-        changedOrderId > 0 &&
-        Number(selectedOrderDetail?.id) === changedOrderId
-      ) {
-        loadOrderDetail(changedOrderId);
-      }
-    };
-
-    socket.on("order_status_updated", handleOrderStatusUpdated);
-
-    return () => {
-      socket.off("order_status_updated", handleOrderStatusUpdated);
-    };
-  }, [activeTab, isAuthenticated, isHydrated, token, user?.id, selectedOrderDetail?.id]);
-
-  useEffect(() => {
-    if (activeTab !== "reviews") {
-      return;
-    }
-
-    loadMyReviews();
-  }, [activeTab]);
+  }
 
   async function handleChangePassword(e) {
     e.preventDefault();
@@ -530,12 +585,15 @@ export default function ProfilePage() {
     e.preventDefault();
 
     try {
-      const receiverNameError = profileValidation.fullName(addressForm.receiverName);
+      const receiverNameError = profileValidation.fullName(
+        addressForm.receiverName,
+      );
       if (receiverNameError) {
         throw new Error(receiverNameError);
       }
 
-      const phoneError = profileValidation.phone(addressForm.phoneNumber) ||
+      const phoneError =
+        profileValidation.phone(addressForm.phoneNumber) ||
         (!addressForm.phoneNumber ? "Số điện thoại không được trống" : "");
       if (phoneError) {
         throw new Error(phoneError);
@@ -604,7 +662,10 @@ export default function ProfilePage() {
     try {
       setIsLocatingAddress(true);
       const { latitude, longitude } = await getBrowserCoordinates();
-      const resolvedAddress = await reverseGeocodeByCoordinates(latitude, longitude);
+      const resolvedAddress = await reverseGeocodeByCoordinates(
+        latitude,
+        longitude,
+      );
       setAddressForm((prev) => ({ ...prev, addressLine: resolvedAddress }));
     } catch (error) {
       setAddressFeedback({
@@ -655,10 +716,11 @@ export default function ProfilePage() {
         {/* Message Alert */}
         {message && (
           <Alert
-            className={`mb-6 ${message.type === "success"
-              ? "border-green-500 bg-green-500/10"
-              : "border-red-500 bg-red-500/10"
-              }`}
+            className={`mb-6 ${
+              message.type === "success"
+                ? "border-green-500 bg-green-500/10"
+                : "border-red-500 bg-red-500/10"
+            }`}
           >
             {message.type === "success" ? (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -667,9 +729,7 @@ export default function ProfilePage() {
             )}
             <AlertDescription
               className={
-                message.type === "success"
-                  ? "text-green-600"
-                  : "text-red-600"
+                message.type === "success" ? "text-green-600" : "text-red-600"
               }
             >
               {message.text}
@@ -700,7 +760,9 @@ export default function ProfilePage() {
                       TRẠNG THÁI
                     </p>
                     <Badge className="mt-2">
-                      {profileData?.status === "ACTIVE" ? "✓ Đã xác minh" : "○ Chưa xác minh"}
+                      {profileData?.status === "ACTIVE"
+                        ? "✓ Đã xác minh"
+                        : "○ Chưa xác minh"}
                     </Badge>
                   </div>
                   <div className="text-left">
@@ -709,7 +771,7 @@ export default function ProfilePage() {
                     </p>
                     <p className="mt-2 text-sm">
                       {new Date(profileData?.createdAt).toLocaleDateString(
-                        "vi-VN"
+                        "vi-VN",
                       )}
                     </p>
                   </div>
@@ -757,6 +819,13 @@ export default function ProfilePage() {
               >
                 Sổ địa chỉ
               </Button>
+              <Button
+                variant={activeTab === "reviews" ? "default" : "ghost"}
+                onClick={() => setActiveTab("reviews")}
+                className="rounded-b-none"
+              >
+                Đánh giá của tôi
+              </Button>
             </div>
 
             {/* Profile Tab */}
@@ -780,7 +849,7 @@ export default function ProfilePage() {
                           });
                           if (errors.fullName) {
                             const error = profileValidation.fullName(
-                              e.target.value
+                              e.target.value,
                             );
                             setErrors({
                               ...errors,
@@ -791,7 +860,7 @@ export default function ProfilePage() {
                         onBlur={() => {
                           if (!errors.fullName) {
                             const error = profileValidation.fullName(
-                              formData.fullName
+                              formData.fullName,
                             );
                             if (error) {
                               setErrors({ ...errors, fullName: error });
@@ -817,7 +886,9 @@ export default function ProfilePage() {
                         placeholder="Nhập số điện thoại (không bắt buộc)"
                         value={formData.phone}
                         onChange={(e) => {
-                          const nextPhone = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          const nextPhone = e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 10);
                           setFormData({
                             ...formData,
                             phone: nextPhone,
@@ -833,7 +904,7 @@ export default function ProfilePage() {
                         onBlur={() => {
                           if (!errors.phone) {
                             const error = profileValidation.phone(
-                              formData.phone
+                              formData.phone,
                             );
                             if (error) {
                               setErrors({ ...errors, phone: error });
@@ -863,7 +934,9 @@ export default function ProfilePage() {
                             address: e.target.value,
                           });
                           if (errors.address) {
-                            const error = profileValidation.address(e.target.value);
+                            const error = profileValidation.address(
+                              e.target.value,
+                            );
                             setErrors({
                               ...errors,
                               address: error,
@@ -901,7 +974,8 @@ export default function ProfilePage() {
                         className="bg-muted"
                       />
                       <p className="mt-2 text-xs text-muted-foreground">
-                        Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay đổi.
+                        Không thể thay đổi email. Liên hệ hỗ trợ nếu cần thay
+                        đổi.
                       </p>
                     </div>
 
@@ -959,7 +1033,7 @@ export default function ProfilePage() {
                           });
                           if (errors.currentPassword) {
                             const error = passwordValidation.currentPassword(
-                              e.target.value
+                              e.target.value,
                             );
                             setErrors({
                               ...errors,
@@ -967,7 +1041,11 @@ export default function ProfilePage() {
                             });
                           }
                         }}
-                        className={errors.currentPassword ? "border-red-500 pr-10" : "pr-10"}
+                        className={
+                          errors.currentPassword
+                            ? "border-red-500 pr-10"
+                            : "pr-10"
+                        }
                       />
                       <button
                         type="button"
@@ -1008,17 +1086,14 @@ export default function ProfilePage() {
                             ...passwordForm,
                             newPassword: e.target.value,
                           });
-                          if (
-                            errors.newPassword ||
-                            errors.confirmPassword
-                          ) {
+                          if (errors.newPassword || errors.confirmPassword) {
                             const newError = passwordValidation.newPassword(
-                              e.target.value
+                              e.target.value,
                             );
                             const confirmError =
                               passwordValidation.confirmPassword(
                                 passwordForm.confirmPassword,
-                                e.target.value
+                                e.target.value,
                               );
                             setErrors({
                               ...errors,
@@ -1027,7 +1102,9 @@ export default function ProfilePage() {
                             });
                           }
                         }}
-                        className={errors.newPassword ? "border-red-500 pr-10" : "pr-10"}
+                        className={
+                          errors.newPassword ? "border-red-500 pr-10" : "pr-10"
+                        }
                       />
                       <button
                         type="button"
@@ -1071,7 +1148,7 @@ export default function ProfilePage() {
                           if (errors.confirmPassword) {
                             const error = passwordValidation.confirmPassword(
                               e.target.value,
-                              passwordForm.newPassword
+                              passwordForm.newPassword,
                             );
                             setErrors({
                               ...errors,
@@ -1079,7 +1156,11 @@ export default function ProfilePage() {
                             });
                           }
                         }}
-                        className={errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"}
+                        className={
+                          errors.confirmPassword
+                            ? "border-red-500 pr-10"
+                            : "pr-10"
+                        }
                       />
                       <button
                         type="button"
@@ -1126,13 +1207,25 @@ export default function ProfilePage() {
 
             {activeTab === "orders" && (
               <Card className="p-6">
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold">Danh sách đơn hàng</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Lọc theo trạng thái, xem nhanh từng sản phẩm và mua lại ngay.
-                      </p>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">
+                      Danh sách đơn hàng
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={showPendingOrders}
+                          onChange={(event) =>
+                            setShowPendingOrders(event.target.checked)
+                          }
+                        />
+                        Hiển thị đơn chờ thanh toán
+                      </label>
+                      <Button variant="outline" onClick={loadMyOrders}>
+                        Tải lại
+                      </Button>
                     </div>
                     <Button variant="outline" onClick={loadMyOrders}>
                       Tải lại
@@ -1164,81 +1257,57 @@ export default function ProfilePage() {
                     </p>
                   ) : (
                     <div className="space-y-4">
-                      {pagedOrders.map((order) => {
-                        const orderItems = Array.isArray(order.items) ? order.items : [];
-                        const previewItems = orderItems.slice(0, 3);
-                        const hiddenItemCount = Math.max(0, orderItems.length - previewItems.length);
-
-                        return (
-                          <Card key={order.id} className="overflow-hidden border-border/70">
-                            <div className="flex flex-col gap-4 border-b border-border/60 p-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="space-y-3">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-sm font-bold text-primary">
-                                    #{order.id}
-                                  </div>
-                                  <div>
-                                    <p className="font-semibold">Đơn hàng #{order.id}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {formatDate(order.createdAt)} · {order.itemCount ?? 0} sản phẩm
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge variant="outline">{formatOrderStatus(order.orderStatus, order.paymentStatus)}</Badge>
-                                  <Badge variant="secondary">{formatPaymentStatus(order.paymentStatus)}</Badge>
-                                  <Badge variant="outline">{formatPaymentMethod(order.paymentMethod)}</Badge>
-                                </div>
-                              </div>
-
-                              <div className="text-left lg:text-right">
-                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Tổng tiền</p>
-                                <p className="text-xl font-semibold text-primary">{formatMoney(order.totalAmount)}</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-4 p-4">
-                              <div className="space-y-3">
-                                {previewItems.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center gap-3 rounded-2xl border border-border/70 p-3"
-                                  >
-                                    <img
-                                      src={item.product?.imageUrl || "/images/component-placeholder.svg"}
-                                      alt={item.product?.name || "Sản phẩm"}
-                                      className="h-16 w-16 rounded-xl object-cover"
-                                    />
-                                    <div className="min-w-0 flex-1">
-                                      <p className="truncate font-medium">
-                                        {item.product?.name || "Sản phẩm"}
-                                      </p>
-                                      <p className="text-sm text-muted-foreground">
-                                        Số lượng: {item.quantity}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="font-semibold">{formatMoney(item.lineTotal)}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {formatMoney(item.priceAtTime)} / sp
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {hiddenItemCount > 0 ? (
-                                  <p className="text-xs text-muted-foreground">
-                                    +{hiddenItemCount} sản phẩm khác trong đơn
-                                  </p>
-                                ) : null}
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-                                <p className="text-xs text-muted-foreground">
-                                  Thanh toán: {formatPaymentMethod(order.paymentMethod)} - {formatPaymentStatus(order.paymentStatus)}
-                                </p>
-                                <div className="flex flex-wrap gap-2">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[700px] text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-border/70 text-muted-foreground">
+                              <th className="px-3 py-3 font-medium">Mã đơn</th>
+                              <th className="px-3 py-3 font-medium">
+                                Ngày tạo
+                              </th>
+                              <th className="px-3 py-3 font-medium">
+                                Tổng tiền
+                              </th>
+                              <th className="px-3 py-3 font-medium">
+                                Thanh toán
+                              </th>
+                              <th className="px-3 py-3 font-medium">
+                                Trạng thái
+                              </th>
+                              <th className="px-3 py-3 font-medium">
+                                Theo dõi
+                              </th>
+                              <th className="px-3 py-3 font-medium">
+                                Trả hàng
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedOrders.map((order) => (
+                              <tr
+                                key={order.id}
+                                className="border-b border-border/40"
+                              >
+                                <td className="px-3 py-3">#{order.id}</td>
+                                <td className="px-3 py-3">
+                                  {formatDate(order.createdAt)}
+                                </td>
+                                <td className="px-3 py-3">
+                                  {formatMoney(order.totalAmount)}
+                                </td>
+                                <td className="px-3 py-3">
+                                  {formatPaymentMethod(order.paymentMethod)} -{" "}
+                                  {formatPaymentStatus(order.paymentStatus)}
+                                </td>
+                                <td className="px-3 py-3">
+                                  <Badge variant="outline">
+                                    {formatOrderStatus(
+                                      order.orderStatus,
+                                      order.paymentStatus,
+                                    )}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-3">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1246,59 +1315,59 @@ export default function ProfilePage() {
                                   >
                                     Xem chi tiết
                                   </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={reorderingOrderId === order.id}
-                                    onClick={() => handleReorder(order)}
-                                    className="gap-2"
-                                  >
-                                    {reorderingOrderId === order.id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="h-4 w-4" />
-                                    )}
-                                    Mua lại
-                                  </Button>
+                                </td>
+                                <td className="px-3 py-3">
                                   {canRequestReturn(order) ? (
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      disabled={submittingReturnOrderId === order.id}
-                                      onClick={() => handleRequestReturn(order.id)}
+                                      disabled={
+                                        submittingReturnOrderId === order.id
+                                      }
+                                      onClick={() =>
+                                        handleRequestReturn(order.id)
+                                      }
                                     >
-                                      {submittingReturnOrderId === order.id ? "Đang gửi..." : "Yêu cầu trả"}
+                                      {submittingReturnOrderId === order.id
+                                        ? "Đang gửi..."
+                                        : "Yêu cầu trả"}
                                     </Button>
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">Không khả dụng</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      Không khả dụng
+                                    </span>
                                   )}
-                                </div>
-                              </div>
-                            </div>
-                          </Card>
-                        );
-                      })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs text-muted-foreground">
-                          Hiển thị {pagedOrders.length} / {sortedVisibleOrders.length} đơn hàng
+                          Hiển thị {pagedOrders.length} /{" "}
+                          {sortedVisibleOrders.length} đơn hàng
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
-                          {Array.from({ length: totalOrderPages }, (_, index) => {
-                            const page = index + 1;
-                            const isActive = page === currentOrderPage;
-                            return (
-                              <Button
-                                key={`order-page-${page}`}
-                                variant={isActive ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setCurrentOrderPage(page)}
-                                className="min-w-9"
-                              >
-                                {page}
-                              </Button>
-                            );
-                          })}
+                          {Array.from(
+                            { length: totalOrderPages },
+                            (_, index) => {
+                              const page = index + 1;
+                              const isActive = page === currentOrderPage;
+                              return (
+                                <Button
+                                  key={`order-page-${page}`}
+                                  variant={isActive ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setCurrentOrderPage(page)}
+                                  className="min-w-9"
+                                >
+                                  {page}
+                                </Button>
+                              );
+                            },
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1310,52 +1379,77 @@ export default function ProfilePage() {
                         Theo dõi đơn #{selectedOrderDetail.id}
                       </h4>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Giao tới: {selectedOrderDetail.shippingAddress || "-"} · SĐT: {selectedOrderDetail.phoneNumber || "-"}
+                        Giao tới: {selectedOrderDetail.shippingAddress || "-"} ·
+                        SĐT: {selectedOrderDetail.phoneNumber || "-"}
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Thanh toán: {formatPaymentMethod(selectedOrderDetail.paymentMethod)} - {formatPaymentStatus(selectedOrderDetail.paymentStatus)}
-                        {" "}· Trạng thái: {formatOrderStatus(selectedOrderDetail.orderStatus, selectedOrderDetail.paymentStatus)}
+                        Thanh toán:{" "}
+                        {formatPaymentMethod(selectedOrderDetail.paymentMethod)}{" "}
+                        -{" "}
+                        {formatPaymentStatus(selectedOrderDetail.paymentStatus)}{" "}
+                        · Trạng thái:{" "}
+                        {formatOrderStatus(
+                          selectedOrderDetail.orderStatus,
+                          selectedOrderDetail.paymentStatus,
+                        )}
                       </p>
 
                       <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50 p-4">
                         <div className="mb-3 flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-emerald-900">Hành trình đơn hàng</p>
-                          <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                          <p className="text-sm font-semibold text-emerald-900">
+                            Hành trình đơn hàng
+                          </p>
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-300 text-emerald-700"
+                          >
                             {getTrackingHeadline(selectedOrderDetail)}
                           </Badge>
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-4">
-                          {buildTrackingSteps(selectedOrderDetail).map((step) => (
-                            <div
-                              key={`tracking-step-${step.key}`}
-                              className={`rounded-lg border p-3 text-xs ${
-                                step.state === "done"
-                                  ? "border-emerald-300 bg-emerald-100/70"
-                                  : step.state === "active"
-                                    ? "border-sky-300 bg-sky-100/70"
-                                    : "border-slate-200 bg-white"
-                              }`}
-                            >
-                              <p className="font-semibold text-slate-900">{step.title}</p>
-                              <p className="mt-1 text-slate-600">{step.description}</p>
-                            </div>
-                          ))}
+                          {buildTrackingSteps(selectedOrderDetail).map(
+                            (step) => (
+                              <div
+                                key={`tracking-step-${step.key}`}
+                                className={`rounded-lg border p-3 text-xs ${
+                                  step.state === "done"
+                                    ? "border-emerald-300 bg-emerald-100/70"
+                                    : step.state === "active"
+                                      ? "border-sky-300 bg-sky-100/70"
+                                      : "border-slate-200 bg-white"
+                                }`}
+                              >
+                                <p className="font-semibold text-slate-900">
+                                  {step.title}
+                                </p>
+                                <p className="mt-1 text-slate-600">
+                                  {step.description}
+                                </p>
+                              </div>
+                            ),
+                          )}
                         </div>
 
                         <div className="mt-4 rounded-lg border border-sky-200 bg-white p-3">
                           <div className="flex items-center justify-center gap-4 text-sky-700">
                             <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-amber-700">
                               <Package className="h-4 w-4 animate-pulse" />
-                              <span className="text-xs font-medium">Người bán đang gói hàng</span>
+                              <span className="text-xs font-medium">
+                                Người bán đang gói hàng
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sky-700">
                               <Truck className="h-4 w-4 animate-bounce" />
-                              <span className="text-xs font-medium">Xe giao hàng đang di chuyển</span>
+                              <span className="text-xs font-medium">
+                                Xe giao hàng đang di chuyển
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-emerald-700">
                               <House className="h-4 w-4" />
-                              <span className="text-xs font-medium">Đang hướng tới địa chỉ của bạn</span>
+                              <span className="text-xs font-medium">
+                                Đang hướng tới địa chỉ của bạn
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1363,13 +1457,21 @@ export default function ProfilePage() {
 
                       <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div>
-                          <h5 className="mb-2 text-sm font-semibold">Sản phẩm trong đơn</h5>
+                          <h5 className="mb-2 text-sm font-semibold">
+                            Sản phẩm trong đơn
+                          </h5>
                           <div className="space-y-2">
                             {(selectedOrderDetail.items ?? []).map((item) => (
-                              <div key={item.id} className="rounded-lg border p-2 text-sm">
-                                <p className="font-medium">{item.product?.name}</p>
+                              <div
+                                key={item.id}
+                                className="rounded-lg border p-2 text-sm"
+                              >
+                                <p className="font-medium">
+                                  {item.product?.name}
+                                </p>
                                 <p className="text-muted-foreground">
-                                  SL: {item.quantity} · Đơn giá: {formatMoney(item.priceAtTime)}
+                                  SL: {item.quantity} · Đơn giá:{" "}
+                                  {formatMoney(item.priceAtTime)}
                                 </p>
                               </div>
                             ))}
@@ -1377,17 +1479,31 @@ export default function ProfilePage() {
                         </div>
 
                         <div>
-                          <h5 className="mb-2 text-sm font-semibold">Lịch sử trạng thái</h5>
+                          <h5 className="mb-2 text-sm font-semibold">
+                            Lịch sử trạng thái
+                          </h5>
                           <div className="space-y-2">
-                            {(selectedOrderDetail.statusHistory ?? []).map((entry) => (
-                              <div key={entry.id} className="rounded-lg border p-2 text-sm">
-                                <p className="font-medium">
-                                  {formatHistoryStatus(entry.fromStatus)} → {formatHistoryStatus(entry.toStatus)}
-                                </p>
-                                <p className="text-muted-foreground">{formatDate(entry.createdAt)}</p>
-                                {entry.note ? <p className="text-xs">{formatOrderHistoryNote(entry.note)}</p> : null}
-                              </div>
-                            ))}
+                            {(selectedOrderDetail.statusHistory ?? []).map(
+                              (entry) => (
+                                <div
+                                  key={entry.id}
+                                  className="rounded-lg border p-2 text-sm"
+                                >
+                                  <p className="font-medium">
+                                    {formatHistoryStatus(entry.fromStatus)} →{" "}
+                                    {formatHistoryStatus(entry.toStatus)}
+                                  </p>
+                                  <p className="text-muted-foreground">
+                                    {formatDate(entry.createdAt)}
+                                  </p>
+                                  {entry.note ? (
+                                    <p className="text-xs">
+                                      {formatOrderHistoryNote(entry.note)}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ),
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1515,12 +1631,18 @@ export default function ProfilePage() {
               <Card className="p-6">
                 <div className="mb-4 flex items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-lg font-semibold">Sổ địa chỉ giao hàng</h3>
+                    <h3 className="text-lg font-semibold">
+                      Sổ địa chỉ giao hàng
+                    </h3>
                     <p className="text-sm text-muted-foreground">
                       Lưu nhiều địa chỉ để chọn nhanh khi đặt hàng
                     </p>
                   </div>
-                  <Button variant="outline" onClick={beginCreateAddress} className="gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={beginCreateAddress}
+                    className="gap-2"
+                  >
                     <Plus className="h-4 w-4" />
                     Thêm địa chỉ
                   </Button>
@@ -1528,10 +1650,11 @@ export default function ProfilePage() {
 
                 {addressFeedback && (
                   <Alert
-                    className={`mb-4 ${addressFeedback.type === "success"
-                      ? "border-green-500 bg-green-500/10"
-                      : "border-red-500 bg-red-500/10"
-                      }`}
+                    className={`mb-4 ${
+                      addressFeedback.type === "success"
+                        ? "border-green-500 bg-green-500/10"
+                        : "border-red-500 bg-red-500/10"
+                    }`}
                   >
                     <AlertDescription
                       className={
@@ -1545,19 +1668,28 @@ export default function ProfilePage() {
                   </Alert>
                 )}
 
-                <form onSubmit={submitAddressForm} className="space-y-3 rounded-lg border border-border/70 p-4">
+                <form
+                  onSubmit={submitAddressForm}
+                  className="space-y-3 rounded-lg border border-border/70 p-4"
+                >
                   <Input
                     placeholder="Nhãn địa chỉ (Nhà, Công ty...)"
                     value={addressForm.label}
                     onChange={(event) =>
-                      setAddressForm((prev) => ({ ...prev, label: event.target.value }))
+                      setAddressForm((prev) => ({
+                        ...prev,
+                        label: event.target.value,
+                      }))
                     }
                   />
                   <Input
                     placeholder="Tên người nhận"
                     value={addressForm.receiverName}
                     onChange={(event) =>
-                      setAddressForm((prev) => ({ ...prev, receiverName: event.target.value }))
+                      setAddressForm((prev) => ({
+                        ...prev,
+                        receiverName: event.target.value,
+                      }))
                     }
                   />
                   <Input
@@ -1566,7 +1698,9 @@ export default function ProfilePage() {
                     onChange={(event) =>
                       setAddressForm((prev) => ({
                         ...prev,
-                        phoneNumber: event.target.value.replace(/\D/g, "").slice(0, 10),
+                        phoneNumber: event.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 10),
                       }))
                     }
                   />
@@ -1575,7 +1709,10 @@ export default function ProfilePage() {
                       placeholder="Địa chỉ đầy đủ"
                       value={addressForm.addressLine}
                       onChange={(event) =>
-                        setAddressForm((prev) => ({ ...prev, addressLine: event.target.value }))
+                        setAddressForm((prev) => ({
+                          ...prev,
+                          addressLine: event.target.value,
+                        }))
                       }
                     />
                     <Button
@@ -1598,7 +1735,10 @@ export default function ProfilePage() {
                       type="checkbox"
                       checked={addressForm.isDefault}
                       onChange={(event) =>
-                        setAddressForm((prev) => ({ ...prev, isDefault: event.target.checked }))
+                        setAddressForm((prev) => ({
+                          ...prev,
+                          isDefault: event.target.checked,
+                        }))
                       }
                     />
                     Đặt làm địa chỉ mặc định
@@ -1609,7 +1749,11 @@ export default function ProfilePage() {
                       {addressEditingId ? "Lưu địa chỉ" : "Thêm địa chỉ"}
                     </Button>
                     {addressEditingId ? (
-                      <Button type="button" variant="outline" onClick={beginCreateAddress}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={beginCreateAddress}
+                      >
                         Hủy chỉnh sửa
                       </Button>
                     ) : null}
@@ -1623,10 +1767,15 @@ export default function ProfilePage() {
                       Đang tải địa chỉ...
                     </div>
                   ) : addresses.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Bạn chưa có địa chỉ nào.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Bạn chưa có địa chỉ nào.
+                    </p>
                   ) : (
                     addresses.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-border/70 p-3">
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border/70 p-3"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="font-medium">
@@ -1634,11 +1783,18 @@ export default function ProfilePage() {
                               {item.receiverName}
                               {item.isDefault ? " (Mặc định)" : ""}
                             </p>
-                            <p className="text-sm text-muted-foreground">{item.phoneNumber}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {item.phoneNumber}
+                            </p>
                             <p className="text-sm">{item.addressLine}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => beginEditAddress(item)}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => beginEditAddress(item)}
+                            >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
@@ -1654,6 +1810,299 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     ))
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {activeTab === "reviews" && (
+              <Card className="p-6">
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold">
+                        Đánh giá của tôi
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Xem lịch sử đánh giá và phản hồi từ nhân viên
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant={
+                          reviewView === "history" ? "default" : "outline"
+                        }
+                        size="sm"
+                        onClick={() => setReviewView("history")}
+                      >
+                        Lịch sử đánh giá
+                      </Button>
+                      <Button
+                        variant={
+                          reviewView === "pending" ? "default" : "outline"
+                        }
+                        size="sm"
+                        onClick={() => setReviewView("pending")}
+                      >
+                        Chưa đánh giá
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          loadMyReviews();
+                          loadMyPendingReviews();
+                        }}
+                      >
+                        Tải lại
+                      </Button>
+                    </div>
+                  </div>
+
+                  {reviewView === "history" && (
+                    <div className="space-y-3">
+                      {reviewsLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải đánh giá...
+                        </div>
+                      ) : myReviews.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Bạn chưa có đánh giá nào.
+                        </p>
+                      ) : (
+                        myReviews.map((review) => {
+                          const id = Number(review?.id);
+                          const isOpen = Number(selectedReviewId) === id;
+                          const thread = Array.isArray(review?.thread)
+                            ? review.thread
+                            : [];
+                          const productName = String(
+                            review?.product?.name ?? "Sản phẩm",
+                          );
+                          const productSlug = String(
+                            review?.product?.slug ?? "",
+                          );
+
+                          return (
+                            <div
+                              key={id}
+                              className="rounded-lg border border-border/70 p-4"
+                            >
+                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold line-clamp-1">
+                                    {productName}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span>
+                                      ⭐ {Number(review?.rating ?? 0)}/5
+                                    </span>
+                                    <span>•</span>
+                                    <span>{formatDate(review?.createdAt)}</span>
+                                    {review?.isHidden ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-amber-400 text-amber-700"
+                                      >
+                                        Đang ẩn
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-emerald-300 text-emerald-700"
+                                      >
+                                        Hiển thị
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  {review?.comment ? (
+                                    <p className="mt-2 text-sm text-slate-700">
+                                      {review.comment}
+                                    </p>
+                                  ) : (
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                      (Không có nội dung)
+                                    </p>
+                                  )}
+
+                                  {Array.isArray(review?.images) &&
+                                  review.images.length > 0 ? (
+                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                      {review.images.map((image) => (
+                                        <img
+                                          key={image.id}
+                                          src={image.imageUrl}
+                                          alt="Ảnh đánh giá"
+                                          className="h-24 w-full rounded-md border border-border/60 object-cover"
+                                        />
+                                      ))}
+                                    </div>
+                                  ) : null}
+
+                                  {review?.adminReply ? (
+                                    <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                                      <p className="text-xs font-semibold text-sky-700">
+                                        Phản hồi mới nhất từ nhân viên
+                                      </p>
+                                      <p className="mt-1 text-sm text-slate-700">
+                                        {review.adminReply}
+                                      </p>
+                                    </div>
+                                  ) : null}
+
+                                  {review?.isHidden && review?.hiddenReason ? (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                      Lý do ẩn: {String(review.hiddenReason)}
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setSelectedReviewId((prev) =>
+                                        Number(prev) === id ? null : id,
+                                      )
+                                    }
+                                  >
+                                    {isOpen ? "Ẩn hội thoại" : "Xem hội thoại"}
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      productSlug &&
+                                      navigate(`/components/${productSlug}`)
+                                    }
+                                    disabled={!productSlug}
+                                  >
+                                    Xem sản phẩm
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {isOpen && (
+                                <div className="mt-4 space-y-3">
+                                  <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                                    {thread.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">
+                                        Chưa có hội thoại nào.
+                                      </p>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {thread.map((msg) => (
+                                          <div
+                                            key={String(msg.id)}
+                                            className={`rounded-lg border p-3 text-sm ${
+                                              msg.isStaff
+                                                ? "border-sky-200 bg-sky-50"
+                                                : "border-emerald-200 bg-emerald-50"
+                                            }`}
+                                          >
+                                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                              <span className="font-medium text-slate-700">
+                                                {msg.isStaff
+                                                  ? "Nhân viên"
+                                                  : "Bạn"}
+                                              </span>
+                                              <span>
+                                                {formatDate(msg.createdAt)}
+                                              </span>
+                                            </div>
+                                            <p className="mt-1 text-slate-700 whitespace-pre-wrap">
+                                              {msg.message}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Textarea
+                                      placeholder="Nhập phản hồi của bạn cho nhân viên..."
+                                      value={String(
+                                        reviewReplyDraftById[id] ?? "",
+                                      )}
+                                      onChange={(event) =>
+                                        setReviewReplyDraftById((prev) => ({
+                                          ...prev,
+                                          [id]: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <div className="flex justify-end">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => sendReviewReply(id)}
+                                        disabled={sendingReviewReplyId === id}
+                                      >
+                                        {sendingReviewReplyId === id
+                                          ? "Đang gửi..."
+                                          : "Gửi phản hồi"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {reviewView === "pending" && (
+                    <div className="space-y-3">
+                      {pendingLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải danh sách chưa đánh giá...
+                        </div>
+                      ) : pendingReviews.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Không có sản phẩm nào cần đánh giá.
+                        </p>
+                      ) : (
+                        pendingReviews.map((item, index) => {
+                          const slug = String(item?.product?.slug ?? "");
+                          return (
+                            <div
+                              key={`${String(item?.orderId)}-${String(item?.product?.id)}-${index}`}
+                              className="rounded-lg border border-border/70 p-4"
+                            >
+                              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                <div className="min-w-0">
+                                  <p className="font-semibold line-clamp-1">
+                                    {String(item?.product?.name ?? "Sản phẩm")}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Đơn hàng #{String(item?.orderId)} · SL:{" "}
+                                    {Number(item?.quantity ?? 0)}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      slug && navigate(`/components/${slug}`)
+                                    }
+                                    disabled={!slug}
+                                  >
+                                    Đến trang sản phẩm để đánh giá
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   )}
                 </div>
               </Card>
@@ -1691,7 +2140,9 @@ function formatEnum(value) {
 }
 
 function formatPaymentMethod(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (normalized === "COD") {
     return "COD";
   }
@@ -1702,7 +2153,9 @@ function formatPaymentMethod(value) {
 }
 
 function formatPaymentStatus(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (normalized === "PAID") {
     return "Đã thanh toán";
   }
@@ -1719,11 +2172,17 @@ function formatPaymentStatus(value) {
 }
 
 function formatOrderStatus(orderStatusValue, paymentStatusValue) {
-  const orderStatus = String(orderStatusValue ?? "").trim().toUpperCase();
-  const paymentStatus = String(paymentStatusValue ?? "").trim().toUpperCase();
+  const orderStatus = String(orderStatusValue ?? "")
+    .trim()
+    .toUpperCase();
+  const paymentStatus = String(paymentStatusValue ?? "")
+    .trim()
+    .toUpperCase();
 
   if (orderStatus === "PENDING") {
-    return paymentStatus === "PAID" ? "Đã thanh toán, đang chuẩn bị hàng" : "Chờ thanh toán";
+    return paymentStatus === "PAID"
+      ? "Đã thanh toán, đang chuẩn bị hàng"
+      : "Chờ thanh toán";
   }
   if (orderStatus === "PROCESSING") {
     return "Đang chuẩn bị hàng";
@@ -1783,7 +2242,9 @@ function getOrderFilterKey(order) {
 }
 
 function formatHistoryStatus(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
 
   if (normalized === "PENDING") {
     return "Chờ xác nhận";
@@ -1822,7 +2283,9 @@ function formatOrderHistoryNote(note) {
   if (normalized.includes("VNPAY confirmed via")) {
     return "Thanh toán VNPAY đã xác nhận thành công.";
   }
-  if (normalized.includes("Cancelled: stock changed during payment confirmation")) {
+  if (
+    normalized.includes("Cancelled: stock changed during payment confirmation")
+  ) {
     return "Đơn bị hủy do tồn kho thay đổi trong lúc xác nhận thanh toán.";
   }
 
@@ -1830,8 +2293,12 @@ function formatOrderHistoryNote(note) {
 }
 
 function getTrackingStage(order) {
-  const paymentStatus = String(order?.paymentStatus ?? "").trim().toUpperCase();
-  const orderStatus = String(order?.orderStatus ?? "").trim().toUpperCase();
+  const paymentStatus = String(order?.paymentStatus ?? "")
+    .trim()
+    .toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "")
+    .trim()
+    .toUpperCase();
 
   if (orderStatus === "CANCELLED") {
     return "cancelled";
@@ -1889,7 +2356,12 @@ function buildTrackingSteps(order) {
 
   return steps.map((step, index) => ({
     ...step,
-    state: index < activeIndex ? "done" : index === activeIndex ? "active" : "pending",
+    state:
+      index < activeIndex
+        ? "done"
+        : index === activeIndex
+          ? "active"
+          : "pending",
   }));
 }
 
