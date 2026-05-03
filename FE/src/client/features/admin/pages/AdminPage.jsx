@@ -3775,8 +3775,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => setActiveTab(item.id)}
                           className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
-                              ? "bg-primary text-primary-foreground"
-                              : "text-slate-700 hover:bg-secondary hover:text-primary"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-slate-700 hover:bg-secondary hover:text-primary"
                             }`}
                         >
                           <span className="flex items-center gap-3">
@@ -3840,8 +3840,8 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
                       className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "hover:border-primary/50"
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "hover:border-primary/50"
                         }`}
                     >
                       <p className="text-sm text-muted-foreground">
@@ -4410,8 +4410,8 @@ export default function AdminPage() {
           <section
             id="products"
             className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
-                ? "block"
-                : "hidden"
+              ? "block"
+              : "hidden"
               }`}
           >
             <SectionHeader
@@ -6476,8 +6476,8 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
                       className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
                         }`}
                     >
                       {chip.label}
@@ -6505,8 +6505,8 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => setSelectedReviewId(Number(item.id))}
                             className={`w-full rounded-xl border px-3 py-3 text-left transition ${isSelected
-                                ? "border-primary bg-primary/5 shadow-sm"
-                                : "border-border/70 bg-background hover:border-primary/40"
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border/70 bg-background hover:border-primary/40"
                               }`}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -6850,7 +6850,7 @@ export default function AdminPage() {
                             <span className="font-medium">
                               {permissionItem.label}
                             </span>
-                            
+
                             {permissionItem.description ? (
                               <span className="text-xs text-muted-foreground">
                                 {permissionItem.description}
