@@ -625,6 +625,44 @@ export default function AdminPage() {
   const [returnStatusFilter, setReturnStatusFilter] = useState("all");
   const [isLoadingReturnRequests, setIsLoadingReturnRequests] = useState(false);
   const [updatingReturnRequestId, setUpdatingReturnRequestId] = useState(null);
+
+  const filteredReturnRequests = useMemo(() => {
+    const list = Array.isArray(adminReturnRequests) ? adminReturnRequests.slice() : [];
+
+    const statusFilter = String(returnStatusFilter || "").toUpperCase();
+    if (statusFilter && statusFilter !== "ALL") {
+      list.splice(0, list.length, ...list.filter((r) => String(r.status ?? "").toUpperCase() === statusFilter));
+    }
+
+    const keyword = (returnSearchKeyword || "").toString().trim().toLowerCase();
+    if (keyword) {
+      list.splice(
+        0,
+        list.length,
+        ...list.filter((r) => {
+          const id = String(r.id ?? "");
+          const orderId = String(r.orderId ?? "");
+          const userText = (r.user?.fullName || r.user?.email || "").toString().toLowerCase();
+          const reason = (r.reason || "").toString().toLowerCase();
+          return (
+            id.includes(keyword) ||
+            orderId.includes(keyword) ||
+            userText.includes(keyword) ||
+            reason.includes(keyword)
+          );
+        }),
+      );
+    }
+
+    // sort by createdAt desc if available
+    list.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    return list;
+  }, [adminReturnRequests, returnSearchKeyword, returnStatusFilter]);
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
@@ -7120,12 +7158,13 @@ export default function AdminPage() {
           </section>
 
           <section id="roles" className={sectionClassName("roles")}>
-            <SectionHeader
-              sectionId="roles"
-              icon={ShieldCheck}
-              title="Phân quyền"
-              description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
-            />
+              <SectionHeader
+                sectionId="roles"
+                icon={ShieldCheck}
+                title="Phân quyền"
+                description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
+                showPill={false}
+              />
             <Panel
               title="Chọn tài khoản"
               description="Tài khoản admin@gmail.com luôn có toàn bộ quyền"
@@ -7275,16 +7314,18 @@ export default function AdminPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title, description, sectionId }) {
+function SectionHeader({ icon: Icon, title, description, sectionId, showPill = true }) {
   const schema = schemaBySection[sectionId] ?? schemaBySection.dashboard;
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-primary shadow-sm">
-          <Icon className="h-4 w-4" />
-          {title}
-        </div>
+        {showPill ? (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-primary shadow-sm">
+            <Icon className="h-4 w-4" />
+            {title}
+          </div>
+        ) : null}
         <h3 className="text-2xl font-bold">{title}</h3>
         <p className="mt-1 text-muted-foreground">{description}</p>
       </div>
