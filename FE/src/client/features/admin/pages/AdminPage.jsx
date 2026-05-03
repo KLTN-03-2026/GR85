@@ -11,6 +11,7 @@ import {
   Package,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
   Sparkles,
@@ -73,6 +74,7 @@ const navItems = [
   { id: "products-inventory", label: "Danh mục sản phẩm", icon: Package },
   { id: "products-edit", label: "Chỉnh sửa sản phẩm", icon: Pencil },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
+  { id: "returns", label: "Trả hàng", icon: RotateCcw },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
   { id: "vouchers", label: "Mã giảm giá", icon: TicketPercent },
   { id: "warehouse", label: "Kho", icon: Warehouse },
@@ -110,7 +112,7 @@ const navGroups = [
   {
     id: "commerce",
     label: "Kinh doanh & CSKH",
-    tabIds: ["orders", "vouchers", "reviews", "chat"],
+    tabIds: ["orders", "returns", "vouchers", "reviews", "chat"],
   },
   {
     id: "automation",
@@ -135,6 +137,7 @@ const tabPermissionMap = {
   "products-inventory": "admin_products_manage",
   "products-edit": "admin_products_manage",
   orders: "admin_orders_manage",
+  returns: "admin_orders_manage",
   catalog: "admin_catalog_manage",
   vouchers: "admin_vouchers_manage",
   warehouse: "admin_warehouse_manage",
@@ -154,6 +157,7 @@ const permissionModuleMap = {
   "products-inventory": "products",
   "products-edit": "products",
   orders: "orders",
+  returns: "orders",
   catalog: "catalog",
   vouchers: "vouchers",
   warehouse: "warehouse",
@@ -654,6 +658,11 @@ export default function AdminPage() {
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
+  const [adminReturnRequests, setAdminReturnRequests] = useState([]);
+  const [returnSearchKeyword, setReturnSearchKeyword] = useState("");
+  const [returnStatusFilter, setReturnStatusFilter] = useState("all");
+  const [isLoadingReturnRequests, setIsLoadingReturnRequests] = useState(false);
+  const [updatingReturnRequestId, setUpdatingReturnRequestId] = useState(null);
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
@@ -1258,6 +1267,37 @@ export default function AdminPage() {
     }
   }, [token, toast]);
 
+  const loadAdminReturnRequests = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingReturnRequests(true);
+    try {
+      const response = await fetch("/api/admin/returns", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được yêu cầu trả hàng");
+      }
+
+      setAdminReturnRequests(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setAdminReturnRequests([]);
+      toast({
+        title: "Không tải được yêu cầu trả hàng",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingReturnRequests(false);
+    }
+  }, [token, toast]);
+
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token || activeTab !== "reviews") {
       return;
@@ -1265,6 +1305,103 @@ export default function AdminPage() {
 
     loadAdminReviews();
   }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "returns") {
+      return;
+    }
+
+    loadAdminReturnRequests();
+  }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReturnRequests]);
+
+  async function handleReturnRequestAction(request, action) {
+    if (!token || !request?.id) {
+      return;
+    }
+
+    const requestId = Number(request.id);
+    let endpoint = `/api/admin/returns/${requestId}/review`;
+    let body = { action };
+
+    if (action === "REJECT") {
+      const rejectReason = window.prompt(
+        "Nhập lý do từ chối yêu cầu trả hàng:",
+        String(request.rejectReason ?? ""),
+      );
+      if (rejectReason === null) {
+        return;
+      }
+
+      const normalizedRejectReason = String(rejectReason ?? "").trim();
+      if (!normalizedRejectReason) {
+        toast({
+          title: "Thiếu lý do từ chối",
+          description: "Vui lòng nhập lý do để từ chối yêu cầu trả hàng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      body = { action: "REJECT", rejectReason: normalizedRejectReason };
+    } else if (action === "APPROVE") {
+      body = { action: "APPROVE" };
+    } else if (action === "SHIPPING_BACK") {
+      endpoint = `/api/admin/returns/${requestId}/shipping-back`;
+      body = null;
+    } else if (action === "RECEIVED") {
+      endpoint = `/api/admin/returns/${requestId}/received`;
+      body = null;
+    } else if (action === "REFUND") {
+      endpoint = `/api/admin/returns/${requestId}/refund`;
+      body = null;
+    }
+
+    const confirmMessage =
+      action === "APPROVE"
+        ? "Duyệt yêu cầu trả hàng này?"
+        : action === "REJECT"
+          ? "Từ chối yêu cầu trả hàng này?"
+          : action === "SHIPPING_BACK"
+            ? "Đánh dấu đơn này đang được khách gửi trả?"
+            : action === "RECEIVED"
+              ? "Xác nhận đã nhận hàng trả về?"
+              : "Xử lý hoàn tiền cho yêu cầu này?";
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setUpdatingReturnRequestId(requestId);
+    try {
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật yêu cầu trả hàng");
+      }
+
+      toast({
+        title: "Đã cập nhật yêu cầu trả hàng",
+        description: payload?.message ?? "Thao tác đã hoàn tất",
+      });
+      await loadAdminReturnRequests();
+    } catch (error) {
+      toast({
+        title: "Cập nhật yêu cầu trả hàng thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingReturnRequestId(null);
+    }
+  }
 
   async function moderateReview(review, shouldHide) {
     if (!token || !review?.id) {
@@ -3467,6 +3604,40 @@ export default function AdminPage() {
     [],
   );
 
+  const filteredReturnRequests = useMemo(() => {
+    let filtered = Array.isArray(adminReturnRequests) ? adminReturnRequests : [];
+
+    if (returnStatusFilter !== "all") {
+      filtered = filtered.filter(
+        (item) => String(item.status ?? "").toUpperCase() === returnStatusFilter,
+      );
+    }
+
+    if (returnSearchKeyword.trim()) {
+      const keyword = returnSearchKeyword.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const searchableText = [
+          item.id,
+          item.orderId,
+          item.reason,
+          item.rejectReason,
+          item.bankName,
+          item.bankAccountNumber,
+          item.bankAccountName,
+          item.user?.fullName,
+          item.user?.email,
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase())
+          .join(" ");
+
+        return searchableText.includes(keyword);
+      });
+    }
+
+    return filtered;
+  }, [adminReturnRequests, returnSearchKeyword, returnStatusFilter]);
+
   useEffect(() => {
     if (selectedReview) {
       if (Number(selectedReviewId) !== Number(selectedReview.id)) {
@@ -4640,7 +4811,9 @@ export default function AdminPage() {
                               `#${request.id}`,
                               `#${request.orderId}`,
                               request.reason ?? "-",
-                              statusBadge(formatEnum(request.status)),
+                              statusBadge(
+                                formatReturnStatusLabelAdmin(request.status),
+                              ),
                               request.refundAmount
                                 ? formatMoney(request.refundAmount)
                                 : "-",
@@ -6407,6 +6580,245 @@ export default function AdminPage() {
             )}
           </section>
 
+          <section id="returns" className={sectionClassName("returns") }>
+            <SectionHeader
+              sectionId="returns"
+              icon={RotateCcw}
+              title="Quản lý trả hàng"
+              description="Duyệt, theo dõi và xử lý hoàn tiền cho các yêu cầu trả hàng"
+            />
+
+            <div className="grid gap-6 xl:grid-cols-5">
+              <div className="xl:col-span-2 space-y-4">
+                <Panel
+                  title="Tổng quan trả hàng"
+                  description="Theo dõi nhanh trạng thái xử lý"
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng yêu cầu</p>
+                      <p className="text-xl font-semibold">
+                        {adminReturnRequests.length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đang chờ</p>
+                      <p className="text-xl font-semibold text-amber-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "PENDING",
+                        ).length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đã duyệt</p>
+                      <p className="text-xl font-semibold text-sky-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "APPROVED",
+                        ).length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đã hoàn tiền</p>
+                      <p className="text-xl font-semibold text-emerald-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "REFUNDED",
+                        ).length}
+                      </p>
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel
+                  title="Bộ lọc nhanh"
+                  description="Tìm yêu cầu theo mã đơn, khách hàng hoặc trạng thái"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Mã yêu cầu, mã đơn, tên khách, email..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={returnSearchKeyword}
+                        onChange={(event) =>
+                          setReturnSearchKeyword(event.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Trạng thái</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={returnStatusFilter}
+                        onChange={(event) =>
+                          setReturnStatusFilter(event.target.value)
+                        }
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="PENDING">Đang chờ</option>
+                        <option value="APPROVED">Đã duyệt</option>
+                        <option value="REJECTED">Đã từ chối</option>
+                        <option value="SHIPPING_BACK">Đang gửi trả</option>
+                        <option value="RECEIVED">Đã nhận hàng</option>
+                        <option value="REFUNDED">Đã hoàn tiền</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                      <span>
+                        Tìm thấy: <strong>{filteredReturnRequests.length}</strong> yêu cầu
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setReturnSearchKeyword("");
+                          setReturnStatusFilter("all");
+                        }}
+                        disabled={!returnSearchKeyword && returnStatusFilter === "all"}
+                      >
+                        Xóa lọc
+                      </Button>
+                    </div>
+                  </div>
+                </Panel>
+              </div>
+
+              <div className="xl:col-span-3 space-y-4">
+                <Panel
+                  title="Danh sách yêu cầu trả hàng"
+                  description="Duyệt, theo dõi vận chuyển và hoàn tiền"
+                >
+                  {isLoadingReturnRequests ? (
+                    <p className="text-sm text-muted-foreground">
+                      Đang tải dữ liệu trả hàng...
+                    </p>
+                  ) : filteredReturnRequests.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có yêu cầu trả hàng phù hợp.
+                    </p>
+                  ) : (
+                    <DataTable
+                      columns={[
+                        "Mã",
+                        "Khách",
+                        "Đơn",
+                        "Lý do",
+                        "Trạng thái",
+                        "Hoàn",
+                        "Ngân hàng",
+                        "Yêu cầu lúc",
+                        "Thao tác",
+                      ]}
+                      rows={filteredReturnRequests.map((request) => {
+                        const requestId = Number(request.id);
+                        const isBusy = updatingReturnRequestId === requestId;
+                        const status = String(request.status ?? "").toUpperCase();
+
+                        return [
+                          `#${request.id}`,
+                          request.user?.fullName || request.user?.email || "-",
+                          `#${request.orderId}`,
+                          <span
+                            key={`reason-${request.id}`}
+                            className="block max-w-[260px] whitespace-normal break-words"
+                          >
+                            {request.reason ?? "-"}
+                          </span>,
+                          statusBadge(
+                            formatReturnStatusLabelAdmin(request.status),
+                          ),
+                          request.refundAmount
+                            ? formatMoney(request.refundAmount)
+                            : "-",
+                          <div
+                            key={`bank-${request.id}`}
+                            className="max-w-[220px] space-y-1 text-xs text-muted-foreground"
+                          >
+                            <div>{request.bankName ?? "-"}</div>
+                            <div>{request.bankAccountNumber ?? "-"}</div>
+                            <div>{request.bankAccountName ?? "-"}</div>
+                          </div>,
+                          formatDate(request.requestedAt),
+                          <div
+                            key={`return-actions-${request.id}`}
+                            className="flex flex-wrap gap-2"
+                          >
+                            {status === "PENDING" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    handleReturnRequestAction(request, "APPROVE")
+                                  }
+                                  disabled={isBusy}
+                                >
+                                  {isBusy ? "..." : "Duyệt"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleReturnRequestAction(request, "REJECT")
+                                  }
+                                  disabled={isBusy}
+                                >
+                                  Từ chối
+                                </Button>
+                              </>
+                            )}
+                            {status === "APPROVED" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleReturnRequestAction(
+                                    request,
+                                    "SHIPPING_BACK",
+                                  )
+                                }
+                                disabled={isBusy}
+                              >
+                                Đánh dấu gửi trả
+                              </Button>
+                            )}
+                            {(status === "APPROVED" ||
+                              status === "SHIPPING_BACK") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleReturnRequestAction(request, "RECEIVED")
+                                }
+                                disabled={isBusy}
+                              >
+                                Đã nhận hàng
+                              </Button>
+                            )}
+                            {status === "RECEIVED" && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  handleReturnRequestAction(request, "REFUND")
+                                }
+                                disabled={isBusy}
+                              >
+                                Hoàn tiền
+                              </Button>
+                            )}
+                          </div>,
+                        ];
+                      })}
+                    />
+                  )}
+                </Panel>
+              </div>
+            </div>
+          </section>
+
           <section id="warehouse" className={sectionClassName("warehouse")}>
             <SectionHeader
               sectionId="warehouse"
@@ -7698,6 +8110,8 @@ function statusBadge(value) {
     value === "Đang hoạt động" ||
       value === "Đã thanh toán" ||
       value === "Đã hoàn tiền" ||
+      value === "Đã duyệt" ||
+      value === "Đã nhận hàng" ||
       value === "Đã giao" ||
       value === "Đã giao hàng" ||
       value === "Đã kết nối" ||
@@ -7713,6 +8127,7 @@ function statusBadge(value) {
         value === "Chờ thanh toán" ||
         value === "Đang xử lý" ||
         value === "Đang chuẩn bị" ||
+        value === "Đang gửi trả" ||
         value === "Tạm dừng" ||
         value === "Cần xem xét" ||
         value === "Bản nháp" ||
@@ -7724,6 +8139,8 @@ function statusBadge(value) {
           value === "Nhân viên" ||
           value === "Mở"
           ? "bg-sky-100 text-sky-700"
+          : value === "Đã từ chối"
+            ? "bg-rose-100 text-rose-700"
           : value === "Đã ẩn"
             ? "bg-slate-200 text-slate-700"
             : "bg-rose-100 text-rose-700";
@@ -7806,6 +8223,18 @@ function formatPaymentStatusLabelAdmin(value) {
   if (normalized === "PENDING") return "Chờ thanh toán";
   if (normalized === "FAILED") return "Thanh toán thất bại";
   if (normalized === "REFUNDED") return "Đã hoàn tiền";
+  return formatEnum(normalized);
+}
+
+function formatReturnStatusLabelAdmin(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "PENDING") return "Đang chờ";
+  if (normalized === "APPROVED") return "Đã duyệt";
+  if (normalized === "REJECTED") return "Đã từ chối";
+  if (normalized === "SHIPPING_BACK") return "Đang gửi trả";
+  if (normalized === "RECEIVED") return "Đã nhận hàng";
+  if (normalized === "REFUNDED") return "Đã hoàn tiền";
+  if (normalized === "CANCELLED") return "Đã hủy";
   return formatEnum(normalized);
 }
 
