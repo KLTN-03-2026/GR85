@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma.js";
 
+// Fetch a single room with user and resolver metadata for admin/customer views.
 export async function findConversationById(conversationId) {
   return prisma.chatRoom.findUnique({
     where: { id: conversationId },
@@ -26,6 +27,7 @@ export async function findConversationById(conversationId) {
   });
 }
 
+// Reuse the current open room for a user when possible; otherwise create one.
 export async function findOrCreateOpenConversationByUserId(userId) {
   const existing = await prisma.chatRoom.findFirst({
     where: {
@@ -63,6 +65,7 @@ export async function findOrCreateOpenConversationByUserId(userId) {
   return room;
 }
 
+// Persist a message and eagerly load sender/read data for the UI layer.
 export async function createMessage({ conversationId, senderId, content }) {
   return prisma.message.create({
     data: {
@@ -88,12 +91,14 @@ export async function createMessage({ conversationId, senderId, content }) {
   });
 }
 
+// Count messages in a room for pagination metadata.
 export async function countMessagesByConversation(conversationId) {
   return prisma.message.count({
     where: { roomId: conversationId },
   });
 }
 
+// Return messages newest-first so the caller can render chat history.
 export async function listMessagesByConversation({
   conversationId,
   skip,
@@ -122,6 +127,7 @@ export async function listMessagesByConversation({
   });
 }
 
+// Mark all unread messages for a user as read using bulk inserts.
 export async function markMessagesReadByUser({ conversationId, userId }) {
   const unreadMessages = await prisma.message.findMany({
     where: {
@@ -138,6 +144,7 @@ export async function markMessagesReadByUser({ conversationId, userId }) {
     select: {
       id: true,
     },
+    // Safety cap to keep the operation bounded for very busy rooms.
     take: 2000,
   });
 
@@ -158,6 +165,7 @@ export async function markMessagesReadByUser({ conversationId, userId }) {
   return { count: rows.length, messageIds: unreadMessages.map((m) => m.id) };
 }
 
+// Update the room lifecycle status directly.
 export async function updateRoomStatus({ roomId, status }) {
   return prisma.chatRoom.update({
     where: { id: roomId },
@@ -165,10 +173,12 @@ export async function updateRoomStatus({ roomId, status }) {
   });
 }
 
+// Close a room and write resolver metadata in one transaction.
 export async function markRoomDone({ roomId, adminUserId, customerVote = null }) {
   const doneAt = new Date();
 
   await prisma.$transaction(async (tx) => {
+    // Mark the room as closed before saving the resolution metadata.
     await tx.chatRoom.update({
       where: { id: roomId },
       data: {
@@ -195,6 +205,7 @@ export async function markRoomDone({ roomId, adminUserId, customerVote = null })
   return findConversationById(roomId);
 }
 
+// Save the customer's feedback vote on the room resolution.
 export async function saveCustomerVote({ roomId, vote }) {
   return prisma.chatRoomMeta.upsert({
     where: { roomId },
@@ -217,6 +228,7 @@ export async function saveCustomerVote({ roomId, vote }) {
   });
 }
 
+// List admin-facing rooms with the latest message preview and metadata.
 export async function listAdminRooms() {
   return prisma.chatRoom.findMany({
     orderBy: {
@@ -265,6 +277,7 @@ export async function listAdminRooms() {
   });
 }
 
+// Count unread messages for an admin in a specific room.
 export async function countUnreadForAdmin(roomId, adminUserId) {
   return prisma.message.count({
     where: {
@@ -281,12 +294,14 @@ export async function countUnreadForAdmin(roomId, adminUserId) {
   });
 }
 
+// Load all moderation terms with active terms first.
 export async function listModerationTerms() {
   return prisma.chatModerationTerm.findMany({
     orderBy: [{ isActive: "desc" }, { term: "asc" }],
   });
 }
 
+// Add a new moderation term as active by default.
 export async function createModerationTerm(term) {
   return prisma.chatModerationTerm.create({
     data: {
@@ -296,12 +311,14 @@ export async function createModerationTerm(term) {
   });
 }
 
+// Remove a moderation term by primary key.
 export async function deleteModerationTermById(id) {
   return prisma.chatModerationTerm.delete({
     where: { id },
   });
 }
 
+// Only fetch active moderation terms for filtering/chat validation.
 export async function listActiveModerationTerms() {
   return prisma.chatModerationTerm.findMany({
     where: {
