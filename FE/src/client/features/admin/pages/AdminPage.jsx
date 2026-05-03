@@ -4060,7 +4060,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => openUserOrders(item)}
                       >
@@ -4068,7 +4068,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => loadUserDetail(item.id)}
                       >
@@ -6850,9 +6850,7 @@ export default function AdminPage() {
                             <span className="font-medium">
                               {permissionItem.label}
                             </span>
-                            <span className="text-xs text-muted-foreground">
-                              {actionName}
-                            </span>
+                            
                             {permissionItem.description ? (
                               <span className="text-xs text-muted-foreground">
                                 {permissionItem.description}
