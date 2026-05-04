@@ -910,7 +910,7 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isHydrated, token, toast]);
+  }, [isAuthenticated, isHydrated, selectedPermissionTargetId, token, toast]);
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
@@ -1131,6 +1131,33 @@ export default function AdminPage() {
     };
   }, [isAuthenticated, isHydrated, token, toast]);
 
+  const loadOrderDetail = useCallback(
+    async (orderId) => {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Không tải được chi tiết đơn");
+        }
+        setSelectedOrderDetail(payload);
+      } catch (error) {
+        toast({
+          title: "Không tải được chi tiết đơn",
+          description:
+            error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      }
+    },
+    [token, toast],
+  );
+
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
       return;
@@ -1170,7 +1197,7 @@ export default function AdminPage() {
     return () => {
       socket.off("order_status_updated", handleOrderStatusUpdated);
     };
-  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id]);
+  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id, loadOrderDetail]);
 
   const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
@@ -1299,6 +1326,20 @@ export default function AdminPage() {
     }
 
     loadAdminReviews();
+  }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "reviews") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      loadAdminReviews();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
 
   useEffect(() => {
@@ -1693,29 +1734,6 @@ export default function AdminPage() {
     }
 
     return <span className="text-xs text-muted-foreground">-</span>;
-  }
-
-  async function loadOrderDetail(orderId) {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Không tải được chi tiết đơn");
-      }
-      setSelectedOrderDetail(payload);
-    } catch (error) {
-      toast({
-        title: "Không tải được chi tiết đơn",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    }
   }
 
   async function deleteOrder(orderId) {
@@ -2183,7 +2201,7 @@ export default function AdminPage() {
     );
   }
 
-  function resetProductForm() {
+  const resetProductForm = useCallback(() => {
     setEditingProductId(null);
     setSelectedImageFile(null);
     setProductForm({
@@ -2208,7 +2226,7 @@ export default function AdminPage() {
       manualUrl: "",
       warrantyPolicy: "",
     });
-  }
+  }, [catalogCategories]);
 
   function startEditingProduct(product) {
     setEditingProductId(product.id);
@@ -3351,6 +3369,19 @@ export default function AdminPage() {
     [filteredReviews, selectedReviewId],
   );
 
+  const selectedReviewThread = useMemo(
+    () => (Array.isArray(selectedReview?.thread) ? selectedReview.thread : []),
+    [selectedReview],
+  );
+
+  const latestReviewThreadMessage = useMemo(
+    () =>
+      selectedReviewThread.length > 0
+        ? selectedReviewThread[selectedReviewThread.length - 1]
+        : null,
+    [selectedReviewThread],
+  );
+
   useEffect(() => {
     if (selectedReview) {
       if (Number(selectedReviewId) !== Number(selectedReview.id)) {
@@ -3909,7 +3940,7 @@ export default function AdminPage() {
     if (activeTab === "products-create" && editingProductId) {
       resetProductForm();
     }
-  }, [activeTab, editingProductId]);
+  }, [activeTab, editingProductId, resetProductForm]);
 
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
@@ -7054,13 +7085,75 @@ export default function AdminPage() {
                             </div>
                           ) : null}
 
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold">
-                              Phản hồi quản trị
+                          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
+                                  Luồng hội thoại
+                                </p>
+                                <p className="text-sm text-slate-600">
+                                  Xem toàn bộ trao đổi giữa khách hàng và nhân viên
+                                </p>
+                              </div>
+                              <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-700 shadow-sm">
+                                {selectedReviewThread.length} tin nhắn
+                              </div>
+                            </div>
+
+                            {latestReviewThreadMessage ? (
+                              <div className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm shadow-sm">
+                                <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-sky-700">
+                                  <span>
+                                    {latestReviewThreadMessage.isStaff
+                                      ? "Phản hồi mới nhất từ nhân viên"
+                                      : "Phản hồi mới nhất từ khách hàng"}
+                                  </span>
+                                  <span>{formatDate(latestReviewThreadMessage.createdAt)}</span>
+                                </div>
+                                <p className="whitespace-pre-wrap text-slate-700">
+                                  {latestReviewThreadMessage.message || "Không có nội dung"}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-sky-200 bg-white px-3 py-4 text-sm text-slate-500">
+                                Chưa có trao đổi trong hội thoại này.
+                              </div>
+                            )}
+
+                            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                              {selectedReviewThread.length > 0 ? (
+                                selectedReviewThread.map((message) => (
+                                  <div
+                                    key={message.id}
+                                    className={`rounded-xl border px-3 py-2 text-sm shadow-sm ${message.isStaff
+                                      ? "border-sky-200 bg-white"
+                                      : "border-emerald-200 bg-emerald-50"
+                                      }`}
+                                  >
+                                    <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold">
+                                      <span className={message.isStaff ? "text-sky-700" : "text-emerald-700"}>
+                                        {message.isStaff ? "Nhân viên" : "Khách hàng"}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {formatDate(message.createdAt)}
+                                      </span>
+                                    </div>
+                                    <p className="whitespace-pre-wrap text-slate-700">
+                                      {message.message || "(Trống)"}
+                                    </p>
+                                  </div>
+                                ))
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 rounded-2xl border border-border/60 bg-background p-4">
+                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                              Phản hồi của admin
                             </label>
                             <textarea
-                              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                              rows={4}
+                              className="min-h-28 w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-inner"
+                              rows={5}
                               placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
                               value={
                                 reviewReplyDraftById[selectedReview.id] ?? ""
@@ -7080,7 +7173,7 @@ export default function AdminPage() {
                               </span>
                               <Button
                                 size="sm"
-                                variant="outline"
+                                className="bg-sky-600 text-white hover:bg-sky-700"
                                 disabled={
                                   replyingReviewId === Number(selectedReview.id)
                                 }

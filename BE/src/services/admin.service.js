@@ -494,7 +494,7 @@ export async function replyReviewByAdmin(
 ) {
   const reviewId = Number(reviewIdInput);
   const replierId = Number(adminUserId);
-  const adminReply = String(input.reply ?? "").trim();
+  const adminReply = String(input.reply ?? input.message ?? "").trim();
 
   if (!Number.isFinite(reviewId) || reviewId <= 0) {
     throw new Error("Invalid review id");

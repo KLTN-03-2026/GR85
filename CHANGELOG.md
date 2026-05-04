@@ -119,3 +119,34 @@ Mục mới nhất luôn được thêm ở cuối file.
     - Xóa state khai báo trùng `showPendingOrders`.
   - **Lý do:**
     - Fix lỗi parse khiến màn hình trắng khi FE khởi động.
+
+## 2026-05-04 — Đồng bộ phản hồi review + hiển thị review công khai
+
+### Thay đổi đã thực hiện
+
+- **BE/src/api/routes/admin.routes.js**
+  - **Thay đổi gì:**
+    - Chuyển luồng phản hồi review admin sang service admin để dùng đúng nghiệp vụ quản trị.
+    - Hỗ trợ đồng thời route `POST /reviews/:reviewId/replies` và `PATCH /reviews/:reviewId/reply` để FE cũ/mới đều dùng được.
+  - **Lý do:**
+    - Tránh lệch contract giữa FE và BE, đảm bảo admin lưu phản hồi thành công.
+
+- **BE/src/services/admin.service.js**
+  - **Thay đổi gì:**
+    - `replyReviewByAdmin()` nhận cả `reply` và `message` trong payload.
+  - **Lý do:**
+    - Tương thích với cả FE hiện tại và contract mới đã chuẩn hóa.
+
+- **BE/src/services/product.service.js**
+  - **Thay đổi gì:**
+    - Bỏ lọc review public theo `ReviewStatus` không còn khớp schema.
+    - Trạng thái public được suy ra từ `isHidden` thay vì field trạng thái không tồn tại.
+    - Luồng ẩn/xóa review admin chuyển sang dùng `isHidden`/`hiddenReason` và xóa mềm/cứng theo action.
+  - **Lý do:**
+    - Đảm bảo review khách gửi xong được hiển thị đúng, đồng thời không còn lỗi runtime do tham chiếu trạng thái sai schema.
+
+- **FE/src/client/features/admin/pages/AdminPage.jsx**
+  - **Thay đổi gì:**
+    - Gửi phản hồi review bằng payload `message` đến route `/reviews/:reviewId/replies`.
+  - **Lý do:**
+    - Đồng bộ FE với contract admin review đã chuẩn hóa.

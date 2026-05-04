@@ -160,11 +160,10 @@ export async function listProductReviewsBySlug(slug, input = {}) {
   const reviews = await prisma.review.findMany({
     where: {
       productId: product.id,
-  status: ReviewStatus.VISIBLE,
   isHidden: false,
-  ...(Number.isInteger(ratingFilter) && ratingFilter >= 1 && ratingFilter <= 5
-    ? { rating: ratingFilter }
-    : {}),
+      ...(Number.isInteger(ratingFilter) && ratingFilter >= 1 && ratingFilter <= 5
+        ? { rating: ratingFilter }
+        : {}),
     },
     include: {
       user: {
@@ -217,7 +216,7 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       id: review.id,
       rating: Number(review.rating ?? 0),
       comment: review.comment ? String(review.comment) : "",
-      status: review.status,
+      status: review.isHidden ? "HIDDEN" : "VISIBLE",
       moderationReason: review.moderationReason ?? null,
       createdAt: review.createdAt,
       adminReply: review.adminReply ? String(review.adminReply) : "",
@@ -755,7 +754,7 @@ export async function replyToProductReview(userId, reviewIdInput, input = {}) {
     throw new Error("Không tìm thấy đánh giá");
   }
 
-  if (review.status === ReviewStatus.DELETED) {
+  if (review.isHidden) {
     throw new Error("Đánh giá đã bị xóa");
   }
 
@@ -854,23 +853,28 @@ export async function moderateProductReviewByAdmin(adminUserId, reviewIdInput, i
     throw new Error("Không tìm thấy đánh giá");
   }
 
-  const nextStatus = action === "DELETE" ? ReviewStatus.DELETED : ReviewStatus.HIDDEN;
+  const isDelete = action === "DELETE";
+  const moderationTime = new Date();
   const updated = await prisma.$transaction(async (tx) => {
-    const nextReview = await tx.review.update({
-      where: { id: review.id },
-      data: {
-        status: nextStatus,
-        moderationReason: reason,
-        moderatedBy: normalizedAdminId,
-        moderatedAt: new Date(),
-      },
-    });
+    const nextReview = isDelete
+      ? await tx.review.delete({
+          where: { id: review.id },
+        })
+      : await tx.review.update({
+          where: { id: review.id },
+          data: {
+            isHidden: true,
+            hiddenReason: reason,
+            moderatedBy: normalizedAdminId,
+            moderatedAt: moderationTime,
+          },
+        });
 
     await tx.reviewModerationLog.create({
       data: {
         reviewId: review.id,
         actorId: normalizedAdminId,
-        action: nextStatus,
+        action,
         reason,
       },
     });
@@ -880,24 +884,24 @@ export async function moderateProductReviewByAdmin(adminUserId, reviewIdInput, i
 
   await createSystemNotification({
     userId: review.userId,
-    title: nextStatus === ReviewStatus.DELETED ? "Đánh giá đã bị xóa" : "Đánh giá đã bị ẩn",
+    title: isDelete ? "Đánh giá đã bị xóa" : "Đánh giá đã bị ẩn",
     message: `Đánh giá của bạn cho ${String(review.product.name ?? "sản phẩm")} đã bị ${
-      nextStatus === ReviewStatus.DELETED ? "xóa" : "ẩn"
+      isDelete ? "xóa" : "ẩn"
     } vì: ${reason}`,
     payload: {
       reviewId: review.id,
       productId: review.productId,
       productSlug: review.product.slug,
-      action: nextStatus,
+      action,
       reason,
     },
   });
 
   return serializeData({
     id: updated.id,
-    status: updated.status,
-    moderationReason: updated.moderationReason,
-    moderatedAt: updated.moderatedAt,
+    status: isDelete ? "DELETED" : "HIDDEN",
+    moderationReason: isDelete ? reason : updated.hiddenReason,
+    moderatedAt: isDelete ? moderationTime : updated.moderatedAt,
   });
 }
 
