@@ -627,11 +627,19 @@ export default function AdminPage() {
   const [updatingReturnRequestId, setUpdatingReturnRequestId] = useState(null);
 
   const filteredReturnRequests = useMemo(() => {
-    const list = Array.isArray(adminReturnRequests) ? adminReturnRequests.slice() : [];
+    const list = Array.isArray(adminReturnRequests)
+      ? adminReturnRequests.slice()
+      : [];
 
     const statusFilter = String(returnStatusFilter || "").toUpperCase();
     if (statusFilter && statusFilter !== "ALL") {
-      list.splice(0, list.length, ...list.filter((r) => String(r.status ?? "").toUpperCase() === statusFilter));
+      list.splice(
+        0,
+        list.length,
+        ...list.filter(
+          (r) => String(r.status ?? "").toUpperCase() === statusFilter,
+        ),
+      );
     }
 
     const keyword = (returnSearchKeyword || "").toString().trim().toLowerCase();
@@ -642,7 +650,9 @@ export default function AdminPage() {
         ...list.filter((r) => {
           const id = String(r.id ?? "");
           const orderId = String(r.orderId ?? "");
-          const userText = (r.user?.fullName || r.user?.email || "").toString().toLowerCase();
+          const userText = (r.user?.fullName || r.user?.email || "")
+            .toString()
+            .toLowerCase();
           const reason = (r.reason || "").toString().toLowerCase();
           return (
             id.includes(keyword) ||
@@ -1149,8 +1159,7 @@ export default function AdminPage() {
       } catch (error) {
         toast({
           title: "Không tải được chi tiết đơn",
-          description:
-            error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
           variant: "destructive",
         });
       }
@@ -1197,7 +1206,13 @@ export default function AdminPage() {
     return () => {
       socket.off("order_status_updated", handleOrderStatusUpdated);
     };
-  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id, loadOrderDetail]);
+  }, [
+    isAuthenticated,
+    isHydrated,
+    token,
+    selectedOrderDetail?.id,
+    loadOrderDetail,
+  ]);
 
   const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
@@ -1328,6 +1343,56 @@ export default function AdminPage() {
     loadAdminReviews();
   }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
 
+  const DEFAULT_QUICK_REPLIES = [
+    "Cảm ơn bạn đã phản hồi!",
+    "Chúng tôi sẽ kiểm tra và phản hồi sớm.",
+    "Xin lỗi vì trải nghiệm này, chúng tôi sẽ xử lý ngay.",
+    "Đã ghi nhận, cảm ơn bạn rất nhiều!",
+  ];
+
+  const [quickReplies, setQuickReplies] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem("admin_quick_replies");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_QUICK_REPLIES;
+  });
+  const [showQuickEditor, setShowQuickEditor] = useState(false);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "admin_quick_replies",
+        JSON.stringify(quickReplies),
+      );
+    } catch {}
+  }, [quickReplies]);
+
+  async function handleQuickReplyClick(reviewId, text, sendImmediately = false) {
+    if (!reviewId) return;
+    setReviewReplyDraftById((prev) => ({
+      ...prev,
+      [reviewId]: `${String(prev[reviewId] ?? "").trim() ? String(prev[reviewId]) + "\n" : ""}${text}`,
+    }));
+
+    if (sendImmediately) {
+      await new Promise((r) => setTimeout(r, 50));
+      await saveReviewReply(reviewId);
+    }
+  }
+
+  function addQuickReply() {
+    setQuickReplies((prev) => [...prev, "Mẫu phản hồi mới..."]);
+  }
+
+  function updateQuickReply(index, value) {
+    setQuickReplies((prev) => prev.map((p, i) => (i === index ? value : p)));
+  }
+
+  function removeQuickReply(index) {
+    setQuickReplies((prev) => prev.filter((_, i) => i !== index));
+  }
+
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token || activeTab !== "reviews") {
       return;
@@ -1420,7 +1485,9 @@ export default function AdminPage() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Không thể cập nhật yêu cầu trả hàng");
+        throw new Error(
+          payload?.message ?? "Không thể cập nhật yêu cầu trả hàng",
+        );
       }
 
       toast({
@@ -1447,9 +1514,9 @@ export default function AdminPage() {
     const reviewId = Number(review.id);
     const hiddenReason = shouldHide
       ? window.prompt(
-        "Nhập lý do ẩn đánh giá (không bắt buộc):",
-        String(review.hiddenReason ?? ""),
-      )
+          "Nhập lý do ẩn đánh giá (không bắt buộc):",
+          String(review.hiddenReason ?? ""),
+        )
       : "";
 
     if (hiddenReason === null) {
@@ -1494,7 +1561,7 @@ export default function AdminPage() {
     }
   }
 
-  async function saveReviewReply(reviewId) {
+  const saveReviewReply = useCallback(async (reviewId) => {
     if (!token || !reviewId) {
       return;
     }
@@ -1517,7 +1584,7 @@ export default function AdminPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ reply }),
+        body: JSON.stringify({ message: reply }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1544,7 +1611,7 @@ export default function AdminPage() {
     } finally {
       setReplyingReviewId(null);
     }
-  }
+  }, [token, reviewReplyDraftById, toast]);
 
   async function removeReview(review) {
     if (!token || !review?.id) {
@@ -1627,10 +1694,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-              ...order,
-              orderStatus: payload.orderStatus,
-              updatedAt: payload.updatedAt,
-            }
+                ...order,
+                orderStatus: payload.orderStatus,
+                updatedAt: payload.updatedAt,
+              }
             : order,
         ),
       );
@@ -1881,16 +1948,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === userId
               ? {
-                ...item,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
               : item,
           ),
         };
@@ -1903,30 +1970,30 @@ export default function AdminPage() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-              ...prev,
-              fullName: payload.fullName,
-              email: payload.email,
-              phone: payload.phone,
-              address: payload.address,
-              avatarUrl: payload.avatarUrl,
-              status: payload.status,
-              roleId: payload.roleId,
-              role: payload.role,
-            }
+                ...prev,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
             : prev,
         );
         setSelectedUserDraft((prev) =>
           prev
             ? {
-              ...prev,
-              fullName: payload.fullName ?? "",
-              email: payload.email ?? "",
-              phone: payload.phone ?? "",
-              address: payload.address ?? "",
-              avatarUrl: payload.avatarUrl ?? "",
-              roleId: payload.roleId ? String(payload.roleId) : "",
-              status: payload.status ?? "ACTIVE",
-            }
+                ...prev,
+                fullName: payload.fullName ?? "",
+                email: payload.email ?? "",
+                phone: payload.phone ?? "",
+                address: payload.address ?? "",
+                avatarUrl: payload.avatarUrl ?? "",
+                roleId: payload.roleId ? String(payload.roleId) : "",
+                status: payload.status ?? "ACTIVE",
+              }
             : prev,
         );
       }
@@ -2071,16 +2138,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === selectedUserDetail.id
               ? {
-                ...item,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
               : item,
           ),
         };
@@ -2089,31 +2156,31 @@ export default function AdminPage() {
       setSelectedUserDetail((prev) =>
         prev
           ? {
-            ...prev,
-            fullName: payload.fullName,
-            email: payload.email,
-            phone: payload.phone,
-            address: payload.address,
-            avatarUrl: payload.avatarUrl,
-            status: payload.status,
-            roleId: payload.roleId,
-            role: payload.role,
-          }
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
           : prev,
       );
 
       setSelectedUserDraft((prev) =>
         prev
           ? {
-            ...prev,
-            fullName: payload.fullName ?? "",
-            email: payload.email ?? "",
-            phone: payload.phone ?? "",
-            address: payload.address ?? "",
-            avatarUrl: payload.avatarUrl ?? "",
-            roleId: payload.roleId ? String(payload.roleId) : "",
-            status: payload.status ?? "ACTIVE",
-          }
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
           : prev,
       );
 
@@ -2406,14 +2473,22 @@ export default function AdminPage() {
       });
 
       const responsePayload = await response.json().catch(() => {
-        console.error(`[SaveProduct] Response not JSON. Status: ${response.status}`);
+        console.error(
+          `[SaveProduct] Response not JSON. Status: ${response.status}`,
+        );
         return null;
       });
-      
-      console.info(`[SaveProduct] Response status: ${response.status}`, responsePayload);
-      
+
+      console.info(
+        `[SaveProduct] Response status: ${response.status}`,
+        responsePayload,
+      );
+
       if (!response.ok) {
-        throw new Error(responsePayload?.message ?? `HTTP ${response.status}: Lưu sản phẩm thất bại`);
+        throw new Error(
+          responsePayload?.message ??
+            `HTTP ${response.status}: Lưu sản phẩm thất bại`,
+        );
       }
 
       toast({
@@ -2579,7 +2654,7 @@ export default function AdminPage() {
           [...prev].sort(
             (a, b) =>
               Number(Boolean(b.isHomepageFeatured)) -
-              Number(Boolean(a.isHomepageFeatured)) ||
+                Number(Boolean(a.isHomepageFeatured)) ||
               Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
           ),
         );
@@ -2891,10 +2966,16 @@ export default function AdminPage() {
       discountValue: String(item.discountValue ?? ""),
       minOrderValue: String(item.minOrderValue ?? "0"),
       usageLimit: String(item.usageLimit ?? "100"),
-      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
-      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
+      startDate: item.startDate
+        ? new Date(item.startDate).toISOString().slice(0, 16)
+        : "",
+      endDate: item.endDate
+        ? new Date(item.endDate).toISOString().slice(0, 16)
+        : "",
       status: String(item.status ?? "ACTIVE"),
-      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) =>
+        Number(user.id),
+      ),
     });
   }
 
@@ -2909,8 +2990,12 @@ export default function AdminPage() {
       const discountValue = Number(voucherForm.discountValue);
       const minOrderValue = Number(voucherForm.minOrderValue || 0);
       const usageLimit = Number(voucherForm.usageLimit || 100);
-      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
-      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+      const startDate = voucherForm.startDate
+        ? new Date(voucherForm.startDate)
+        : null;
+      const endDate = voucherForm.endDate
+        ? new Date(voucherForm.endDate)
+        : null;
 
       if (!normalizedCode) {
         throw new Error("Mã giảm giá không được để trống");
@@ -2944,7 +3029,9 @@ export default function AdminPage() {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         status: voucherForm.status,
-        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) =>
+          Number(value),
+        ),
       };
 
       const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
@@ -2959,7 +3046,9 @@ export default function AdminPage() {
       const result = await response.json().catch(() => null);
       if (!response.ok) {
         const fieldMessage = extractIssueMessage(result?.issues);
-        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
+        throw new Error(
+          fieldMessage || result?.message || "Cập nhật voucher thất bại",
+        );
       }
 
       await refreshDashboardSummary();
@@ -3395,6 +3484,38 @@ export default function AdminPage() {
     }
   }, [selectedReview, selectedReviewId]);
 
+  // Keyboard navigation: Arrow Up/Down to navigate reviews, Ctrl+Enter to send reply
+  useEffect(() => {
+    if (activeTab !== "reviews") return;
+
+    function onKey(e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!Array.isArray(filteredReviews) || filteredReviews.length === 0) return;
+        const currentIndex = filteredReviews.findIndex((r) => Number(r.id) === Number(selectedReviewId));
+        let nextIndex = currentIndex;
+        if (e.key === "ArrowDown") {
+          nextIndex = currentIndex < 0 ? 0 : Math.min(filteredReviews.length - 1, currentIndex + 1);
+        } else {
+          nextIndex = currentIndex < 0 ? 0 : Math.max(0, currentIndex - 1);
+        }
+        const next = filteredReviews[nextIndex];
+        if (next) setSelectedReviewId(Number(next.id));
+      }
+
+      if ((e.key === "Enter" || e.key === "\n") && (e.ctrlKey || e.metaKey)) {
+        // Ctrl+Enter to send
+        if (selectedReviewId) {
+          e.preventDefault();
+          saveReviewReply(Number(selectedReviewId));
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTab, filteredReviews, selectedReviewId, saveReviewReply]);
+
   const filteredWarehouses = useMemo(() => {
     let filtered = warehouseOverview?.warehouses ?? dashboard?.warehouses ?? [];
 
@@ -3788,8 +3909,8 @@ export default function AdminPage() {
 
     return normalizePermissionActions(
       permissionDraftByUserId[selectedPermissionTarget.id] ??
-      selectedPermissionTarget.permissions ??
-      [],
+        selectedPermissionTarget.permissions ??
+        [],
     );
   }, [permissionCatalog, permissionDraftByUserId, selectedPermissionTarget]);
 
@@ -3851,11 +3972,11 @@ export default function AdminPage() {
           (prev ?? []).map((item) =>
             Number(item.id) === userId
               ? {
-                ...item,
-                permissions: payload.permissions ?? [],
-                roleId: payload.roleId ?? item.roleId,
-                role: payload.role ?? item.role,
-              }
+                  ...item,
+                  permissions: payload.permissions ?? [],
+                  roleId: payload.roleId ?? item.roleId,
+                  role: payload.role ?? item.role,
+                }
               : item,
           ),
         );
@@ -3998,10 +4119,11 @@ export default function AdminPage() {
                           key={item.id}
                           type="button"
                           onClick={() => setActiveTab(item.id)}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
-                            ? "bg-primary text-primary-foreground"
-                            : "text-slate-700 hover:bg-secondary hover:text-primary"
-                            }`}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                            activeTab === item.id
+                              ? "bg-primary text-primary-foreground"
+                              : "text-slate-700 hover:bg-secondary hover:text-primary"
+                          }`}
                         >
                           <span className="flex items-center gap-3">
                             <item.icon className="h-4 w-4" />
@@ -4063,10 +4185,11 @@ export default function AdminPage() {
                       key={card.id}
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
-                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
-                        ? "border-primary ring-2 ring-primary/20"
-                        : "hover:border-primary/50"
-                        }`}
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                        selectedSummaryCard === card.id
+                          ? "border-primary ring-2 ring-primary/20"
+                          : "hover:border-primary/50"
+                      }`}
                     >
                       <p className="text-sm text-muted-foreground">
                         {card.label}
@@ -4600,7 +4723,7 @@ export default function AdminPage() {
                               key={`cell-${index}`}
                               fill={
                                 ["#10b981", "#f59e0b", "#ef4444", "#6366f1"][
-                                index % 4
+                                  index % 4
                                 ]
                               }
                             />
@@ -4635,10 +4758,11 @@ export default function AdminPage() {
 
           <section
             id="products"
-            className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
-              ? "block"
-              : "hidden"
-              }`}
+            className={`space-y-6 ${
+              isProductCreateTab || isProductInventoryTab || isProductEditTab
+                ? "block"
+                : "hidden"
+            }`}
           >
             <SectionHeader
               sectionId={activeTab}
@@ -4694,7 +4818,8 @@ export default function AdminPage() {
                         <div>
                           <div>
                             <span className="text-slate-400">name:</span>{" "}
-                            {selectedEditingProduct?.name || productForm.name ||
+                            {selectedEditingProduct?.name ||
+                              productForm.name ||
                               "-"}
                           </div>
                           <div>
@@ -5870,7 +5995,9 @@ export default function AdminPage() {
                         Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
                       </p>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Mã giảm giá</label>
+                        <label className="text-sm font-medium">
+                          Mã giảm giá
+                        </label>
                         <input
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.code}
@@ -5886,7 +6013,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Phạm vi mã</label>
+                          <label className="text-sm font-medium">
+                            Phạm vi mã
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.couponScope}
@@ -5898,12 +6027,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PRODUCT">Giảm giá sản phẩm</option>
-                            <option value="SHIPPING">Giảm phí vận chuyển</option>
+                            <option value="SHIPPING">
+                              Giảm phí vận chuyển
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Loại giảm</label>
+                          <label className="text-sm font-medium">
+                            Loại giảm
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.discountType}
@@ -5915,12 +6048,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PERCENT">%</option>
-                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                            <option value="FIXED_AMOUNT">
+                              Số tiền cố định
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Giá trị giảm</label>
+                          <label className="text-sm font-medium">
+                            Giá trị giảm
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -5938,7 +6075,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Đơn tối thiểu</label>
+                          <label className="text-sm font-medium">
+                            Đơn tối thiểu
+                          </label>
                           <input
                             type="number"
                             min="0"
@@ -5953,7 +6092,9 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Số lượt dùng</label>
+                          <label className="text-sm font-medium">
+                            Số lượt dùng
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -5970,7 +6111,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                        <label className="text-sm font-medium">
+                          Thời gian bắt đầu
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -5985,7 +6128,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian kết thúc</label>
+                        <label className="text-sm font-medium">
+                          Thời gian kết thúc
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -6000,7 +6145,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Trạng thái</label>
+                        <label className="text-sm font-medium">
+                          Trạng thái
+                        </label>
                         <select
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.status}
@@ -6106,13 +6253,13 @@ export default function AdminPage() {
                         : formatMoney(item.discountValue),
                       formatMoney(item.minOrderValue),
                       Array.isArray(item.assignedUsers) &&
-                        item.assignedUsers.length > 0
+                      item.assignedUsers.length > 0
                         ? item.assignedUsers
-                          .map(
-                            (user) =>
-                              user.fullName || user.email || `#${user.id}`,
-                          )
-                          .join(", ")
+                            .map(
+                              (user) =>
+                                user.fullName || user.email || `#${user.id}`,
+                            )
+                            .join(", ")
                         : "Tất cả",
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
@@ -6324,7 +6471,7 @@ export default function AdminPage() {
             )}
           </section>
 
-          <section id="returns" className={sectionClassName("returns") }>
+          <section id="returns" className={sectionClassName("returns")}>
             <SectionHeader
               sectionId="returns"
               icon={RotateCcw}
@@ -6340,7 +6487,9 @@ export default function AdminPage() {
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-lg border bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">Tổng yêu cầu</p>
+                      <p className="text-xs text-muted-foreground">
+                        Tổng yêu cầu
+                      </p>
                       <p className="text-xl font-semibold">
                         {adminReturnRequests.length}
                       </p>
@@ -6348,28 +6497,39 @@ export default function AdminPage() {
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Đang chờ</p>
                       <p className="text-xl font-semibold text-amber-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "PENDING",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "PENDING",
+                          ).length
+                        }
                       </p>
                     </div>
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Đã duyệt</p>
                       <p className="text-xl font-semibold text-sky-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "APPROVED",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "APPROVED",
+                          ).length
+                        }
                       </p>
                     </div>
                     <div className="rounded-lg border bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">Đã hoàn tiền</p>
+                      <p className="text-xs text-muted-foreground">
+                        Đã hoàn tiền
+                      </p>
                       <p className="text-xl font-semibold text-emerald-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "REFUNDED",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "REFUNDED",
+                          ).length
+                        }
                       </p>
                     </div>
                   </div>
@@ -6412,7 +6572,8 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center justify-between rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
                       <span>
-                        Tìm thấy: <strong>{filteredReturnRequests.length}</strong> yêu cầu
+                        Tìm thấy:{" "}
+                        <strong>{filteredReturnRequests.length}</strong> yêu cầu
                       </span>
                       <Button
                         size="sm"
@@ -6421,7 +6582,9 @@ export default function AdminPage() {
                           setReturnSearchKeyword("");
                           setReturnStatusFilter("all");
                         }}
-                        disabled={!returnSearchKeyword && returnStatusFilter === "all"}
+                        disabled={
+                          !returnSearchKeyword && returnStatusFilter === "all"
+                        }
                       >
                         Xóa lọc
                       </Button>
@@ -6459,7 +6622,9 @@ export default function AdminPage() {
                       rows={filteredReturnRequests.map((request) => {
                         const requestId = Number(request.id);
                         const isBusy = updatingReturnRequestId === requestId;
-                        const status = String(request.status ?? "").toUpperCase();
+                        const status = String(
+                          request.status ?? "",
+                        ).toUpperCase();
 
                         return [
                           `#${request.id}`,
@@ -6495,7 +6660,10 @@ export default function AdminPage() {
                                 <Button
                                   size="sm"
                                   onClick={() =>
-                                    handleReturnRequestAction(request, "APPROVE")
+                                    handleReturnRequestAction(
+                                      request,
+                                      "APPROVE",
+                                    )
                                   }
                                   disabled={isBusy}
                                 >
@@ -6885,25 +7053,25 @@ export default function AdminPage() {
             <div className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
-                  <p className="text-2xl font-bold">{reviewOverview.total}</p>
+                  <p className="text-xl font-bold">{reviewOverview.total}</p>
                 </Panel>
                 <Panel title="Chờ phản hồi" description="Ưu tiên xử lý">
-                  <p className="text-2xl font-bold text-amber-600">
+                  <p className="text-xl font-bold text-amber-600">
                     {reviewOverview.waitingReply}
                   </p>
                 </Panel>
                 <Panel title="Đã ẩn" description="Nội dung vi phạm">
-                  <p className="text-2xl font-bold text-slate-700">
+                  <p className="text-xl font-bold text-slate-700">
                     {reviewOverview.hidden}
                   </p>
                 </Panel>
                 <Panel title="Sao thấp" description="Từ 1 đến 2 sao">
-                  <p className="text-2xl font-bold text-rose-600">
+                  <p className="text-xl font-bold text-rose-600">
                     {reviewOverview.lowRating}
                   </p>
                 </Panel>
                 <Panel title="24 giờ qua" description="Đánh giá mới">
-                  <p className="text-2xl font-bold text-sky-600">
+                  <p className="text-xl font-bold text-sky-600">
                     {reviewOverview.recent24h}
                   </p>
                 </Panel>
@@ -6913,7 +7081,7 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(180px,220px)_minmax(180px,220px)_auto]">
                   <div className="grid gap-2">
                     <label className="text-xs font-medium">Tìm kiếm</label>
                     <input
@@ -6949,8 +7117,8 @@ export default function AdminPage() {
                       <option value="hidden">Đã ẩn</option>
                     </select>
                   </div>
-                  <div className="flex items-end">
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-end justify-start lg:justify-end">
+                    <span className="text-xs whitespace-nowrap text-muted-foreground">
                       Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
                       giá
                     </span>
@@ -6969,10 +7137,11 @@ export default function AdminPage() {
                       key={chip.id}
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                        }`}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        reviewQuickFilter === chip.id
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                      }`}
                     >
                       {chip.label}
                     </button>
@@ -6988,20 +7157,24 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(200px,240px)_minmax(0,1.8fr)]">
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-y-auto">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
+                        const thread = Array.isArray(item.thread) ? item.thread : [];
+                        const lastMsg = thread.length > 0 ? thread[thread.length - 1] : null;
+                        const unread = lastMsg && !lastMsg.isStaff;
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
                             type="button"
                             onClick={() => setSelectedReviewId(Number(item.id))}
-                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${isSelected
-                              ? "border-primary bg-primary/5 shadow-sm"
-                              : "border-border/70 bg-background hover:border-primary/40"
-                              }`}
+                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                              isSelected
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "border-border/70 bg-background hover:border-primary/40"
+                            }`}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -7017,13 +7190,18 @@ export default function AdminPage() {
                               {statusBadge(
                                 item.isHidden ? "Đã ẩn" : "Đang hiển thị",
                               )}
+                              {unread ? (
+                                <span className="ml-2 inline-flex items-center rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                  Mới
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                               <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
                               <span>•</span>
                               <span>{formatDate(item.createdAt)}</span>
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">
+                            <p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-700">
                               {item.comment || "Không có nội dung"}
                             </p>
                           </button>
@@ -7031,12 +7209,12 @@ export default function AdminPage() {
                       })}
                     </div>
 
-                    <div className="rounded-2xl border border-border/60 bg-background p-4">
+                    <div className="min-h-[720px] rounded-2xl border border-border/60 bg-background p-5 shadow-sm">
                       {selectedReview ? (
-                        <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <h4 className="text-base font-semibold">
+                              <h4 className="text-lg font-semibold">
                                 {selectedReview.product?.name ?? "Sản phẩm"}
                               </h4>
                               <p className="text-xs text-muted-foreground">
@@ -7052,7 +7230,7 @@ export default function AdminPage() {
                             )}
                           </div>
 
-                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
+                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 text-sm">
                             <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
                             <p className="mt-1 whitespace-pre-wrap">
                               {selectedReview.comment ||
@@ -7060,7 +7238,7 @@ export default function AdminPage() {
                             </p>
                           </div>
 
-                          <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                          <div className="grid gap-2 rounded-xl border border-border/60 bg-slate-50 p-3 text-xs text-muted-foreground md:grid-cols-2">
                             <div>
                               Tạo lúc: {formatDate(selectedReview.createdAt)}
                             </div>
@@ -7085,14 +7263,15 @@ export default function AdminPage() {
                             </div>
                           ) : null}
 
-                          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+                          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 shadow-sm">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div>
                                 <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
                                   Luồng hội thoại
                                 </p>
                                 <p className="text-sm text-slate-600">
-                                  Xem toàn bộ trao đổi giữa khách hàng và nhân viên
+                                  Xem toàn bộ trao đổi giữa khách hàng và nhân
+                                  viên
                                 </p>
                               </div>
                               <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-700 shadow-sm">
@@ -7108,10 +7287,15 @@ export default function AdminPage() {
                                       ? "Phản hồi mới nhất từ nhân viên"
                                       : "Phản hồi mới nhất từ khách hàng"}
                                   </span>
-                                  <span>{formatDate(latestReviewThreadMessage.createdAt)}</span>
+                                  <span>
+                                    {formatDate(
+                                      latestReviewThreadMessage.createdAt,
+                                    )}
+                                  </span>
                                 </div>
                                 <p className="whitespace-pre-wrap text-slate-700">
-                                  {latestReviewThreadMessage.message || "Không có nội dung"}
+                                  {latestReviewThreadMessage.message ||
+                                    "Không có nội dung"}
                                 </p>
                               </div>
                             ) : (
@@ -7120,40 +7304,98 @@ export default function AdminPage() {
                               </div>
                             )}
 
-                            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                              {selectedReviewThread.length > 0 ? (
-                                selectedReviewThread.map((message) => (
-                                  <div
-                                    key={message.id}
-                                    className={`rounded-xl border px-3 py-2 text-sm shadow-sm ${message.isStaff
-                                      ? "border-sky-200 bg-white"
-                                      : "border-emerald-200 bg-emerald-50"
+                            <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
+                              {selectedReviewThread.length > 0
+                                ? selectedReviewThread.map((message) => (
+                                    <div
+                                      key={message.id}
+                                      className={`rounded-xl border px-3 py-2 text-sm shadow-sm ${
+                                        message.isStaff
+                                          ? "border-sky-200 bg-white"
+                                          : "border-emerald-200 bg-emerald-50"
                                       }`}
-                                  >
-                                    <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold">
-                                      <span className={message.isStaff ? "text-sky-700" : "text-emerald-700"}>
-                                        {message.isStaff ? "Nhân viên" : "Khách hàng"}
-                                      </span>
-                                      <span className="text-muted-foreground">
-                                        {formatDate(message.createdAt)}
-                                      </span>
+                                    >
+                                      <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold">
+                                        <span
+                                          className={
+                                            message.isStaff
+                                              ? "text-sky-700"
+                                              : "text-emerald-700"
+                                          }
+                                        >
+                                          {message.isStaff
+                                            ? "Nhân viên"
+                                            : "Khách hàng"}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                          {formatDate(message.createdAt)}
+                                        </span>
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-slate-700">
+                                        {message.message || "(Trống)"}
+                                      </p>
                                     </div>
-                                    <p className="whitespace-pre-wrap text-slate-700">
-                                      {message.message || "(Trống)"}
-                                    </p>
-                                  </div>
-                                ))
-                              ) : null}
+                                  ))
+                                : null}
                             </div>
                           </div>
 
-                          <div className="space-y-2 rounded-2xl border border-border/60 bg-background p-4">
+                          <div className="space-y-3 rounded-2xl border border-border/60 bg-background p-4 shadow-sm xl:sticky xl:bottom-6">
+                            {/* Quick replies */}
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground"
+                                  onClick={() => setShowQuickEditor((s) => !s)}
+                                >
+                                  {showQuickEditor ? "Đóng quản lý mẫu" : "Quản lý mẫu"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground"
+                                  onClick={addQuickReply}
+                                >
+                                  Thêm mẫu
+                                </button>
+                              </div>
+
+                              {!showQuickEditor
+                                ? quickReplies.map((qr, idx) => (
+                                    <button
+                                      key={`qr-${idx}`}
+                                      type="button"
+                                      className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground hover:bg-background"
+                                      onClick={() => handleQuickReplyClick(selectedReview.id, qr, false)}
+                                    >
+                                      {qr}
+                                    </button>
+                                  ))
+                                : quickReplies.map((qr, idx) => (
+                                    <div key={`qr-edit-${idx}`} className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        className="rounded-md border px-2 py-1 text-xs"
+                                        value={qr}
+                                        onChange={(e) => updateQuickReply(idx, e.target.value)}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="text-xs text-destructive"
+                                        onClick={() => removeQuickReply(idx)}
+                                      >
+                                        Xóa
+                                      </button>
+                                    </div>
+                                  ))}
+                            </div>
+
                             <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                               Phản hồi của admin
                             </label>
                             <textarea
-                              className="min-h-28 w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-inner"
-                              rows={5}
+                              className="min-h-36 w-full rounded-xl border bg-white px-3 py-3 text-sm shadow-inner"
+                              rows={6}
                               placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
                               value={
                                 reviewReplyDraftById[selectedReview.id] ?? ""
@@ -7171,7 +7413,8 @@ export default function AdminPage() {
                                   ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
                                   : "Chưa có phản hồi"}
                               </span>
-                              <Button
+                              <div className="flex items-center gap-2">
+                                <Button
                                 size="sm"
                                 className="bg-sky-600 text-white hover:bg-sky-700"
                                 disabled={
@@ -7185,6 +7428,17 @@ export default function AdminPage() {
                                   ? "Đang lưu..."
                                   : "Lưu phản hồi"}
                               </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setReviewReplyDraftById((prev) => ({
+                                    ...prev,
+                                    [selectedReview.id]: "",
+                                  }))}
+                                >
+                                  Xóa
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
@@ -7299,13 +7553,13 @@ export default function AdminPage() {
           </section>
 
           <section id="roles" className={sectionClassName("roles")}>
-              <SectionHeader
-                sectionId="roles"
-                icon={ShieldCheck}
-                title="Phân quyền"
-                description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
-                showPill={false}
-              />
+            <SectionHeader
+              sectionId="roles"
+              icon={ShieldCheck}
+              title="Phân quyền"
+              description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
+              showPill={false}
+            />
             <Panel
               title="Chọn tài khoản"
               description="Tài khoản admin@gmail.com luôn có toàn bộ quyền"
@@ -7345,7 +7599,7 @@ export default function AdminPage() {
                           .toLowerCase() === "admin@gmail.com"
                           ? "Siêu quản trị"
                           : selectedPermissionTarget.role?.name ||
-                          "Chưa có vai trò"}
+                            "Chưa có vai trò"}
                       </div>
                     </div>
                   ) : null}
@@ -7395,10 +7649,10 @@ export default function AdminPage() {
                             onChange={(event) =>
                               selectedPermissionTarget
                                 ? toggleUserPermission(
-                                  selectedPermissionTarget.id,
-                                  actionName,
-                                  event.target.checked,
-                                )
+                                    selectedPermissionTarget.id,
+                                    actionName,
+                                    event.target.checked,
+                                  )
                                 : null
                             }
                             className="mt-1"
@@ -7429,7 +7683,7 @@ export default function AdminPage() {
                     disabled={
                       !selectedPermissionTarget ||
                       savingPermissionTargetId ===
-                      Number(selectedPermissionTarget?.id) ||
+                        Number(selectedPermissionTarget?.id) ||
                       String(selectedPermissionTarget?.email ?? "")
                         .trim()
                         .toLowerCase() === "admin@gmail.com"
@@ -7437,11 +7691,11 @@ export default function AdminPage() {
                     className="w-full"
                   >
                     {savingPermissionTargetId ===
-                      Number(selectedPermissionTarget?.id)
+                    Number(selectedPermissionTarget?.id)
                       ? "Đang lưu quyền tài khoản..."
                       : String(selectedPermissionTarget?.email ?? "")
-                        .trim()
-                        .toLowerCase() === "admin@gmail.com"
+                            .trim()
+                            .toLowerCase() === "admin@gmail.com"
                         ? "Siêu quản trị luôn có toàn quyền"
                         : "Lưu quyền tài khoản"}
                   </Button>
@@ -7455,7 +7709,13 @@ export default function AdminPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title, description, sectionId, showPill = true }) {
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
+  sectionId,
+  showPill = true,
+}) {
   const schema = schemaBySection[sectionId] ?? schemaBySection.dashboard;
 
   return (
@@ -7521,42 +7781,42 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-      value === "Đã thanh toán" ||
-      value === "Đã hoàn tiền" ||
-      value === "Đã duyệt" ||
-      value === "Đã nhận hàng" ||
-      value === "Đã giao" ||
-      value === "Đã giao hàng" ||
-      value === "Đã kết nối" ||
-      value === "Đã đăng" ||
-      value === "Phổ biến" ||
-      value === "Đã xác minh" ||
-      value === "Còn hàng" ||
-      value === "Đã dùng" ||
-      value === "Đang hiển thị"
+    value === "Đã thanh toán" ||
+    value === "Đã hoàn tiền" ||
+    value === "Đã duyệt" ||
+    value === "Đã nhận hàng" ||
+    value === "Đã giao" ||
+    value === "Đã giao hàng" ||
+    value === "Đã kết nối" ||
+    value === "Đã đăng" ||
+    value === "Phổ biến" ||
+    value === "Đã xác minh" ||
+    value === "Còn hàng" ||
+    value === "Đã dùng" ||
+    value === "Đang hiển thị"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-        value === "Chờ xác nhận" ||
-        value === "Chờ thanh toán" ||
-        value === "Đang xử lý" ||
-        value === "Đang chuẩn bị" ||
-        value === "Đang gửi trả" ||
-        value === "Tạm dừng" ||
-        value === "Cần xem xét" ||
-        value === "Bản nháp" ||
-        value === "Ổn định"
+          value === "Chờ xác nhận" ||
+          value === "Chờ thanh toán" ||
+          value === "Đang xử lý" ||
+          value === "Đang chuẩn bị" ||
+          value === "Đang gửi trả" ||
+          value === "Tạm dừng" ||
+          value === "Cần xem xét" ||
+          value === "Bản nháp" ||
+          value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-          value === "Đang vận chuyển" ||
-          value === "Quản trị viên" ||
-          value === "Nhân viên" ||
-          value === "Mở"
+            value === "Đang vận chuyển" ||
+            value === "Quản trị viên" ||
+            value === "Nhân viên" ||
+            value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : value === "Đã từ chối"
             ? "bg-rose-100 text-rose-700"
-          : value === "Đã ẩn"
-            ? "bg-slate-200 text-slate-700"
-            : "bg-rose-100 text-rose-700";
+            : value === "Đã ẩn"
+              ? "bg-slate-200 text-slate-700"
+              : "bg-rose-100 text-rose-700";
 
   return (
     <span
@@ -7640,7 +7900,9 @@ function formatPaymentStatusLabelAdmin(value) {
 }
 
 function formatReturnStatusLabelAdmin(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (normalized === "PENDING") return "Đang chờ";
   if (normalized === "APPROVED") return "Đã duyệt";
   if (normalized === "REJECTED") return "Đã từ chối";
