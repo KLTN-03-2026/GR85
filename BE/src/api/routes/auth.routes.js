@@ -120,6 +120,7 @@ router.post("/register", async (req, res) => {
     const payload = {
       email: parsed.email,
       password: parsed.password,
+      ip: req.ip,
     };
     const result = await registerUser(payload);
     return res.status(201).json(result);
@@ -155,7 +156,10 @@ router.post("/verify-email", async (req, res) => {
 router.post("/resend-verification", async (req, res) => {
   try {
     const parsed = emailSchema.parse(req.body);
-    const result = await resendVerificationCode(parsed);
+    const result = await resendVerificationCode({
+      ...parsed,
+      ip: req.ip,
+    });
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);
@@ -165,7 +169,10 @@ router.post("/resend-verification", async (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const parsed = emailSchema.parse(req.body);
-    const result = await requestPasswordReset(parsed);
+    const result = await requestPasswordReset({
+      ...parsed,
+      ip: req.ip,
+    });
     return res.json(result);
   } catch (error) {
     return handleRouteError(error, res);
@@ -418,32 +425,45 @@ function handleRouteError(error, res) {
 
   if (error instanceof Error) {
     const status =
-      error.message === "Email đã tồn tại"
-        ? 409
-        : error.message === "Email không tồn tại"
-          ? 404
-          : error.message ===
-              "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
-            ? 502
+      typeof error.statusCode === "number"
+        ? error.statusCode
+        : error.message === "Email đã tồn tại"
+          ? 409
+          : error.message === "Email không tồn tại"
+            ? 404
             : error.message ===
-                "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
+                "Không thể gửi lại email xác minh. Vui lòng thử lại sau"
               ? 502
-              : error.message === "Người dùng không tồn tại"
-                ? 404
-                : error.message ===
-                    "Vui lòng xác nhận email trước khi đăng nhập"
-                  ? 403
-                  : error.message === "Không thể gửi email xác nhận"
-                    ? 502
-                    : error.message ===
-                        "Mã xác minh không hợp lệ hoặc đã hết hạn"
-                      ? 400
-                      : error.message === "Mật khẩu hiện tại không chính xác"
-                        ? 401
-                        : error.message.includes("Không hợp lệ")
+              : error.message ===
+                  "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau"
+                ? 502
+                : error.message === "Người dùng không tồn tại"
+                  ? 404
+                  : error.message ===
+                      "Vui lòng xác nhận email trước khi đăng nhập"
+                    ? 403
+                    : error.message === "Không thể gửi email xác nhận"
+                      ? 502
+                      : error.message ===
+                          "Mã xác minh không hợp lệ hoặc đã hết hạn"
+                        ? 400
+                        : error.message === "Mật khẩu hiện tại không chính xác"
                           ? 401
-                          : 400;
-    return res.status(status).json({ message: error.message });
+                          : error.message.includes("Không hợp lệ")
+                            ? 401
+                            : 400;
+
+    const payload = { message: error.message };
+    if (typeof error.retryAfterSeconds === "number" && error.retryAfterSeconds > 0) {
+      payload.retryAfterSeconds = error.retryAfterSeconds;
+    }
+
+    const response = res.status(status);
+    if (status === 429 && typeof payload.retryAfterSeconds === "number") {
+      response.set("Retry-After", String(payload.retryAfterSeconds));
+    }
+
+    return response.json(payload);
   }
 
   return res.status(500).json({ message: "Lỗi máy chủ không xác định" });

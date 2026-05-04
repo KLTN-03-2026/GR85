@@ -71,3 +71,34 @@ Mục mới nhất luôn được thêm ở cuối file.
     - Áp dụng cùng hành vi cho luồng đổi mật khẩu ở màn hình đặt lại mật khẩu.
   - **Lý do:**
     - Giúp người dùng nhập mật khẩu dễ hơn và biết ngay khi hai ô mật khẩu chưa khớp.
+
+## 2026-05-04 — Thêm thời gian chờ gửi lại OTP
+
+### Thay đổi đã thực hiện
+
+- **FE/src/client/features/auth/pages/AuthPage.jsx**
+  - **Thay đổi gì:**
+    - Thêm cooldown 90 giây cho các thao tác gửi OTP ở đăng ký, quên mật khẩu và gửi lại mã xác minh.
+    - Hiển thị đếm ngược trực tiếp trên nút gửi lại mã để người dùng biết khi nào được gửi tiếp.
+    - Lưu trạng thái cooldown theo email để tránh refresh trang là bỏ qua thời gian chờ.
+  - **Lý do:**
+    - Giảm spam gửi OTP, hạn chế gọi API liên tục và cải thiện trải nghiệm người dùng.
+
+## 2026-05-04 — Chặn spam OTP ở backend
+
+### Thay đổi đã thực hiện
+
+- **BE/src/services/auth.service.js**
+  - **Thay đổi gì:**
+    - Thêm cooldown 90 giây theo email và IP cho các luồng gửi OTP: đăng ký, gửi lại email xác minh, quên mật khẩu.
+    - Khi gọi lại quá sớm, backend trả lỗi `429` với thông báo `Vui lòng chờ X giây trước khi gửi lại mã OTP`.
+    - Giữ cooldown trong bộ nhớ tiến trình để chặn các request lặp lại ngay cả khi người dùng đổi trang hoặc gọi API liên tiếp.
+  - **Lý do:**
+    - Chặn spam ở phía server, không chỉ dựa vào UI.
+
+- **BE/src/api/routes/auth.routes.js**
+  - **Thay đổi gì:**
+    - Truyền `req.ip` vào các endpoint OTP để rate limit theo cả email và IP.
+    - Ưu tiên trả về `statusCode` từ lỗi service, đồng thời đính kèm `Retry-After` cho lỗi giới hạn tần suất.
+  - **Lý do:**
+    - Đảm bảo response HTTP đúng chuẩn và frontend nhận được thông báo chờ rõ ràng.
