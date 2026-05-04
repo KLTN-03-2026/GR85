@@ -48,6 +48,7 @@ enum PaymentMethod {
     VNPAY
     MOMO
     BANK_TRANSFER
+    SEPAY
 }
 
 enum PaymentStatus {
@@ -82,6 +83,9 @@ enum ReturnRequestStatus {
     APPROVED
     REJECTED
     REFUNDED
+    SHIPPING_BACK
+    RECEIVED
+    CANCELLED
 }
 
 enum NotificationType {
@@ -135,6 +139,7 @@ model User {
     notifications  Notification[]
     couponAccesses CouponUser[]
     resolvedChatRooms ChatRoomMeta[] @relation("ChatRoomResolver")
+    aiRequestLogs  AiRequestLog[]
 
     @@map("Users")
 }
@@ -270,6 +275,7 @@ model Product {
     reviews       Review[]
     aiBuildItems  AiBuildItem[]
     wishlistItems WishlistItem[]
+    returnItems   ReturnItem[]   @relation("ReturnItems")
 
     @@map("Products")
 }
@@ -601,6 +607,37 @@ model AiBuildItem {
     @@map("AI_Build_Items")
 }
 
+model AiSetting {
+    id           Int      @id @default(1)
+    isEnabled    Boolean  @default(true) @map("is_enabled")
+    model        String   @default("gpt-4o-mini")
+    temperature  Float    @default(0.7)
+    maxToken     Int      @default(2000) @map("max_token")
+    systemPrompt String   @db.Text @map("system_prompt")
+    updatedAt    DateTime @updatedAt @map("updated_at")
+
+    @@map("AI_Settings")
+}
+
+model AiRequestLog {
+    id             Int      @id @default(autoincrement())
+    userId         Int?     @map("user_id")
+    endpoint       String
+    prompt         String   @db.Text
+    response       String   @db.Text
+    modelUsed      String   @map("model_used")
+    promptTokens   Int      @map("prompt_tokens")
+    completionTokens Int    @map("completion_tokens")
+    totalTokens    Int      @map("total_tokens")
+    cost           Decimal  @db.Decimal(15, 6)
+    createdAt      DateTime @default(now()) @map("created_at")
+
+    user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    @@index([createdAt])
+    @@map("AI_Request_Logs")
+}
+
 model EmailVerification {
     id         Int      @id @default(autoincrement())
     email      String
@@ -648,24 +685,76 @@ model WalletTransaction {
 }
 
 model ReturnRequest {
-    id             Int                 @id @default(autoincrement())
-    orderId        Int                 @map("order_id")
-    userId         Int                 @map("user_id")
-    reason         String              @db.Text
-    status         ReturnRequestStatus @default(PENDING)
-    reviewedBy     Int?                @map("reviewed_by")
-    rejectReason   String?             @map("reject_reason") @db.Text
-    refundAmount   Decimal?            @map("refund_amount") @db.Decimal(15, 2)
-    requestedAt    DateTime            @default(now()) @map("requested_at")
-    reviewedAt     DateTime?           @map("reviewed_at")
+    id                 Int                 @id @default(autoincrement())
+    orderId            Int                 @map("order_id")
+    userId             Int                 @map("user_id")
+    reason             String              @db.Text
+    note               String?             @db.Text
+    status             ReturnRequestStatus @default(PENDING)
+    bankName           String?             @map("bank_name")
+    bankAccountNumber  String?             @map("bank_account_number")
+    bankAccountName    String?             @map("bank_account_name")
+    reviewedBy         Int?                @map("reviewed_by")
+    rejectReason       String?             @map("reject_reason") @db.Text
+    refundAmount       Decimal?            @map("refund_amount") @db.Decimal(15, 2)
+    requestedAt        DateTime            @default(now()) @map("requested_at")
+    reviewedAt         DateTime?           @map("reviewed_at")
+    receivedAt         DateTime?           @map("received_at")
+    refundedAt         DateTime?           @map("refunded_at")
 
-    order          Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-    user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+    order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+    items              ReturnItem[]
+    media              ReturnMedia[]
+    logs               ReturnLog[]
 
     @@index([orderId])
     @@index([userId])
     @@index([status])
     @@map("Return_Requests")
+}
+
+model ReturnItem {
+    id         Int      @id @default(autoincrement())
+    returnId   Int      @map("return_id")
+    productId  Int      @map("product_id")
+    quantity   Int
+    createdAt  DateTime @default(now()) @map("created_at")
+
+    returnRequest ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+    product       Product       @relation("ReturnItems", fields: [productId], references: [id], onDelete: Restrict)
+
+    @@index([returnId])
+    @@index([productId])
+    @@map("Return_Items")
+}
+
+model ReturnMedia {
+    id        Int      @id @default(autoincrement())
+    returnId  Int      @map("return_id")
+    mediaUrl  String   @map("media_url")
+    sortOrder Int      @default(0) @map("sort_order")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    returnRequest ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+    @@index([returnId])
+    @@map("Return_Media")
+}
+
+model ReturnLog {
+    id        Int      @id @default(autoincrement())
+    returnId  Int      @map("return_id")
+    action    String
+    createdBy Int?     @map("created_by")
+    note      String?  @db.Text
+    createdAt DateTime @default(now()) @map("created_at")
+
+    returnRequest ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+    @@index([returnId])
+    @@index([createdAt])
+    @@map("Return_Logs")
 }
 
 model WishlistItem {
@@ -699,4 +788,36 @@ model Notification {
     @@index([userId, isRead])
     @@index([createdAt])
     @@map("Notifications")
+}
+
+// ================= 8. NGÂN HÀNG & THANH TOÁN =================
+
+model Bank {
+    id        Int      @id @default(autoincrement())
+    code      String   @unique
+    name      String
+    isActive  Boolean  @default(true) @map("is_active")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    bankAccounts BankAccount[]
+
+    @@map("Banks")
+}
+
+model BankAccount {
+    id              Int      @id @default(autoincrement())
+    bankId          Int      @map("bank_id")
+    accountNumber   String   @unique @map("account_number")
+    accountName     String   @map("account_name")
+    accountHolder   String   @map("account_holder")
+    isVerified      Boolean  @default(false) @map("is_verified")
+    createdAt       DateTime @default(now()) @map("created_at")
+    updatedAt       DateTime @updatedAt @map("updated_at")
+
+    bank            Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+    @@index([bankId])
+    @@index([accountNumber])
+    @@index([isVerified])
+    @@map("Bank_Accounts")
 }

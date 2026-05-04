@@ -6,6 +6,7 @@ import { CartProvider } from "@/client/features/cart/context/CartContext";
 import { BuildProvider } from "@/client/features/build/context/BuildContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { FavoriteProvider } from "@/client/features/favorite/context/FavoriteContext";
 
 const queryClient = new QueryClient();
 
@@ -15,13 +16,15 @@ export function AppProviders({ children }) {
       <TooltipProvider>
         <AuthProvider>
           <NotificationProvider>
-            <CartProvider>
-              <BuildProvider>
-                <Toaster />
-                <Sonner />
-                {children}
-              </BuildProvider>
-            </CartProvider>
+            <FavoriteProvider>
+              <CartProvider>
+                <BuildProvider>
+                  <Toaster />
+                  <Sonner />
+                  {children}
+                </BuildProvider>
+              </CartProvider>
+            </FavoriteProvider>
           </NotificationProvider>
         </AuthProvider>
       </TooltipProvider>

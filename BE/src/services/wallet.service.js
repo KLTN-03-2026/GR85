@@ -4,4 +4,7 @@ export {
   listMyReturnRequests,
   listReturnRequestsForAdmin,
   reviewReturnRequestByAdmin,
+  markReturnAsShippingBack,
+  markReturnAsReceived,
+  processReturnRefund,
 } from "./wallet-return.service.js";

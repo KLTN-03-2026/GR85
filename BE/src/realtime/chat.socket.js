@@ -7,6 +7,7 @@ const roomState = new Map();
 let ioInstance = null;
 
 export function initializeChatSocket(httpServer) {
+  // Create one Socket.IO instance for the whole app and keep it for later emit helpers.
   const io = new Server(httpServer, {
     cors: {
       origin: env.CORS_ORIGIN,
@@ -15,6 +16,7 @@ export function initializeChatSocket(httpServer) {
     path: "/socket.io",
   });
 
+  // Authenticate every socket connection with the JWT from handshake auth/header.
   io.use(async (socket, next) => {
     try {
       const token = extractBearerToken(socket);
@@ -55,12 +57,15 @@ export function initializeChatSocket(httpServer) {
 
   io.on("connection", (socket) => {
     const connectedUser = socket.data.user;
+    // Join a private room for direct user notifications.
     socket.join(getUserKey(connectedUser.id));
 
     if (connectedUser?.isAdmin) {
+      // Admins also subscribe to the monitoring room for global chat events.
       socket.join("admin_chat_monitor");
     }
 
+    // Track which support room the user is currently viewing.
     socket.on("join_room", (payload) => {
       const roomId = Number(payload?.roomId);
       if (!Number.isFinite(roomId) || roomId <= 0) {
@@ -73,6 +78,7 @@ export function initializeChatSocket(httpServer) {
       emitPresence(roomId);
     });
 
+    // Remove the user from the room and clear typing state on exit.
     socket.on("leave_room", (payload) => {
       const roomId = Number(payload?.roomId);
       if (!Number.isFinite(roomId) || roomId <= 0) {
@@ -86,6 +92,7 @@ export function initializeChatSocket(httpServer) {
       emitPresence(roomId);
     });
 
+    // Typing state is kept in memory so admins can see live activity.
     socket.on("chat_typing", (payload) => {
       const roomId = Number(payload?.roomId);
       const isTyping = Boolean(payload?.isTyping);
@@ -104,6 +111,7 @@ export function initializeChatSocket(httpServer) {
     });
 
     socket.on("admin_room_viewing", (payload) => {
+    // Admins can mark that they are actively watching a room response flow.
       const roomId = Number(payload?.roomId);
       const isViewing = Boolean(payload?.isViewing);
 
@@ -125,6 +133,7 @@ export function initializeChatSocket(httpServer) {
     });
 
     socket.on("disconnect", () => {
+    // Clean up all in-memory presence records for this user when the socket closes.
       for (const [roomId, state] of roomState.entries()) {
         if (state.viewers.has(connectedUser.id) || state.typers.has(connectedUser.id)) {
           state.viewers.delete(connectedUser.id);
@@ -141,6 +150,7 @@ export function initializeChatSocket(httpServer) {
   return io;
 }
 
+// Emit a new chat message to the room and notify admins that activity changed.
 export function emitNewMessage(roomId, payload) {
   const io = ioInstance;
   if (!io) {
@@ -155,6 +165,7 @@ export function emitNewMessage(roomId, payload) {
   });
 }
 
+// Broadcast the room completion event to the customer and admin monitor room.
 export function emitRoomDone(roomId, payload) {
   const io = ioInstance;
   if (!io) {
@@ -169,6 +180,7 @@ export function emitRoomDone(roomId, payload) {
   });
 }
 
+// Send read receipts for a batch of message IDs.
 export function emitMessagesRead(roomId, messageIds, userId) {
   const io = ioInstance;
   if (!io || !messageIds || messageIds.length === 0) {
@@ -183,6 +195,7 @@ export function emitMessagesRead(roomId, messageIds, userId) {
   });
 }
 
+// Notify both admins and the owning user when an order status changes.
 export function emitOrderStatusUpdated(payload) {
   const io = ioInstance;
   if (!io) {
@@ -212,6 +225,7 @@ export function emitOrderStatusUpdated(payload) {
   }
 }
 
+// Return the current in-memory presence snapshot for a support room.
 export function getRoomPresence(roomId) {
   const state = roomState.get(Number(roomId));
   if (!state) {
@@ -238,6 +252,7 @@ function emitPresence(roomId) {
     return;
   }
 
+  // Presence payload combines viewers and typers so clients can render live activity.
   const payload = {
     roomId: Number(roomId),
     ...getRoomPresence(roomId),
@@ -249,6 +264,7 @@ function emitPresence(roomId) {
 }
 
 function addViewer(roomId, user, isViewingResponse) {
+  // Keep the latest viewer snapshot in memory, keyed by user ID.
   const state = ensureRoomState(roomId);
   state.viewers.set(user.id, {
     userId: user.id,
@@ -265,6 +281,7 @@ function removeViewer(roomId, userId) {
 }
 
 function addTyper(roomId, user) {
+  // Typers are tracked separately so typing indicators do not overwrite viewers.
   const state = ensureRoomState(roomId);
   state.typers.set(user.id, {
     userId: user.id,
@@ -282,6 +299,7 @@ function removeTyper(roomId, userId) {
 function ensureRoomState(roomId) {
   const normalizedRoomId = Number(roomId);
   if (!roomState.has(normalizedRoomId)) {
+    // Lazily initialize room state to avoid pre-allocating every possible room.
     roomState.set(normalizedRoomId, {
       viewers: new Map(),
       typers: new Map(),

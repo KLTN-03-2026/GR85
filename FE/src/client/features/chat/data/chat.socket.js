@@ -11,7 +11,7 @@ export function connectChatSocket(token) {
     return socketInstance;
   }
 
-  socketInstance = io("/", {
+  socketInstance = io("http://localhost:3001", {
     path: "/socket.io",
     transports: ["websocket"],
     auth: {

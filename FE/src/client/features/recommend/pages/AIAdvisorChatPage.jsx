@@ -158,13 +158,12 @@ export default function AIAdvisorChatPage() {
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`max-w-[90%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                    message.role === "user"
+                  className={`max-w-[90%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${message.role === "user"
                       ? "ml-auto bg-primary text-primary-foreground"
                       : message.isError
                         ? "bg-destructive/10 text-destructive"
                         : "bg-muted"
-                  }`}
+                    }`}
                 >
                   {message.content}
                 </div>

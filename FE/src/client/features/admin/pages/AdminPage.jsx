@@ -1,5 +1,4 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Building2,
@@ -12,6 +11,7 @@ import {
   Package,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
   Sparkles,
@@ -36,8 +36,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
@@ -66,6 +64,7 @@ const navItems = [
   { id: "products-inventory", label: "Danh mục sản phẩm", icon: Package },
   { id: "products-edit", label: "Chỉnh sửa sản phẩm", icon: Pencil },
   { id: "orders", label: "Đơn hàng", icon: ClipboardList },
+  { id: "returns", label: "Trả hàng", icon: RotateCcw },
   { id: "catalog", label: "Danh mục & NCC", icon: Building2 },
   { id: "vouchers", label: "Mã giảm giá", icon: TicketPercent },
   { id: "warehouse", label: "Kho", icon: Warehouse },
@@ -103,7 +102,7 @@ const navGroups = [
   {
     id: "commerce",
     label: "Kinh doanh & CSKH",
-    tabIds: ["orders", "vouchers", "reviews", "chat"],
+    tabIds: ["orders", "returns", "vouchers", "reviews", "chat"],
   },
   {
     id: "automation",
@@ -127,6 +126,7 @@ const tabPermissionMap = {
   "products-inventory": "admin_products_manage",
   "products-edit": "admin_products_manage",
   orders: "admin_orders_manage",
+  returns: "admin_orders_manage",
   catalog: "admin_catalog_manage",
   vouchers: "admin_vouchers_manage",
   warehouse: "admin_warehouse_manage",
@@ -136,30 +136,6 @@ const tabPermissionMap = {
   verification: "admin_verification_view",
   roles: "admin_roles_manage",
 };
-
-// Mapping module base names -> permission module (users, products, orders, etc.)
-const permissionModuleMap = {
-  users: "users",
-  "products-create": "products",
-  "products-inventory": "products",
-  "products-edit": "products",
-  orders: "orders",
-  catalog: "catalog",
-  vouchers: "vouchers",
-  warehouse: "warehouse",
-  reviews: "reviews",
-  chat: "chat",
-  "ai-build": "ai_build",
-  roles: "roles",
-};
-
-// Permission levels for each module: view -> edit -> manage (hierarchical)
-const PERMISSION_LEVELS = [
-  { value: "none", label: "Không có quyền", icon: "🚫" },
-  { value: "view", label: "Chỉ xem", icon: "👁️" },
-  { value: "edit", label: "Xem + sửa", icon: "✏️" },
-  { value: "manage", label: "Quản lý (toàn quyền)", icon: "🔑" },
-];
 
 const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 
@@ -644,6 +620,49 @@ export default function AdminPage() {
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
+  const [adminReturnRequests, setAdminReturnRequests] = useState([]);
+  const [returnSearchKeyword, setReturnSearchKeyword] = useState("");
+  const [returnStatusFilter, setReturnStatusFilter] = useState("all");
+  const [isLoadingReturnRequests, setIsLoadingReturnRequests] = useState(false);
+  const [updatingReturnRequestId, setUpdatingReturnRequestId] = useState(null);
+
+  const filteredReturnRequests = useMemo(() => {
+    const list = Array.isArray(adminReturnRequests) ? adminReturnRequests.slice() : [];
+
+    const statusFilter = String(returnStatusFilter || "").toUpperCase();
+    if (statusFilter && statusFilter !== "ALL") {
+      list.splice(0, list.length, ...list.filter((r) => String(r.status ?? "").toUpperCase() === statusFilter));
+    }
+
+    const keyword = (returnSearchKeyword || "").toString().trim().toLowerCase();
+    if (keyword) {
+      list.splice(
+        0,
+        list.length,
+        ...list.filter((r) => {
+          const id = String(r.id ?? "");
+          const orderId = String(r.orderId ?? "");
+          const userText = (r.user?.fullName || r.user?.email || "").toString().toLowerCase();
+          const reason = (r.reason || "").toString().toLowerCase();
+          return (
+            id.includes(keyword) ||
+            orderId.includes(keyword) ||
+            userText.includes(keyword) ||
+            reason.includes(keyword)
+          );
+        }),
+      );
+    }
+
+    // sort by createdAt desc if available
+    list.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    return list;
+  }, [adminReturnRequests, returnSearchKeyword, returnStatusFilter]);
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [catalogBrands, setCatalogBrands] = useState([]);
   const [managedProducts, setManagedProducts] = useState([]);
@@ -748,18 +767,13 @@ export default function AdminPage() {
   const [reviewSortBy, setReviewSortBy] = useState("newest");
   const [reviewStatusFilter, setReviewStatusFilter] = useState("all");
   const [reviewQuickFilter, setReviewQuickFilter] = useState("all");
-  const [reviewDetailTab, setReviewDetailTab] = useState("overview");
   const [selectedReviewId, setSelectedReviewId] = useState(null);
   const [adminReviews, setAdminReviews] = useState([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
-  const [resolvingReviewId, setResolvingReviewId] = useState(null);
   const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
-  const [deleteReviewDialogOpen, setDeleteReviewDialogOpen] = useState(false);
-  const [deleteReviewTarget, setDeleteReviewTarget] = useState(null);
-  const [deleteReviewReason, setDeleteReviewReason] = useState("");
 
   useEffect(() => {
     const tabIdFromUrl = resolveTabIdFromLocation();
@@ -1248,6 +1262,37 @@ export default function AdminPage() {
     }
   }, [token, toast]);
 
+  const loadAdminReturnRequests = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsLoadingReturnRequests(true);
+    try {
+      const response = await fetch("/api/admin/returns", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không tải được yêu cầu trả hàng");
+      }
+
+      setAdminReturnRequests(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setAdminReturnRequests([]);
+      toast({
+        title: "Không tải được yêu cầu trả hàng",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingReturnRequests(false);
+    }
+  }, [token, toast]);
+
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token || activeTab !== "reviews") {
       return;
@@ -1256,28 +1301,117 @@ export default function AdminPage() {
     loadAdminReviews();
   }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
 
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "returns") {
+      return;
+    }
+
+    loadAdminReturnRequests();
+  }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReturnRequests]);
+
+  async function handleReturnRequestAction(request, action) {
+    if (!token || !request?.id) {
+      return;
+    }
+
+    const requestId = Number(request.id);
+    let endpoint = `/api/admin/returns/${requestId}/review`;
+    let body = { action };
+
+    if (action === "REJECT") {
+      const rejectReason = window.prompt(
+        "Nhập lý do từ chối yêu cầu trả hàng:",
+        String(request.rejectReason ?? ""),
+      );
+      if (rejectReason === null) {
+        return;
+      }
+
+      const normalizedRejectReason = String(rejectReason ?? "").trim();
+      if (!normalizedRejectReason) {
+        toast({
+          title: "Thiếu lý do từ chối",
+          description: "Vui lòng nhập lý do để từ chối yêu cầu trả hàng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      body = { action: "REJECT", rejectReason: normalizedRejectReason };
+    } else if (action === "APPROVE") {
+      body = { action: "APPROVE" };
+    } else if (action === "SHIPPING_BACK") {
+      endpoint = `/api/admin/returns/${requestId}/shipping-back`;
+      body = null;
+    } else if (action === "RECEIVED") {
+      endpoint = `/api/admin/returns/${requestId}/received`;
+      body = null;
+    } else if (action === "REFUND") {
+      endpoint = `/api/admin/returns/${requestId}/refund`;
+      body = null;
+    }
+
+    const confirmMessage =
+      action === "APPROVE"
+        ? "Duyệt yêu cầu trả hàng này?"
+        : action === "REJECT"
+          ? "Từ chối yêu cầu trả hàng này?"
+          : action === "SHIPPING_BACK"
+            ? "Đánh dấu đơn này đang được khách gửi trả?"
+            : action === "RECEIVED"
+              ? "Xác nhận đã nhận hàng trả về?"
+              : "Xử lý hoàn tiền cho yêu cầu này?";
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setUpdatingReturnRequestId(requestId);
+    try {
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật yêu cầu trả hàng");
+      }
+
+      toast({
+        title: "Đã cập nhật yêu cầu trả hàng",
+        description: payload?.message ?? "Thao tác đã hoàn tất",
+      });
+      await loadAdminReturnRequests();
+    } catch (error) {
+      toast({
+        title: "Cập nhật yêu cầu trả hàng thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingReturnRequestId(null);
+    }
+  }
+
   async function moderateReview(review, shouldHide) {
     if (!token || !review?.id) {
       return;
     }
 
     const reviewId = Number(review.id);
-    const promptText = shouldHide
-      ? "Nhập lý do ẩn đánh giá (không bắt buộc):"
-      : "Nhập lý do hiện lại đánh giá (bắt buộc):";
-    const promptDefault = shouldHide ? String(review.hiddenReason ?? "") : "";
-    const reasonInput = window.prompt(promptText, promptDefault);
-    if (reasonInput === null) {
-      return;
-    }
+    const hiddenReason = shouldHide
+      ? window.prompt(
+        "Nhập lý do ẩn đánh giá (không bắt buộc):",
+        String(review.hiddenReason ?? ""),
+      )
+      : "";
 
-    const normalizedReason = String(reasonInput ?? "").trim();
-    if (!shouldHide && !normalizedReason) {
-      toast({
-        title: "Thiếu lý do",
-        description: "Vui lòng nhập lý do để hiện lại đánh giá",
-        variant: "destructive",
-      });
+    if (hiddenReason === null) {
       return;
     }
 
@@ -1291,8 +1425,7 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           isHidden: Boolean(shouldHide),
-          hiddenReason: shouldHide ? normalizedReason || undefined : undefined,
-          reason: shouldHide ? undefined : normalizedReason,
+          hiddenReason: String(hiddenReason ?? "").trim() || undefined,
         }),
       });
 
@@ -1344,7 +1477,6 @@ export default function AdminPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ reply }),
-        body: JSON.stringify({ message: reply }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1352,40 +1484,14 @@ export default function AdminPage() {
         throw new Error(payload?.message ?? "Không thể lưu phản hồi");
       }
 
-      setAdminReviews(
-        (prev) =>
-          prev.map((item) =>
-            Number(item.id) === Number(reviewId) ? payload : item,
-          ),
-        prev.map((item) => {
-          if (Number(item.id) === Number(reviewId)) {
-            if (payload?.reviewId) {
-              const newThread = [
-                ...(item.thread || []),
-                {
-                  id: payload.id,
-                  senderId: payload.user?.id || payload.senderId,
-                  senderName: payload.user?.fullName || "Nhân viên",
-                  isStaff: true,
-                  message: payload.message,
-                  createdAt: payload.createdAt,
-                },
-              ];
-              return {
-                ...item,
-                thread: newThread,
-                threadStatus: "WAITING_CUSTOMER",
-              };
-            }
-            return { ...item, ...payload };
-          }
-          return item;
-        }),
+      setAdminReviews((prev) =>
+        prev.map((item) =>
+          Number(item.id) === Number(reviewId) ? payload : item,
+        ),
       );
       setReviewReplyDraftById((prev) => ({
         ...prev,
         [reviewId]: String(payload?.adminReply ?? ""),
-        [reviewId]: "",
       }));
       toast({ title: "Đã lưu phản hồi đánh giá" });
     } catch (error) {
@@ -1399,88 +1505,26 @@ export default function AdminPage() {
     }
   }
 
-  async function resolveReviewThread(reviewId, resolved = true) {
-    if (!token || !reviewId) {
-      return;
-    }
-
-    const numericReviewId = Number(reviewId);
-    setResolvingReviewId(numericReviewId);
-    try {
-      const response = await fetch(
-        `/api/admin/reviews/${numericReviewId}/resolve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ resolved: Boolean(resolved) }),
-        },
-      );
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          payload?.message ?? "Không thể cập nhật trạng thái xử lý",
-        );
-      }
-
-      setAdminReviews((prev) =>
-        prev.map((item) =>
-          Number(item.id) === numericReviewId ? payload : item,
-        ),
-      );
-
-      toast({
-        title: resolved ? "Đã đánh dấu xử lý xong" : "Đã mở lại hội thoại",
-      });
-    } catch (error) {
-      toast({
-        title: "Cập nhật trạng thái xử lý thất bại",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setResolvingReviewId(null);
-    }
-  }
-
   async function removeReview(review) {
     if (!token || !review?.id) {
       return;
     }
 
-    setDeleteReviewTarget(review);
-    setDeleteReviewReason("Đánh giá vi phạm quy định của cửa hàng");
-    setDeleteReviewDialogOpen(true);
-  }
-
-  async function confirmDeleteReview() {
-    if (!token || !deleteReviewTarget?.id) {
+    const shouldDelete = window.confirm(
+      `Bạn có chắc muốn xóa đánh giá #${review.id}? Hành động này không thể hoàn tác.`,
+    );
+    if (!shouldDelete) {
       return;
     }
 
-    const normalizedReason = String(deleteReviewReason ?? "").trim();
-    if (!normalizedReason) {
-      toast({
-        title: "Thiếu lý do",
-        description: "Vui lòng nhập lý do xóa để gửi log cho khách",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reviewId = Number(deleteReviewTarget.id);
+    const reviewId = Number(review.id);
     setDeletingReviewId(reviewId);
     try {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
         method: "DELETE",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ reason: normalizedReason }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1491,9 +1535,6 @@ export default function AdminPage() {
       setAdminReviews((prev) =>
         prev.filter((item) => Number(item.id) !== reviewId),
       );
-      setDeleteReviewDialogOpen(false);
-      setDeleteReviewTarget(null);
-      setDeleteReviewReason("");
       toast({ title: "Đã xóa đánh giá" });
     } catch (error) {
       toast({
@@ -1545,10 +1586,10 @@ export default function AdminPage() {
         prev.map((order) =>
           order.id === orderId
             ? {
-                ...order,
-                orderStatus: payload.orderStatus,
-                updatedAt: payload.updatedAt,
-              }
+              ...order,
+              orderStatus: payload.orderStatus,
+              updatedAt: payload.updatedAt,
+            }
             : order,
         ),
       );
@@ -1822,16 +1863,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === userId
               ? {
-                  ...item,
-                  fullName: payload.fullName,
-                  email: payload.email,
-                  phone: payload.phone,
-                  address: payload.address,
-                  avatarUrl: payload.avatarUrl,
-                  status: payload.status,
-                  roleId: payload.roleId,
-                  role: payload.role,
-                }
+                ...item,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
               : item,
           ),
         };
@@ -1844,30 +1885,30 @@ export default function AdminPage() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-                ...prev,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
             : prev,
         );
         setSelectedUserDraft((prev) =>
           prev
             ? {
-                ...prev,
-                fullName: payload.fullName ?? "",
-                email: payload.email ?? "",
-                phone: payload.phone ?? "",
-                address: payload.address ?? "",
-                avatarUrl: payload.avatarUrl ?? "",
-                roleId: payload.roleId ? String(payload.roleId) : "",
-                status: payload.status ?? "ACTIVE",
-              }
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
             : prev,
         );
       }
@@ -2012,16 +2053,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === selectedUserDetail.id
               ? {
-                  ...item,
-                  fullName: payload.fullName,
-                  email: payload.email,
-                  phone: payload.phone,
-                  address: payload.address,
-                  avatarUrl: payload.avatarUrl,
-                  status: payload.status,
-                  roleId: payload.roleId,
-                  role: payload.role,
-                }
+                ...item,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
               : item,
           ),
         };
@@ -2030,31 +2071,31 @@ export default function AdminPage() {
       setSelectedUserDetail((prev) =>
         prev
           ? {
-              ...prev,
-              fullName: payload.fullName,
-              email: payload.email,
-              phone: payload.phone,
-              address: payload.address,
-              avatarUrl: payload.avatarUrl,
-              status: payload.status,
-              roleId: payload.roleId,
-              role: payload.role,
-            }
+            ...prev,
+            fullName: payload.fullName,
+            email: payload.email,
+            phone: payload.phone,
+            address: payload.address,
+            avatarUrl: payload.avatarUrl,
+            status: payload.status,
+            roleId: payload.roleId,
+            role: payload.role,
+          }
           : prev,
       );
 
       setSelectedUserDraft((prev) =>
         prev
           ? {
-              ...prev,
-              fullName: payload.fullName ?? "",
-              email: payload.email ?? "",
-              phone: payload.phone ?? "",
-              address: payload.address ?? "",
-              avatarUrl: payload.avatarUrl ?? "",
-              roleId: payload.roleId ? String(payload.roleId) : "",
-              status: payload.status ?? "ACTIVE",
-            }
+            ...prev,
+            fullName: payload.fullName ?? "",
+            email: payload.email ?? "",
+            phone: payload.phone ?? "",
+            address: payload.address ?? "",
+            avatarUrl: payload.avatarUrl ?? "",
+            roleId: payload.roleId ? String(payload.roleId) : "",
+            status: payload.status ?? "ACTIVE",
+          }
           : prev,
       );
 
@@ -2346,9 +2387,15 @@ export default function AdminPage() {
         body: JSON.stringify(payload),
       });
 
-      const responsePayload = await response.json().catch(() => null);
+      const responsePayload = await response.json().catch(() => {
+        console.error(`[SaveProduct] Response not JSON. Status: ${response.status}`);
+        return null;
+      });
+      
+      console.info(`[SaveProduct] Response status: ${response.status}`, responsePayload);
+      
       if (!response.ok) {
-        throw new Error(responsePayload?.message ?? "Lưu sản phẩm thất bại");
+        throw new Error(responsePayload?.message ?? `HTTP ${response.status}: Lưu sản phẩm thất bại`);
       }
 
       toast({
@@ -2514,7 +2561,7 @@ export default function AdminPage() {
           [...prev].sort(
             (a, b) =>
               Number(Boolean(b.isHomepageFeatured)) -
-                Number(Boolean(a.isHomepageFeatured)) ||
+              Number(Boolean(a.isHomepageFeatured)) ||
               Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
           ),
         );
@@ -2826,16 +2873,10 @@ export default function AdminPage() {
       discountValue: String(item.discountValue ?? ""),
       minOrderValue: String(item.minOrderValue ?? "0"),
       usageLimit: String(item.usageLimit ?? "100"),
-      startDate: item.startDate
-        ? new Date(item.startDate).toISOString().slice(0, 16)
-        : "",
-      endDate: item.endDate
-        ? new Date(item.endDate).toISOString().slice(0, 16)
-        : "",
+      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
+      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
       status: String(item.status ?? "ACTIVE"),
-      assignedUserIds: (item.assignedUsers ?? []).map((user) =>
-        Number(user.id),
-      ),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
     });
   }
 
@@ -2850,12 +2891,8 @@ export default function AdminPage() {
       const discountValue = Number(voucherForm.discountValue);
       const minOrderValue = Number(voucherForm.minOrderValue || 0);
       const usageLimit = Number(voucherForm.usageLimit || 100);
-      const startDate = voucherForm.startDate
-        ? new Date(voucherForm.startDate)
-        : null;
-      const endDate = voucherForm.endDate
-        ? new Date(voucherForm.endDate)
-        : null;
+      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
+      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
 
       if (!normalizedCode) {
         throw new Error("Mã giảm giá không được để trống");
@@ -2889,9 +2926,7 @@ export default function AdminPage() {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         status: voucherForm.status,
-        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) =>
-          Number(value),
-        ),
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
       };
 
       const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
@@ -2906,9 +2941,7 @@ export default function AdminPage() {
       const result = await response.json().catch(() => null);
       if (!response.ok) {
         const fieldMessage = extractIssueMessage(result?.issues);
-        throw new Error(
-          fieldMessage || result?.message || "Cập nhật voucher thất bại",
-        );
+        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
       }
 
       await refreshDashboardSummary();
@@ -3230,127 +3263,19 @@ export default function AdminPage() {
     return filtered;
   }, [dashboard, voucherSearchKeyword, voucherStatusFilter]);
 
-  const getReviewThread = useCallback((review) => {
-    return Array.isArray(review?.thread) ? review.thread : [];
-  }, []);
-
-  const getReviewThreadStatus = useCallback(
-    (review) => {
-      const normalized = String(review?.threadStatus ?? "")
-        .trim()
-        .toUpperCase();
-
-      if (
-        normalized === "OPEN" ||
-        normalized === "WAITING_ADMIN" ||
-        normalized === "WAITING_CUSTOMER" ||
-        normalized === "RESOLVED"
-      ) {
-        return normalized;
-      }
-
-      const thread = getReviewThread(review);
-      if (thread.length === 0) {
-        return "OPEN";
-      }
-
-      const lastMessage = thread[thread.length - 1];
-      return lastMessage?.isStaff ? "WAITING_CUSTOMER" : "WAITING_ADMIN";
-    },
-    [getReviewThread],
-  );
-
-  const formatThreadStatusLabel = useCallback((status) => {
-    if (status === "RESOLVED") {
-      return "Đã xử lý";
-    }
-    if (status === "WAITING_CUSTOMER") {
-      return "Chờ khách phản hồi";
-    }
-    if (status === "WAITING_ADMIN") {
-      return "Chờ admin phản hồi";
-    }
-    return "Open";
-  }, []);
-
-  const hasStaffReply = useCallback(
-    (review) => {
-      const thread = getReviewThread(review);
-      if (thread.some((item) => Boolean(item?.isStaff))) {
-        return true;
-      }
-
-      return Boolean(String(review?.adminReply ?? "").trim());
-    },
-    [getReviewThread],
-  );
-
-  const isWaitingForAdminReply = useCallback(
-    (review) => {
-      const status = getReviewThreadStatus(review);
-      if (status === "WAITING_ADMIN" || status === "OPEN") {
-        return true;
-      }
-      if (status === "WAITING_CUSTOMER" || status === "RESOLVED") {
-        return false;
-      }
-
-      const thread = getReviewThread(review);
-      if (thread.length === 0) {
-        return !hasStaffReply(review);
-      }
-
-      const lastMessage = thread[thread.length - 1];
-      return !Boolean(lastMessage?.isStaff);
-    },
-    [getReviewThread, getReviewThreadStatus, hasStaffReply],
-  );
-
-  const getLatestCustomerReplyMessage = useCallback(
-    (review) => {
-      const thread = getReviewThread(review);
-      for (let index = thread.length - 1; index >= 0; index -= 1) {
-        const message = thread[index];
-        const content = String(message?.message ?? "").trim();
-        if (!message?.isStaff && content) {
-          return {
-            text: content,
-            createdAt: message?.createdAt ?? null,
-          };
-        }
-      }
-
-      return null;
-    },
-    [getReviewThread],
-  );
-
   const filteredReviews = useMemo(() => {
     let filtered = Array.isArray(adminReviews) ? [...adminReviews] : [];
 
     if (reviewSearchKeyword.trim()) {
       const keyword = reviewSearchKeyword.toLowerCase().trim();
-      filtered = filtered.filter((item) => {
-        const thread = getReviewThread(item);
-        const hasMatchedThread = thread.some(
-          (message) =>
-            String(message?.message ?? "")
-              .toLowerCase()
-              .includes(keyword) ||
-            String(message?.senderName ?? "")
-              .toLowerCase()
-              .includes(keyword),
-        );
-
-        return (
+      filtered = filtered.filter(
+        (item) =>
           (item.user?.fullName ?? "").toLowerCase().includes(keyword) ||
           (item.user?.email ?? "").toLowerCase().includes(keyword) ||
           (item.product?.name ?? "").toLowerCase().includes(keyword) ||
           (item.comment ?? "").toLowerCase().includes(keyword) ||
-          (item.adminReply ?? "").toLowerCase().includes(keyword) ||
-          hasMatchedThread
-        );
-      });
+          (item.adminReply ?? "").toLowerCase().includes(keyword),
+      );
     }
 
     if (reviewStatusFilter === "visible") {
@@ -3361,14 +3286,8 @@ export default function AdminPage() {
     }
 
     if (reviewQuickFilter === "needs-reply") {
-      filtered = filtered.filter((item) => isWaitingForAdminReply(item));
-    } else if (reviewQuickFilter === "waiting-customer") {
       filtered = filtered.filter(
-        (item) => getReviewThreadStatus(item) === "WAITING_CUSTOMER",
-      );
-    } else if (reviewQuickFilter === "resolved") {
-      filtered = filtered.filter(
-        (item) => getReviewThreadStatus(item) === "RESOLVED",
+        (item) => !String(item.adminReply ?? "").trim(),
       );
     } else if (reviewQuickFilter === "low-rating") {
       filtered = filtered.filter((item) => Number(item.rating ?? 0) <= 2);
@@ -3379,10 +3298,9 @@ export default function AdminPage() {
         return Number.isFinite(createdAt) && createdAt >= cutoff;
       });
     } else if (reviewQuickFilter === "replied") {
-      filtered = filtered.filter((item) => {
-        const status = getReviewThreadStatus(item);
-        return status === "WAITING_CUSTOMER" || status === "RESOLVED";
-      });
+      filtered = filtered.filter((item) =>
+        Boolean(String(item.adminReply ?? "").trim()),
+      );
     }
 
     if (reviewSortBy === "newest") {
@@ -3398,9 +3316,6 @@ export default function AdminPage() {
     return filtered;
   }, [
     adminReviews,
-    getReviewThread,
-    getReviewThreadStatus,
-    isWaitingForAdminReply,
     reviewQuickFilter,
     reviewSearchKeyword,
     reviewSortBy,
@@ -3415,14 +3330,16 @@ export default function AdminPage() {
     return {
       total: items.length,
       hidden: items.filter((item) => Boolean(item.isHidden)).length,
-      waitingReply: items.filter((item) => isWaitingForAdminReply(item)).length,
+      waitingReply: items.filter(
+        (item) => !String(item.adminReply ?? "").trim(),
+      ).length,
       lowRating: items.filter((item) => Number(item.rating ?? 0) <= 2).length,
       recent24h: items.filter((item) => {
         const createdAt = new Date(item.createdAt).getTime();
         return Number.isFinite(createdAt) && now - createdAt <= oneDay;
       }).length,
     };
-  }, [adminReviews, isWaitingForAdminReply]);
+  }, [adminReviews]);
 
   const selectedReview = useMemo(
     () =>
@@ -3432,73 +3349,6 @@ export default function AdminPage() {
       filteredReviews[0] ??
       null,
     [filteredReviews, selectedReviewId],
-  );
-
-  const selectedReviewThread = useMemo(
-    () => getReviewThread(selectedReview),
-    [getReviewThread, selectedReview],
-  );
-
-  const selectedReviewNeedsReply = useMemo(
-    () => (selectedReview ? isWaitingForAdminReply(selectedReview) : false),
-    [isWaitingForAdminReply, selectedReview],
-  );
-
-  const selectedReviewThreadStatus = useMemo(
-    () => (selectedReview ? getReviewThreadStatus(selectedReview) : "OPEN"),
-    [getReviewThreadStatus, selectedReview],
-  );
-
-  const latestCustomerReply = useMemo(() => {
-    if (
-      !Array.isArray(selectedReviewThread) ||
-      selectedReviewThread.length === 0
-    ) {
-      return null;
-    }
-
-    const customerMessages = selectedReviewThread.filter(
-      (message) => !message?.isStaff,
-    );
-
-    return customerMessages.length > 0
-      ? customerMessages[customerMessages.length - 1]
-      : null;
-  }, [selectedReviewThread]);
-
-  const hasActiveReviewFilters = useMemo(
-    () =>
-      reviewQuickFilter !== "all" ||
-      reviewSortBy !== "newest" ||
-      reviewStatusFilter !== "all" ||
-      Boolean(reviewSearchKeyword.trim()),
-    [reviewQuickFilter, reviewSearchKeyword, reviewSortBy, reviewStatusFilter],
-  );
-
-  const reviewReplyTemplates = useMemo(
-    () => [
-      {
-        id: "thanks",
-        label: "Cảm ơn",
-        text: "Cảm ơn bạn đã mua hàng và dành thời gian đánh giá. Team đã ghi nhận góp ý của bạn.",
-      },
-      {
-        id: "sorry",
-        label: "Xin lỗi & hỗ trợ",
-        text: "Shop xin lỗi vì trải nghiệm chưa tốt. Mình đã chuyển kỹ thuật kiểm tra và sẽ liên hệ bạn sớm để hỗ trợ dứt điểm.",
-      },
-      {
-        id: "resolved",
-        label: "Đã xử lý",
-        text: "Vấn đề đã được team xử lý xong. Nếu bạn cần hỗ trợ thêm, bạn phản hồi trực tiếp tại đây để shop hỗ trợ ngay.",
-      },
-      {
-        id: "warranty",
-        label: "Hướng dẫn bảo hành",
-        text: "Bạn vui lòng gửi mã đơn hàng + video/lỗi thực tế để shop hỗ trợ bảo hành nhanh trong ngày.",
-      },
-    ],
-    [],
   );
 
   useEffect(() => {
@@ -3769,6 +3619,8 @@ export default function AdminPage() {
     const dedupedByAction = new Map();
 
     for (const item of navItems) {
+      // Skip the roles tab itself — we don't want a "Phân quyền" toggle
+      if (String(item.id) === "roles") continue;
       const actionName = tabPermissionMap[item.id];
       if (!actionName || dedupedByAction.has(actionName)) {
         continue;
@@ -3905,8 +3757,8 @@ export default function AdminPage() {
 
     return normalizePermissionActions(
       permissionDraftByUserId[selectedPermissionTarget.id] ??
-        selectedPermissionTarget.permissions ??
-        [],
+      selectedPermissionTarget.permissions ??
+      [],
     );
   }, [permissionCatalog, permissionDraftByUserId, selectedPermissionTarget]);
 
@@ -3968,11 +3820,11 @@ export default function AdminPage() {
           (prev ?? []).map((item) =>
             Number(item.id) === userId
               ? {
-                  ...item,
-                  permissions: payload.permissions ?? [],
-                  roleId: payload.roleId ?? item.roleId,
-                  role: payload.role ?? item.role,
-                }
+                ...item,
+                permissions: payload.permissions ?? [],
+                roleId: payload.roleId ?? item.roleId,
+                role: payload.role ?? item.role,
+              }
               : item,
           ),
         );
@@ -4065,6 +3917,17 @@ export default function AdminPage() {
   const isProductCreateTab = activeTab === "products-create";
   const isProductInventoryTab = activeTab === "products-inventory";
   const isProductEditTab = activeTab === "products-edit";
+  const selectedEditingProduct = useMemo(() => {
+    if (!editingProductId) {
+      return null;
+    }
+
+    return (
+      managedProducts.find(
+        (product) => Number(product.id) === Number(editingProductId),
+      ) ?? null
+    );
+  }, [editingProductId, managedProducts]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,1)_0%,_rgba(240,253,250,1)_100%)]">
@@ -4104,11 +3967,10 @@ export default function AdminPage() {
                           key={item.id}
                           type="button"
                           onClick={() => setActiveTab(item.id)}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                            activeTab === item.id
-                              ? "bg-primary text-primary-foreground"
-                              : "text-slate-700 hover:bg-secondary hover:text-primary"
-                          }`}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
+                            ? "bg-primary text-primary-foreground"
+                            : "text-slate-700 hover:bg-secondary hover:text-primary"
+                            }`}
                         >
                           <span className="flex items-center gap-3">
                             <item.icon className="h-4 w-4" />
@@ -4170,11 +4032,10 @@ export default function AdminPage() {
                       key={card.id}
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
-                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
-                        selectedSummaryCard === card.id
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "hover:border-primary/50"
-                      }`}
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "hover:border-primary/50"
+                        }`}
                     >
                       <p className="text-sm text-muted-foreground">
                         {card.label}
@@ -4392,7 +4253,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => openUserOrders(item)}
                       >
@@ -4400,7 +4261,7 @@ export default function AdminPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="gap-1"
                         onClick={() => loadUserDetail(item.id)}
                       >
@@ -4666,7 +4527,9 @@ export default function AdminPage() {
                               `#${request.id}`,
                               `#${request.orderId}`,
                               request.reason ?? "-",
-                              statusBadge(formatEnum(request.status)),
+                              statusBadge(
+                                formatReturnStatusLabelAdmin(request.status),
+                              ),
                               request.refundAmount
                                 ? formatMoney(request.refundAmount)
                                 : "-",
@@ -4706,7 +4569,7 @@ export default function AdminPage() {
                               key={`cell-${index}`}
                               fill={
                                 ["#10b981", "#f59e0b", "#ef4444", "#6366f1"][
-                                  index % 4
+                                index % 4
                                 ]
                               }
                             />
@@ -4741,32 +4604,31 @@ export default function AdminPage() {
 
           <section
             id="products"
-            className={`space-y-6 ${
-              isProductCreateTab || isProductInventoryTab || isProductEditTab
-                ? "block"
-                : "hidden"
-            }`}
+            className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
+              ? "block"
+              : "hidden"
+              }`}
           >
-            {!isProductInventoryTab ? (
-              <SectionHeader
-                sectionId={activeTab}
-                icon={Package}
-                title={
-                  isProductCreateTab
-                    ? "Thêm sản phẩm mới"
+            <SectionHeader
+              sectionId={activeTab}
+              icon={Package}
+              title={
+                isProductCreateTab
+                  ? "Thêm sản phẩm mới"
+                  : isProductInventoryTab
+                    ? "Danh mục sản phẩm"
                     : "Chỉnh sửa sản phẩm"
-                }
-                description={
-                  isProductCreateTab
-                    ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
+              }
+              description={
+                isProductCreateTab
+                  ? "Tạo sản phẩm mới với đầy đủ thông tin và thông số"
+                  : isProductInventoryTab
+                    ? "Quản lý các loại sản phẩm như CPU, RAM, SSD, Mainboard và danh mục liên quan"
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
-                }
-              />
-            ) : null}
+              }
+            />
             <div className="grid gap-6">
-              <div
-                className={`${isProductInventoryTab || isProductEditTab ? "hidden" : ""}`}
-              >
+              <div className={`${isProductInventoryTab ? "hidden" : ""}`}>
                 <Panel
                   title={
                     isProductEditTab
@@ -4784,6 +4646,37 @@ export default function AdminPage() {
                       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                         Chưa chọn sản phẩm để sửa. Vui lòng bấm "Sửa" ở danh
                         sách Kho sản phẩm.
+                      </div>
+                    ) : null}
+
+                    {isProductEditTab && editingProductId ? (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-emerald-300 shadow-inner">
+                        <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-800 pb-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                          <span>[EDIT MODE]</span>
+                          <span>
+                            #{editingProductId}
+                            {selectedEditingProduct?.slug
+                              ? ` / ${selectedEditingProduct.slug}`
+                              : ""}
+                          </span>
+                        </div>
+                        <div>
+                          <div>
+                            <span className="text-slate-400">name:</span>{" "}
+                            {selectedEditingProduct?.name || productForm.name ||
+                              "-"}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">category:</span>{" "}
+                            {selectedEditingProduct?.category?.name ||
+                              productForm.categorySlug ||
+                              "-"}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">status:</span>{" "}
+                            ready to update
+                          </div>
+                        </div>
                       </div>
                     ) : null}
 
@@ -5946,9 +5839,7 @@ export default function AdminPage() {
                         Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
                       </p>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">
-                          Mã giảm giá
-                        </label>
+                        <label className="text-sm font-medium">Mã giảm giá</label>
                         <input
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.code}
@@ -5964,9 +5855,7 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">
-                            Phạm vi mã
-                          </label>
+                          <label className="text-sm font-medium">Phạm vi mã</label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.couponScope}
@@ -5978,16 +5867,12 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PRODUCT">Giảm giá sản phẩm</option>
-                            <option value="SHIPPING">
-                              Giảm phí vận chuyển
-                            </option>
+                            <option value="SHIPPING">Giảm phí vận chuyển</option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">
-                            Loại giảm
-                          </label>
+                          <label className="text-sm font-medium">Loại giảm</label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.discountType}
@@ -5999,16 +5884,12 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PERCENT">%</option>
-                            <option value="FIXED_AMOUNT">
-                              Số tiền cố định
-                            </option>
+                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">
-                            Giá trị giảm
-                          </label>
+                          <label className="text-sm font-medium">Giá trị giảm</label>
                           <input
                             type="number"
                             min="1"
@@ -6026,9 +5907,7 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">
-                            Đơn tối thiểu
-                          </label>
+                          <label className="text-sm font-medium">Đơn tối thiểu</label>
                           <input
                             type="number"
                             min="0"
@@ -6043,9 +5922,7 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">
-                            Số lượt dùng
-                          </label>
+                          <label className="text-sm font-medium">Số lượt dùng</label>
                           <input
                             type="number"
                             min="1"
@@ -6062,9 +5939,7 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">
-                          Thời gian bắt đầu
-                        </label>
+                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -6079,9 +5954,7 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">
-                          Thời gian kết thúc
-                        </label>
+                        <label className="text-sm font-medium">Thời gian kết thúc</label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -6096,9 +5969,7 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">
-                          Trạng thái
-                        </label>
+                        <label className="text-sm font-medium">Trạng thái</label>
                         <select
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.status}
@@ -6204,13 +6075,13 @@ export default function AdminPage() {
                         : formatMoney(item.discountValue),
                       formatMoney(item.minOrderValue),
                       Array.isArray(item.assignedUsers) &&
-                      item.assignedUsers.length > 0
+                        item.assignedUsers.length > 0
                         ? item.assignedUsers
-                            .map(
-                              (user) =>
-                                user.fullName || user.email || `#${user.id}`,
-                            )
-                            .join(", ")
+                          .map(
+                            (user) =>
+                              user.fullName || user.email || `#${user.id}`,
+                          )
+                          .join(", ")
                         : "Tất cả",
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
@@ -6420,6 +6291,245 @@ export default function AdminPage() {
                 </div>
               </Panel>
             )}
+          </section>
+
+          <section id="returns" className={sectionClassName("returns") }>
+            <SectionHeader
+              sectionId="returns"
+              icon={RotateCcw}
+              title="Quản lý trả hàng"
+              description="Duyệt, theo dõi và xử lý hoàn tiền cho các yêu cầu trả hàng"
+            />
+
+            <div className="grid gap-6 xl:grid-cols-5">
+              <div className="xl:col-span-2 space-y-4">
+                <Panel
+                  title="Tổng quan trả hàng"
+                  description="Theo dõi nhanh trạng thái xử lý"
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Tổng yêu cầu</p>
+                      <p className="text-xl font-semibold">
+                        {adminReturnRequests.length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đang chờ</p>
+                      <p className="text-xl font-semibold text-amber-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "PENDING",
+                        ).length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đã duyệt</p>
+                      <p className="text-xl font-semibold text-sky-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "APPROVED",
+                        ).length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Đã hoàn tiền</p>
+                      <p className="text-xl font-semibold text-emerald-600">
+                        {adminReturnRequests.filter(
+                          (item) =>
+                            String(item.status ?? "").toUpperCase() === "REFUNDED",
+                        ).length}
+                      </p>
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel
+                  title="Bộ lọc nhanh"
+                  description="Tìm yêu cầu theo mã đơn, khách hàng hoặc trạng thái"
+                >
+                  <div className="space-y-3">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Tìm kiếm</label>
+                      <input
+                        type="text"
+                        placeholder="Mã yêu cầu, mã đơn, tên khách, email..."
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={returnSearchKeyword}
+                        onChange={(event) =>
+                          setReturnSearchKeyword(event.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-medium">Trạng thái</label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={returnStatusFilter}
+                        onChange={(event) =>
+                          setReturnStatusFilter(event.target.value)
+                        }
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="PENDING">Đang chờ</option>
+                        <option value="APPROVED">Đã duyệt</option>
+                        <option value="REJECTED">Đã từ chối</option>
+                        <option value="SHIPPING_BACK">Đang gửi trả</option>
+                        <option value="RECEIVED">Đã nhận hàng</option>
+                        <option value="REFUNDED">Đã hoàn tiền</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                      <span>
+                        Tìm thấy: <strong>{filteredReturnRequests.length}</strong> yêu cầu
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setReturnSearchKeyword("");
+                          setReturnStatusFilter("all");
+                        }}
+                        disabled={!returnSearchKeyword && returnStatusFilter === "all"}
+                      >
+                        Xóa lọc
+                      </Button>
+                    </div>
+                  </div>
+                </Panel>
+              </div>
+
+              <div className="xl:col-span-3 space-y-4">
+                <Panel
+                  title="Danh sách yêu cầu trả hàng"
+                  description="Duyệt, theo dõi vận chuyển và hoàn tiền"
+                >
+                  {isLoadingReturnRequests ? (
+                    <p className="text-sm text-muted-foreground">
+                      Đang tải dữ liệu trả hàng...
+                    </p>
+                  ) : filteredReturnRequests.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có yêu cầu trả hàng phù hợp.
+                    </p>
+                  ) : (
+                    <DataTable
+                      columns={[
+                        "Mã",
+                        "Khách",
+                        "Đơn",
+                        "Lý do",
+                        "Trạng thái",
+                        "Hoàn",
+                        "Ngân hàng",
+                        "Yêu cầu lúc",
+                        "Thao tác",
+                      ]}
+                      rows={filteredReturnRequests.map((request) => {
+                        const requestId = Number(request.id);
+                        const isBusy = updatingReturnRequestId === requestId;
+                        const status = String(request.status ?? "").toUpperCase();
+
+                        return [
+                          `#${request.id}`,
+                          request.user?.fullName || request.user?.email || "-",
+                          `#${request.orderId}`,
+                          <span
+                            key={`reason-${request.id}`}
+                            className="block max-w-[260px] whitespace-normal break-words"
+                          >
+                            {request.reason ?? "-"}
+                          </span>,
+                          statusBadge(
+                            formatReturnStatusLabelAdmin(request.status),
+                          ),
+                          request.refundAmount
+                            ? formatMoney(request.refundAmount)
+                            : "-",
+                          <div
+                            key={`bank-${request.id}`}
+                            className="max-w-[220px] space-y-1 text-xs text-muted-foreground"
+                          >
+                            <div>{request.bankName ?? "-"}</div>
+                            <div>{request.bankAccountNumber ?? "-"}</div>
+                            <div>{request.bankAccountName ?? "-"}</div>
+                          </div>,
+                          formatDate(request.requestedAt),
+                          <div
+                            key={`return-actions-${request.id}`}
+                            className="flex flex-wrap gap-2"
+                          >
+                            {status === "PENDING" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    handleReturnRequestAction(request, "APPROVE")
+                                  }
+                                  disabled={isBusy}
+                                >
+                                  {isBusy ? "..." : "Duyệt"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleReturnRequestAction(request, "REJECT")
+                                  }
+                                  disabled={isBusy}
+                                >
+                                  Từ chối
+                                </Button>
+                              </>
+                            )}
+                            {status === "APPROVED" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleReturnRequestAction(
+                                    request,
+                                    "SHIPPING_BACK",
+                                  )
+                                }
+                                disabled={isBusy}
+                              >
+                                Đánh dấu gửi trả
+                              </Button>
+                            )}
+                            {(status === "APPROVED" ||
+                              status === "SHIPPING_BACK") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleReturnRequestAction(request, "RECEIVED")
+                                }
+                                disabled={isBusy}
+                              >
+                                Đã nhận hàng
+                              </Button>
+                            )}
+                            {status === "RECEIVED" && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  handleReturnRequestAction(request, "REFUND")
+                                }
+                                disabled={isBusy}
+                              >
+                                Hoàn tiền
+                              </Button>
+                            )}
+                          </div>,
+                        ];
+                      })}
+                    />
+                  )}
+                </Panel>
+              </div>
+            </div>
           </section>
 
           <section id="warehouse" className={sectionClassName("warehouse")}>
@@ -6741,8 +6851,8 @@ export default function AdminPage() {
               title="Quản lý đánh giá"
               description="Theo dõi, kiểm duyệt và phản hồi đánh giá khách hàng"
             />
-            <div className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
                   <p className="text-2xl font-bold">{reviewOverview.total}</p>
                 </Panel>
@@ -6772,72 +6882,55 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
-                  <div className="grid gap-3 md:grid-cols-5">
-                    <div className="grid gap-2">
-                      <label className="text-xs font-medium">Tìm kiếm</label>
-                      <input
-                        type="text"
-                        placeholder="Khách, sản phẩm, nội dung..."
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        value={reviewSearchKeyword}
-                        onChange={(e) => setReviewSearchKeyword(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-xs font-medium">Sắp xếp</label>
-                      <select
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        value={reviewSortBy}
-                        onChange={(e) => setReviewSortBy(e.target.value)}
-                      >
-                        <option value="newest">Mới nhất</option>
-                        <option value="oldest">Cũ nhất</option>
-                        <option value="highest-rating">Đánh giá cao</option>
-                        <option value="lowest-rating">Đánh giá thấp</option>
-                      </select>
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-xs font-medium">Hiển thị</label>
-                      <select
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        value={reviewStatusFilter}
-                        onChange={(e) => setReviewStatusFilter(e.target.value)}
-                      >
-                        <option value="all">Tất cả</option>
-                        <option value="visible">Đang hiển thị</option>
-                        <option value="hidden">Đã ẩn</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end justify-between gap-2 md:col-span-2">
-                      <span className="text-xs text-muted-foreground">
-                        Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
-                        giá
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!hasActiveReviewFilters}
-                        onClick={() => {
-                          setReviewSearchKeyword("");
-                          setReviewSortBy("newest");
-                          setReviewStatusFilter("all");
-                          setReviewQuickFilter("all");
-                        }}
-                      >
-                        Xóa bộ lọc
-                      </Button>
-                    </div>
+                <div className="mb-4 grid gap-3 md:grid-cols-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-medium">Tìm kiếm</label>
+                    <input
+                      type="text"
+                      placeholder="Khách, sản phẩm, nội dung..."
+                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                      value={reviewSearchKeyword}
+                      onChange={(e) => setReviewSearchKeyword(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-medium">Sắp xếp</label>
+                    <select
+                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                      value={reviewSortBy}
+                      onChange={(e) => setReviewSortBy(e.target.value)}
+                    >
+                      <option value="newest">Mới nhất</option>
+                      <option value="oldest">Cũ nhất</option>
+                      <option value="highest-rating">Đánh giá cao</option>
+                      <option value="lowest-rating">Đánh giá thấp</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-medium">Hiển thị</label>
+                    <select
+                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                      value={reviewStatusFilter}
+                      onChange={(e) => setReviewStatusFilter(e.target.value)}
+                    >
+                      <option value="all">Tất cả</option>
+                      <option value="visible">Đang hiển thị</option>
+                      <option value="hidden">Đã ẩn</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <span className="text-xs text-muted-foreground">
+                      Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
+                      giá
+                    </span>
                   </div>
                 </div>
 
-                <div className="mb-3 flex flex-wrap gap-2">
+                <div className="mb-4 flex flex-wrap gap-2">
                   {[
                     { id: "all", label: "Tất cả" },
                     { id: "needs-reply", label: "Chờ phản hồi" },
-                    { id: "waiting-customer", label: "Chờ khách phản hồi" },
                     { id: "replied", label: "Đã phản hồi" },
-                    { id: "resolved", label: "Đã xử lý" },
                     { id: "low-rating", label: "Sao thấp (<=2)" },
                     { id: "recent-24h", label: "Mới trong 24h" },
                   ].map((chip) => (
@@ -6845,11 +6938,10 @@ export default function AdminPage() {
                       key={chip.id}
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                        reviewQuickFilter === chip.id
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-background text-muted-foreground hover:text-foreground"
-                      }`}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        }`}
                     >
                       {chip.label}
                     </button>
@@ -6865,34 +6957,20 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-3 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.18fr)] xl:items-start">
-                    <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1 xl:sticky xl:top-5">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
-                        const waitingReply = isWaitingForAdminReply(item);
-                        const threadStatus = getReviewThreadStatus(item);
-                        const latestCustomerReply =
-                          getLatestCustomerReplyMessage(item);
-                        const previewText =
-                          latestCustomerReply?.text ||
-                          String(item.comment ?? "").trim() ||
-                          "Không có nội dung";
-                        const previewTimestamp =
-                          latestCustomerReply?.createdAt ?? item.createdAt;
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
                             type="button"
-                            onClick={() => {
-                              setSelectedReviewId(Number(item.id));
-                              setReviewDetailTab("overview");
-                            }}
-                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
-                              isSelected
-                                ? "border-primary bg-primary/5 shadow-sm"
-                                : "border-border/70 bg-background hover:border-primary/40"
-                            }`}
+                            onClick={() => setSelectedReviewId(Number(item.id))}
+                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${isSelected
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border/70 bg-background hover:border-primary/40"
+                              }`}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -6912,335 +6990,112 @@ export default function AdminPage() {
                             <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
                               <span>•</span>
-                              <span>{formatDate(previewTimestamp)}</span>
-                              <span>•</span>
-                              <span
-                                className={
-                                  waitingReply
-                                    ? "text-amber-700"
-                                    : "text-emerald-700"
-                                }
-                              >
-                                {formatThreadStatusLabel(threadStatus)}
-                              </span>
+                              <span>{formatDate(item.createdAt)}</span>
                             </div>
-                            <p className="mt-2 line-clamp-2 break-words text-sm text-slate-700">
-                              {previewText}
+                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">
+                              {item.comment || "Không có nội dung"}
                             </p>
                           </button>
                         );
                       })}
                     </div>
 
-                    <div className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm xl:sticky xl:top-5 xl:max-h-[calc(100vh-260px)] xl:overflow-y-auto">
+                    <div className="rounded-2xl border border-border/60 bg-background p-4">
                       {selectedReview ? (
                         <div className="space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <h4 className="truncate text-base font-semibold">
-                                  {selectedReview.product?.name ?? "Sản phẩm"}
-                                </h4>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {selectedReview.user?.fullName ??
-                                    selectedReview.user?.email ??
-                                    "Ẩn danh"}
-                                </p>
-                              </div>
-                              <div className="flex flex-col items-end gap-1">
-                                {statusBadge(
-                                  selectedReview.isHidden
-                                    ? "Đã ẩn"
-                                    : "Đang hiển thị",
-                                )}
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    selectedReviewNeedsReply
-                                      ? "bg-amber-50 text-amber-700"
-                                      : "bg-emerald-50 text-emerald-700"
-                                  }`}
-                                >
-                                  {formatThreadStatusLabel(
-                                    selectedReviewThreadStatus,
-                                  )}
-                                </span>
-                              </div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h4 className="text-base font-semibold">
+                                {selectedReview.product?.name ?? "Sản phẩm"}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                {selectedReview.user?.fullName ??
+                                  selectedReview.user?.email ??
+                                  "Ẩn danh"}
+                              </p>
                             </div>
-
-                            <Tabs
-                              value={reviewDetailTab}
-                              onValueChange={setReviewDetailTab}
-                              className="space-y-3"
-                            >
-                              <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-secondary/50 p-1">
-                                <TabsTrigger
-                                  value="overview"
-                                  className="text-xs"
-                                >
-                                  Tổng quan
-                                </TabsTrigger>
-                                <TabsTrigger
-                                  value="conversation"
-                                  className="text-xs"
-                                >
-                                  Hội thoại
-                                </TabsTrigger>
-                                <TabsTrigger value="reply" className="text-xs">
-                                  Phản hồi
-                                </TabsTrigger>
-                              </TabsList>
-
-                              <TabsContent
-                                value="overview"
-                                className="mt-0 space-y-3"
-                              >
-                                <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
-                                  <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
-                                  <p className="mt-1 whitespace-pre-wrap">
-                                    {selectedReview.comment ||
-                                      "Không có nội dung đánh giá"}
-                                  </p>
-                                </div>
-
-                                <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                                  <div>
-                                    Tạo lúc:{" "}
-                                    {formatDate(selectedReview.createdAt)}
-                                  </div>
-                                  <div>
-                                    Cập nhật:{" "}
-                                    {formatDate(selectedReview.updatedAt)}
-                                  </div>
-                                  <div>
-                                    Kiểm duyệt:{" "}
-                                    {selectedReview.moderatedAt
-                                      ? formatDate(selectedReview.moderatedAt)
-                                      : "Chưa"}
-                                  </div>
-                                  <div>
-                                    Người kiểm duyệt:{" "}
-                                    {selectedReview.moderator?.fullName ?? "-"}
-                                  </div>
-                                  <div>
-                                    Trạng thái thread:{" "}
-                                    {formatThreadStatusLabel(
-                                      selectedReviewThreadStatus,
-                                    )}
-                                  </div>
-                                  <div>
-                                    Người xử lý:{" "}
-                                    {selectedReview.resolver?.fullName ?? "-"}
-                                  </div>
-                                  <div>
-                                    Xử lý lúc:{" "}
-                                    {selectedReview.threadResolvedAt
-                                      ? formatDate(
-                                          selectedReview.threadResolvedAt,
-                                        )
-                                      : "-"}
-                                  </div>
-                                </div>
-
-                                {selectedReview.hiddenReason ? (
-                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                    Lý do ẩn: {selectedReview.hiddenReason}
-                                  </div>
-                                ) : null}
-
-                                {Array.isArray(selectedReview.images) &&
-                                selectedReview.images.length > 0 ? (
-                                  <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-xs font-semibold">
-                                      <ImagePlus className="h-3.5 w-3.5" />
-                                      Ảnh đính kèm
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                                      {selectedReview.images.map((image) => (
-                                        <a
-                                          key={image.id}
-                                          href={image.imageUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="overflow-hidden rounded-lg border border-border/60 bg-secondary/20"
-                                        >
-                                          <img
-                                            src={image.imageUrl}
-                                            alt="Ảnh đánh giá"
-                                            className="h-16 w-full object-cover"
-                                          />
-                                        </a>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </TabsContent>
-
-                              <TabsContent
-                                value="conversation"
-                                className="mt-0 space-y-2"
-                              >
-                                <label className="text-xs font-semibold">
-                                  Hội thoại phản hồi
-                                </label>
-
-                                {selectedReviewThread.length > 0 ? (
-                                  <div className="min-h-[220px] max-h-[28rem] space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-secondary/20 p-3">
-                                    {selectedReviewThread.map((message) => (
-                                      <div
-                                        key={`${selectedReview.id}-${message.id}`}
-                                        className={`rounded-xl border px-3 py-2 text-sm ${
-                                          message.isStaff
-                                            ? "ml-6 border-sky-200 bg-sky-50/80"
-                                            : "mr-6 border-emerald-200 bg-emerald-50/80"
-                                        }`}
-                                      >
-                                        <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                          <span className="font-medium text-slate-700">
-                                            {message.isStaff
-                                              ? "Nhân viên"
-                                              : "Khách hàng"}
-                                            {message.senderName
-                                              ? ` • ${message.senderName}`
-                                              : ""}
-                                          </span>
-                                          <span>
-                                            {formatDate(message.createdAt)}
-                                          </span>
-                                        </div>
-                                        <p className="whitespace-pre-wrap text-slate-800">
-                                          {message.message}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                                    Chưa có phản hồi hai chiều cho đánh giá này.
-                                  </div>
-                                )}
-                              </TabsContent>
-
-                              <TabsContent
-                                value="reply"
-                                className="mt-0 space-y-3"
-                              >
-                                <div className="rounded-xl border border-border/60 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-3">
-                                  <div className="rounded-lg border border-sky-100 bg-white/80 px-3 py-2">
-                                    <p className="text-xs font-semibold text-sky-700">
-                                      Phản hồi gần nhất từ khách
-                                    </p>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                      {latestCustomerReply?.message ||
-                                        selectedReview.comment ||
-                                        "Khách chưa để lại nội dung phản hồi."}
-                                    </p>
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                      {latestCustomerReply?.createdAt
-                                        ? `Lúc ${formatDate(latestCustomerReply.createdAt)}`
-                                        : "Đang hiển thị nội dung đánh giá ban đầu"}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-2">
-                                    {reviewReplyTemplates.map((template) => (
-                                      <Button
-                                        key={template.id}
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 rounded-full px-3 text-xs"
-                                        onClick={() =>
-                                          setReviewReplyDraftById((prev) => ({
-                                            ...prev,
-                                            [selectedReview.id]: template.text,
-                                          }))
-                                        }
-                                      >
-                                        {template.label}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                  <textarea
-                                    className="mt-2 min-h-[130px] w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                                    rows={5}
-                                    placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
-                                    value={
-                                      reviewReplyDraftById[selectedReview.id] ??
-                                      ""
-                                    }
-                                    onChange={(event) =>
-                                      setReviewReplyDraftById((prev) => ({
-                                        ...prev,
-                                        [selectedReview.id]: event.target.value,
-                                      }))
-                                    }
-                                  />
-                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                    <span className="text-xs text-muted-foreground">
-                                      {selectedReview.adminRepliedAt
-                                        ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
-                                        : "Chưa có phản hồi"}
-                                    </span>
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-xs text-muted-foreground">
-                                        {
-                                          String(
-                                            reviewReplyDraftById[
-                                              selectedReview.id
-                                            ] ?? "",
-                                          ).trim().length
-                                        }
-                                        /2000 ký tự
-                                      </span>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={
-                                          replyingReviewId ===
-                                          Number(selectedReview.id)
-                                        }
-                                        onClick={() =>
-                                          saveReviewReply(
-                                            Number(selectedReview.id),
-                                          )
-                                        }
-                                      >
-                                        {replyingReviewId ===
-                                        Number(selectedReview.id)
-                                          ? "Đang lưu..."
-                                          : "Lưu phản hồi"}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </TabsContent>
-                            </Tabs>
+                            {statusBadge(
+                              selectedReview.isHidden
+                                ? "Đã ẩn"
+                                : "Đang hiển thị",
+                            )}
                           </div>
 
-                          <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border/60 bg-background/95 pt-3 backdrop-blur-sm">
-                            <Button
-                              size="sm"
-                              variant={
-                                selectedReviewThreadStatus === "RESOLVED"
-                                  ? "outline"
-                                  : "default"
+                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
+                            <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
+                            <p className="mt-1 whitespace-pre-wrap">
+                              {selectedReview.comment ||
+                                "Không có nội dung đánh giá"}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                            <div>
+                              Tạo lúc: {formatDate(selectedReview.createdAt)}
+                            </div>
+                            <div>
+                              Cập nhật: {formatDate(selectedReview.updatedAt)}
+                            </div>
+                            <div>
+                              Kiểm duyệt:{" "}
+                              {selectedReview.moderatedAt
+                                ? formatDate(selectedReview.moderatedAt)
+                                : "Chưa"}
+                            </div>
+                            <div>
+                              Người kiểm duyệt:{" "}
+                              {selectedReview.moderator?.fullName ?? "-"}
+                            </div>
+                          </div>
+
+                          {selectedReview.hiddenReason ? (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                              Lý do ẩn: {selectedReview.hiddenReason}
+                            </div>
+                          ) : null}
+
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold">
+                              Phản hồi quản trị
+                            </label>
+                            <textarea
+                              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                              rows={4}
+                              placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
+                              value={
+                                reviewReplyDraftById[selectedReview.id] ?? ""
                               }
-                              disabled={
-                                resolvingReviewId === Number(selectedReview.id)
+                              onChange={(event) =>
+                                setReviewReplyDraftById((prev) => ({
+                                  ...prev,
+                                  [selectedReview.id]: event.target.value,
+                                }))
                               }
-                              onClick={() =>
-                                resolveReviewThread(
-                                  Number(selectedReview.id),
-                                  selectedReviewThreadStatus !== "RESOLVED",
-                                )
-                              }
-                            >
-                              {resolvingReviewId === Number(selectedReview.id)
-                                ? "Đang cập nhật..."
-                                : selectedReviewThreadStatus === "RESOLVED"
-                                  ? "Mở lại hội thoại"
-                                  : "Đánh dấu đã xử lý"}
-                            </Button>
+                            />
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {selectedReview.adminRepliedAt
+                                  ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
+                                  : "Chưa có phản hồi"}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={
+                                  replyingReviewId === Number(selectedReview.id)
+                                }
+                                onClick={() =>
+                                  saveReviewReply(Number(selectedReview.id))
+                                }
+                              >
+                                {replyingReviewId === Number(selectedReview.id)
+                                  ? "Đang lưu..."
+                                  : "Lưu phản hồi"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
                             <Button
                               size="sm"
                               variant="outline"
@@ -7281,67 +7136,6 @@ export default function AdminPage() {
               </Panel>
             </div>
           </section>
-
-          <Dialog
-            open={deleteReviewDialogOpen}
-            onOpenChange={(open) => {
-              setDeleteReviewDialogOpen(open);
-              if (!open) {
-                setDeleteReviewTarget(null);
-                setDeleteReviewReason("");
-              }
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Xóa đánh giá</DialogTitle>
-                <DialogDescription>
-                  Nhập lý do xóa để lưu lại log và thông báo cho khách hàng.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-3">
-                <div className="rounded-md border border-border/60 bg-secondary/20 px-3 py-2 text-sm">
-                  <p className="font-medium">
-                    {deleteReviewTarget?.product?.name ?? "Sản phẩm"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    #{deleteReviewTarget?.id ?? "-"} •{" "}
-                    {deleteReviewTarget?.user?.fullName ??
-                      deleteReviewTarget?.user?.email ??
-                      "Ẩn danh"}
-                  </p>
-                </div>
-
-                <Textarea
-                  value={deleteReviewReason}
-                  onChange={(event) =>
-                    setDeleteReviewReason(event.target.value)
-                  }
-                  placeholder="Nhập lý do xóa đánh giá..."
-                  className="min-h-[120px]"
-                />
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setDeleteReviewDialogOpen(false)}
-                  >
-                    Hủy
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    disabled={Boolean(deletingReviewId)}
-                    onClick={confirmDeleteReview}
-                  >
-                    {deletingReviewId ? "Đang xóa..." : "Xác nhận xóa"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           <section id="chat" className={sectionClassName("chat")}>
             <SectionHeader
@@ -7412,12 +7206,13 @@ export default function AdminPage() {
           </section>
 
           <section id="roles" className={sectionClassName("roles")}>
-            <SectionHeader
-              sectionId="roles"
-              icon={ShieldCheck}
-              title="Phân quyền"
-              description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
-            />
+              <SectionHeader
+                sectionId="roles"
+                icon={ShieldCheck}
+                title="Phân quyền"
+                description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
+                showPill={false}
+              />
             <Panel
               title="Chọn tài khoản"
               description="Tài khoản admin@gmail.com luôn có toàn bộ quyền"
@@ -7457,7 +7252,7 @@ export default function AdminPage() {
                           .toLowerCase() === "admin@gmail.com"
                           ? "Siêu quản trị"
                           : selectedPermissionTarget.role?.name ||
-                            "Chưa có vai trò"}
+                          "Chưa có vai trò"}
                       </div>
                     </div>
                   ) : null}
@@ -7466,166 +7261,69 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">
-                      Quyền theo module
+                      Quyền theo menu
                     </span>
                     {selectedPermissionTarget ? (
                       <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                        {Array.isArray(effectiveSelectedPermissionDraft)
-                          ? effectiveSelectedPermissionDraft.length
-                          : 0}{" "}
-                        quyền
+                        {
+                          menuPermissionOptions.filter((item) =>
+                            effectiveSelectedPermissionDraft.includes(
+                              item.actionName,
+                            ),
+                          ).length
+                        }{" "}
+                        mục
                       </span>
                     ) : null}
                   </div>
 
-                  <div className="grid gap-2 lg:grid-cols-2">
-                    {navItems
-                      .reduce((acc, item) => {
-                        const module = permissionModuleMap[item.id];
-                        if (module && !acc.some((m) => m === module)) {
-                          acc.push(module);
-                        }
-                        return acc;
-                      }, [])
-                      .map((module) => {
-                        const isSuperAdmin =
-                          String(selectedPermissionTarget?.email ?? "")
-                            .trim()
-                            .toLowerCase() === "admin@gmail.com";
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {menuPermissionOptions.map((permissionItem) => {
+                      const actionName = String(
+                        permissionItem.actionName ?? "",
+                      );
+                      const isSuperAdmin =
+                        String(selectedPermissionTarget?.email ?? "")
+                          .trim()
+                          .toLowerCase() === "admin@gmail.com";
+                      const checked = isSuperAdmin
+                        ? true
+                        : effectiveSelectedPermissionDraft.includes(actionName);
 
-                        const hasManage =
-                          effectiveSelectedPermissionDraft.includes(
-                            `admin_${module}_manage`,
-                          );
-                        const hasEdit =
-                          effectiveSelectedPermissionDraft.includes(
-                            `admin_${module}_edit`,
-                          );
-                        const hasView =
-                          effectiveSelectedPermissionDraft.includes(
-                            `admin_${module}_view`,
-                          );
+                      return (
+                        <label
+                          key={actionName}
+                          className="flex cursor-pointer items-start gap-2 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isSuperAdmin || !selectedPermissionTarget}
+                            onChange={(event) =>
+                              selectedPermissionTarget
+                                ? toggleUserPermission(
+                                  selectedPermissionTarget.id,
+                                  actionName,
+                                  event.target.checked,
+                                )
+                                : null
+                            }
+                            className="mt-1"
+                          />
+                          <span className="flex flex-col gap-1">
+                            <span className="font-medium">
+                              {permissionItem.label}
+                            </span>
 
-                        let currentLevel = "none";
-                        if (hasManage) {
-                          currentLevel = "manage";
-                        } else if (hasEdit) {
-                          currentLevel = "edit";
-                        } else if (hasView) {
-                          currentLevel = "view";
-                        }
-
-                        // Find label for this module
-                        const moduleLabel =
-                          navItems.find(
-                            (item) => permissionModuleMap[item.id] === module,
-                          )?.label || module;
-
-                        return (
-                          <div
-                            key={module}
-                            className="rounded-lg border border-border/60 bg-secondary/40 p-2.5"
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold">
-                                {moduleLabel}
-                              </div>
-                              <span className="text-[10px] text-muted-foreground">
-                                {currentLevel === "manage"
-                                  ? "🔑 Quản lý"
-                                  : currentLevel === "edit"
-                                    ? "✏️ Sửa"
-                                    : currentLevel === "view"
-                                      ? "👁️ Xem"
-                                      : "🚫 Không có"}
+                            {permissionItem.description ? (
+                              <span className="text-xs text-muted-foreground">
+                                {permissionItem.description}
                               </span>
-                            </div>
-
-                            {isSuperAdmin ? (
-                              <div className="text-[10px] text-muted-foreground">
-                                Siêu quản trị có toàn quyền
-                              </div>
-                            ) : !selectedPermissionTarget ? (
-                              <div className="text-[10px] text-muted-foreground">
-                                Vui lòng chọn tài khoản
-                              </div>
-                            ) : (
-                              <div className="flex flex-row gap-1 flex-wrap">
-                                {[
-                                  { value: "none", label: "🚫 Không có" },
-                                  { value: "view", label: "👁️ Chỉ xem" },
-                                  { value: "edit", label: "✏️ Xem + sửa" },
-                                  {
-                                    value: "manage",
-                                    label: "🔑 Quản lý toàn bộ",
-                                  },
-                                ].map((levelOption) => (
-                                  <button
-                                    key={levelOption.value}
-                                    type="button"
-                                    onClick={() => {
-                                      const newPermissions = new Set(
-                                        effectiveSelectedPermissionDraft,
-                                      );
-
-                                      // Remove all levels
-                                      newPermissions.delete(
-                                        `admin_${module}_view`,
-                                      );
-                                      newPermissions.delete(
-                                        `admin_${module}_edit`,
-                                      );
-                                      newPermissions.delete(
-                                        `admin_${module}_manage`,
-                                      );
-
-                                      // Add selected level
-                                      if (levelOption.value === "view") {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                      } else if (levelOption.value === "edit") {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_edit`,
-                                        );
-                                      } else if (
-                                        levelOption.value === "manage"
-                                      ) {
-                                        newPermissions.add(
-                                          `admin_${module}_view`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_edit`,
-                                        );
-                                        newPermissions.add(
-                                          `admin_${module}_manage`,
-                                        );
-                                      }
-
-                                      setPermissionDraftByUserId((prev) => ({
-                                        ...prev,
-                                        [selectedPermissionTarget.id]:
-                                          Array.from(newPermissions),
-                                      }));
-                                    }}
-                                    disabled={isSuperAdmin}
-                                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                                      currentLevel === levelOption.value
-                                        ? "border-emerald-500 bg-emerald-100 text-emerald-700"
-                                        : "border-border/60 bg-background text-muted-foreground hover:border-emerald-300"
-                                    }`}
-                                  >
-                                    {levelOption.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
 
                   <Button
@@ -7638,7 +7336,7 @@ export default function AdminPage() {
                     disabled={
                       !selectedPermissionTarget ||
                       savingPermissionTargetId ===
-                        Number(selectedPermissionTarget?.id) ||
+                      Number(selectedPermissionTarget?.id) ||
                       String(selectedPermissionTarget?.email ?? "")
                         .trim()
                         .toLowerCase() === "admin@gmail.com"
@@ -7646,11 +7344,11 @@ export default function AdminPage() {
                     className="w-full"
                   >
                     {savingPermissionTargetId ===
-                    Number(selectedPermissionTarget?.id)
+                      Number(selectedPermissionTarget?.id)
                       ? "Đang lưu quyền tài khoản..."
                       : String(selectedPermissionTarget?.email ?? "")
-                            .trim()
-                            .toLowerCase() === "admin@gmail.com"
+                        .trim()
+                        .toLowerCase() === "admin@gmail.com"
                         ? "Siêu quản trị luôn có toàn quyền"
                         : "Lưu quyền tài khoản"}
                   </Button>
@@ -7664,16 +7362,18 @@ export default function AdminPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title, description, sectionId }) {
+function SectionHeader({ icon: Icon, title, description, sectionId, showPill = true }) {
   const schema = schemaBySection[sectionId] ?? schemaBySection.dashboard;
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-primary shadow-sm">
-          <Icon className="h-4 w-4" />
-          {title}
-        </div>
+        {showPill ? (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-primary shadow-sm">
+            <Icon className="h-4 w-4" />
+            {title}
+          </div>
+        ) : null}
         <h3 className="text-2xl font-bold">{title}</h3>
         <p className="mt-1 text-muted-foreground">{description}</p>
       </div>
@@ -7728,34 +7428,39 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-    value === "Đã thanh toán" ||
-    value === "Đã hoàn tiền" ||
-    value === "Đã giao" ||
-    value === "Đã giao hàng" ||
-    value === "Đã kết nối" ||
-    value === "Đã đăng" ||
-    value === "Phổ biến" ||
-    value === "Đã xác minh" ||
-    value === "Còn hàng" ||
-    value === "Đã dùng" ||
-    value === "Đang hiển thị"
+      value === "Đã thanh toán" ||
+      value === "Đã hoàn tiền" ||
+      value === "Đã duyệt" ||
+      value === "Đã nhận hàng" ||
+      value === "Đã giao" ||
+      value === "Đã giao hàng" ||
+      value === "Đã kết nối" ||
+      value === "Đã đăng" ||
+      value === "Phổ biến" ||
+      value === "Đã xác minh" ||
+      value === "Còn hàng" ||
+      value === "Đã dùng" ||
+      value === "Đang hiển thị"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-          value === "Chờ xác nhận" ||
-          value === "Chờ thanh toán" ||
-          value === "Đang xử lý" ||
-          value === "Đang chuẩn bị" ||
-          value === "Tạm dừng" ||
-          value === "Cần xem xét" ||
-          value === "Bản nháp" ||
-          value === "Ổn định"
+        value === "Chờ xác nhận" ||
+        value === "Chờ thanh toán" ||
+        value === "Đang xử lý" ||
+        value === "Đang chuẩn bị" ||
+        value === "Đang gửi trả" ||
+        value === "Tạm dừng" ||
+        value === "Cần xem xét" ||
+        value === "Bản nháp" ||
+        value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-            value === "Đang vận chuyển" ||
-            value === "Quản trị viên" ||
-            value === "Nhân viên" ||
-            value === "Mở"
+          value === "Đang vận chuyển" ||
+          value === "Quản trị viên" ||
+          value === "Nhân viên" ||
+          value === "Mở"
           ? "bg-sky-100 text-sky-700"
+          : value === "Đã từ chối"
+            ? "bg-rose-100 text-rose-700"
           : value === "Đã ẩn"
             ? "bg-slate-200 text-slate-700"
             : "bg-rose-100 text-rose-700";
@@ -7838,6 +7543,18 @@ function formatPaymentStatusLabelAdmin(value) {
   if (normalized === "PENDING") return "Chờ thanh toán";
   if (normalized === "FAILED") return "Thanh toán thất bại";
   if (normalized === "REFUNDED") return "Đã hoàn tiền";
+  return formatEnum(normalized);
+}
+
+function formatReturnStatusLabelAdmin(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "PENDING") return "Đang chờ";
+  if (normalized === "APPROVED") return "Đã duyệt";
+  if (normalized === "REJECTED") return "Đã từ chối";
+  if (normalized === "SHIPPING_BACK") return "Đang gửi trả";
+  if (normalized === "RECEIVED") return "Đã nhận hàng";
+  if (normalized === "REFUNDED") return "Đã hoàn tiền";
+  if (normalized === "CANCELLED") return "Đã hủy";
   return formatEnum(normalized);
 }
 

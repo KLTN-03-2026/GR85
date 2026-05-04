@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "prisma generate",
     "dev": "tsx watch src/index.js",
+    "prestart": "prisma generate",
     "start": "node src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -19,6 +21,7 @@
     "@prisma/client": "^6.7.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",

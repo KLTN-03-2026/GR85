@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFavorite } from "@/client/features/favorite/context/FavoriteContext";
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -27,7 +28,8 @@ export default function ProductDetailPage() {
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
   const [recentlyViewed, setRecentlyViewed] = useState([]);
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const { isFavorite, toggleFavorite } = useFavorite();
+  const isWishlisted = product ? isFavorite(product.id) : false;
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
   const [reviewFilterRating, setReviewFilterRating] = useState("ALL");
@@ -172,77 +174,26 @@ export default function ProductDetailPage() {
     };
   }, [product?.slug, token, isHydrated, refreshReviewEligibility]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadWishlistStatus() {
-      if (!product?.slug || !token || !isAuthenticated) {
-        setIsWishlisted(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/products/${product.slug}/wishlist-status`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        const payload = await response.json();
-        if (cancelled) {
-          return;
-        }
-
-        setIsWishlisted(Boolean(payload?.isWishlisted));
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setIsWishlisted(false);
-      }
-    }
-
-    if (isHydrated) {
-      loadWishlistStatus();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [product?.slug, token, isAuthenticated, isHydrated]);
-
-  async function toggleWishlist() {
+  async function handleToggleWishlist() {
     setWishlistMessage("");
 
-    if (!isHydrated || !isAuthenticated || !token) {
+    if (!isHydrated || !isAuthenticated) {
       setWishlistMessage("Vui lòng đăng nhập để dùng wishlist");
       return;
     }
 
-    if (!product?.slug) {
+    if (!product?.id) {
       return;
     }
 
     try {
       setIsUpdatingWishlist(true);
-      const response = await fetch(`/api/products/${product.slug}/wishlist`, {
-        method: isWishlisted ? "DELETE" : "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.message || "Không thể cập nhật wishlist");
+      const success = await toggleFavorite(product.id);
+      if (!success) {
+        throw new Error("Không thể cập nhật wishlist");
       }
-
-      setIsWishlisted((prev) => !prev);
       setWishlistMessage(
-        isWishlisted ? "Đã bỏ khỏi wishlist" : "Đã thêm vào wishlist",
+        !isWishlisted ? "Đã thêm vào wishlist" : "Đã bỏ khỏi wishlist",
       );
     } catch (error) {
       setWishlistMessage(
@@ -250,6 +201,7 @@ export default function ProductDetailPage() {
       );
     } finally {
       setIsUpdatingWishlist(false);
+      setTimeout(() => setWishlistMessage(""), 3000);
     }
   }
 
@@ -488,7 +440,7 @@ export default function ProductDetailPage() {
 
               <Button
                 variant={isWishlisted ? "default" : "outline"}
-                onClick={toggleWishlist}
+                onClick={handleToggleWishlist}
                 disabled={isUpdatingWishlist}
               >
                 {isUpdatingWishlist
@@ -521,8 +473,8 @@ export default function ProductDetailPage() {
                       <button
                         key={`rating-${item.rating}`}
                         type="button"
-                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewFilterRating === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
-                        onClick={() => setReviewFilterRating(String(item.rating))}
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition ${reviewStarFilter === String(item.rating) ? "bg-primary/10" : "hover:bg-muted/60"}`}
+                        onClick={() => setReviewStarFilter(String(item.rating))}
                       >
                         <span className="w-10 font-medium">{item.rating}★</span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
@@ -541,8 +493,8 @@ export default function ProductDetailPage() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={reviewFilterRating === "ALL" ? "default" : "outline"}
-                    onClick={() => setReviewFilterRating("ALL")}
+                    variant={reviewStarFilter === "all" ? "default" : "outline"}
+                    onClick={() => setReviewStarFilter("all")}
                   >
                     Tất cả
                   </Button>
@@ -551,8 +503,8 @@ export default function ProductDetailPage() {
                       key={`rating-filter-${rating}`}
                       type="button"
                       size="sm"
-                      variant={reviewFilterRating === String(rating) ? "default" : "outline"}
-                      onClick={() => setReviewFilterRating(String(rating))}
+                      variant={reviewStarFilter === String(rating) ? "default" : "outline"}
+                      onClick={() => setReviewStarFilter(String(rating))}
                     >
                       {rating} sao
                     </Button>
