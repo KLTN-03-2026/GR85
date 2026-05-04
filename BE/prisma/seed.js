@@ -80,7 +80,6 @@ async function main() {
   });
 
   const categoriesInput = [
-    // Core PC Components
     { name: "CPU", slug: "cpu", description: "Bộ xử lý trung tâm" },
     { name: "Mainboard", slug: "mainboard", description: "Bo mạch chủ" },
     { name: "RAM", slug: "ram", description: "Bộ nhớ tạm" },
@@ -90,7 +89,6 @@ async function main() {
     { name: "PSU", slug: "psu", description: "Nguồn điện" },
     { name: "Case", slug: "case", description: "Vỏ máy" },
     { name: "Cooling", slug: "cooling", description: "Tản nhiệt" },
-    // Peripherals
     { name: "Monitor", slug: "monitor", description: "Màn hình" },
     { name: "Mouse", slug: "mouse", description: "Chuột" },
     { name: "Keyboard", slug: "keyboard", description: "Bàn phím" },
@@ -98,7 +96,6 @@ async function main() {
     { name: "Speaker", slug: "speaker", description: "Loa" },
     { name: "Webcam", slug: "webcam", description: "Camera web" },
     { name: "Microphone", slug: "microphone", description: "Microphone" },
-    // Accessories & Cables
     { name: "Cable", slug: "cable", description: "Cáp kết nối" },
     { name: "Hub", slug: "hub", description: "Bộ chia cổng" },
     { name: "Stand", slug: "stand", description: "Giá đỡ" },
@@ -129,44 +126,94 @@ async function main() {
     },
   ];
 
+  // --- XÓA DỮ LIỆU CŨ LIÊN QUAN ĐẾN SẢN PHẨM / DANH MỤC ---
+  // Xóa các bảng phụ thuộc trước
+  await prisma.serialNumber.deleteMany();
+  await prisma.batch.deleteMany();
+  await prisma.productImage.deleteMany();
+  await prisma.productDetail.deleteMany();
+  await prisma.review.deleteMany();
+  await prisma.wishlistItem.deleteMany();
+  await prisma.returnItem.deleteMany().catch(() => {});
+  await prisma.aiBuildItem.deleteMany().catch(() => {});
+  await prisma.cartItem.deleteMany();
+  await prisma.orderItem.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.category.deleteMany();
+
+  // Tạo categories mới
   const categories = await Promise.all(
-    categoriesInput.map((item) =>
-      prisma.category.upsert({
-        where: { slug: item.slug },
-        update: {
-          name: item.name,
-          description: item.description,
-        },
-        create: item,
-      }),
-    ),
+    categoriesInput.map((item) => prisma.category.create({ data: item })),
   );
 
-  const suppliers = [];
+  // Xóa và tạo mới suppliers
+  await prisma.supplier.deleteMany();
+  const suppliers = await Promise.all(
+    suppliersInput.map((item) => prisma.supplier.create({ data: item })),
+  );
 
-  for (const item of suppliersInput) {
-    const existingSupplier = await prisma.supplier.findFirst({
-      where: { name: item.name },
-    });
+  // Tạo 10 sản phẩm cho mỗi danh mục
+  const createdProducts = [];
+  for (const cat of categories) {
+    for (let i = 1; i <= 10; i++) {
+      const idx = i;
+      const name = `${cat.name} Model ${String(idx).padStart(2, "0")}`;
+      const slug = `${cat.slug}-model-${idx}`;
+      const price = Math.floor(200000 + Math.random() * 15000000); // giá mẫu
 
-    if (existingSupplier) {
-      const updatedSupplier = await prisma.supplier.update({
-        where: { id: existingSupplier.id },
+      const product = await prisma.product.create({
         data: {
-          contactPerson: item.contactPerson,
-          phone: item.phone,
-          email: item.email,
-          address: item.address,
+          categoryId: cat.id,
+          supplierId: suppliers[(i - 1) % suppliers.length].id,
+          name,
+          slug,
+          price,
+          salePrice: null,
+          specifications: {
+            sku: `${cat.slug.toUpperCase()}-${idx}`,
+            brand: "SampleBrand",
+            model: `SB-${idx}`,
+            color: "Black",
+            features: ["feature-1", "feature-2"],
+          },
+          stockQuantity: 100,
+          displayOrder: idx,
         },
       });
-      suppliers.push(updatedSupplier);
-      continue;
-    }
 
-    const createdSupplier = await prisma.supplier.create({
-      data: item,
-    });
-    suppliers.push(createdSupplier);
+      await prisma.productDetail.create({
+        data: {
+          productId: product.id,
+          fullDescription: `Mô tả chi tiết cho ${name}. Đây là dữ liệu mẫu, bạn có thể cập nhật sau.`,
+          inTheBox: "Hướng dẫn sử dụng, cáp, ốc vít",
+          manualUrl: "",
+          warrantyPolicy: "Bảo hành chính hãng 12 tháng",
+        },
+      });
+
+      await prisma.productImage.create({
+        data: {
+          productId: product.id,
+          imageUrl: "", // user sẽ thêm ảnh sau
+          isPrimary: true,
+          sortOrder: 0,
+        },
+      });
+
+      // tạo 1 batch mẫu (bỏ qua lỗi nếu warehouse 1 không tồn tại)
+      await prisma.batch.create({
+        data: {
+          batchCode: `${slug}-batch-1`,
+          productId: product.id,
+          warehouseId: 1,
+          supplierId: suppliers[(i - 1) % suppliers.length].id,
+          importPrice: price * 0.6,
+          quantity: 100,
+        },
+      }).catch(() => {});
+
+      createdProducts.push(product);
+    }
   }
 
   const cpuProducts = [
