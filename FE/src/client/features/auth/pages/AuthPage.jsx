@@ -9,6 +9,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Cpu,
+  Eye,
+  EyeOff,
   KeyRound,
   Lock,
   Loader2,
@@ -112,6 +114,12 @@ export default function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVerifyingResetOtp, setIsVerifyingResetOtp] = useState(false);
   const [isResetOtpVerified, setIsResetOtpVerified] = useState(false);
+  const [showPasswords, setShowPasswords] = useState({
+    password: false,
+    confirmPassword: false,
+    resetPassword: false,
+    resetConfirmPassword: false,
+  });
   const hasAutoVerifiedRef = useRef(false);
 
   useEffect(() => {
@@ -143,6 +151,24 @@ export default function AuthPage() {
 
     setForm((current) => ({ ...current, [field]: value }));
   };
+
+  const togglePasswordVisibility = (field) => {
+    setShowPasswords((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
+  };
+
+  const isRegisterPasswordMatched =
+    mode === "register" &&
+    String(form.password ?? "").length > 0 &&
+    String(form.confirmPassword ?? "").length > 0;
+
+  const registerPasswordMatchMessage = !isRegisterPasswordMatched
+    ? null
+    : form.password === form.confirmPassword
+      ? "Mật khẩu khớp"
+      : "Mật khẩu chưa khớp";
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -464,15 +490,33 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPasswords.password ? "text" : "password"}
                       minLength={mode === "register" ? 8 : undefined}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder={
                         mode === "register" ? "Tạo mật khẩu" : "Nhập mật khẩu"
                       }
                       value={form.password}
                       onChange={handleChange("password")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("password")}
+                      aria-label={
+                        showPasswords.password
+                          ? "Ẩn mật khẩu"
+                          : "Hiện mật khẩu"
+                      }
+                    >
+                      {showPasswords.password ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -484,14 +528,43 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={showPasswords.confirmPassword ? "text" : "password"}
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập lại mật khẩu"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("confirmPassword")}
+                      aria-label={
+                        showPasswords.confirmPassword
+                          ? "Ẩn mật khẩu xác nhận"
+                          : "Hiện mật khẩu xác nhận"
+                      }
+                    >
+                      {showPasswords.confirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
+                  {registerPasswordMatchMessage ? (
+                    <p
+                      className={`text-xs font-medium ${
+                        form.password === form.confirmPassword
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {registerPasswordMatchMessage}
+                    </p>
+                  ) : null}
                 </div>
               )}
 
@@ -536,13 +609,31 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPasswords.resetPassword ? "text" : "password"}
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập mật khẩu mới"
                       value={form.password}
                       onChange={handleChange("password")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("resetPassword")}
+                      aria-label={
+                        showPasswords.resetPassword
+                          ? "Ẩn mật khẩu mới"
+                          : "Hiện mật khẩu mới"
+                      }
+                    >
+                      {showPasswords.resetPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -554,13 +645,35 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={
+                        showPasswords.resetConfirmPassword ? "text" : "password"
+                      }
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập lại mật khẩu mới"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() =>
+                        togglePasswordVisibility("resetConfirmPassword")
+                      }
+                      aria-label={
+                        showPasswords.resetConfirmPassword
+                          ? "Ẩn mật khẩu xác nhận mới"
+                          : "Hiện mật khẩu xác nhận mới"
+                      }
+                    >
+                      {showPasswords.resetConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}

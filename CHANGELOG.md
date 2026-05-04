@@ -59,3 +59,15 @@ Mục mới nhất luôn được thêm ở cuối file.
 
 - Prisma Client đã được regenerate để nhận thay đổi schema (`npx prisma generate`).
 - Nếu gặp lỗi `EPERM` trên Windows khi generate: dừng BE đang chạy rồi generate lại.
+
+## 2026-05-04 — Cải thiện form đăng ký mật khẩu
+
+### Thay đổi đã thực hiện
+
+- **FE/src/client/features/auth/pages/AuthPage.jsx**
+  - **Thay đổi gì:**
+    - Thêm nút hiện/ẩn mật khẩu cho ô mật khẩu và ô xác nhận mật khẩu.
+    - Hiển thị trạng thái khớp/không khớp ngay khi người dùng nhập mật khẩu đăng ký.
+    - Áp dụng cùng hành vi cho luồng đổi mật khẩu ở màn hình đặt lại mật khẩu.
+  - **Lý do:**
+    - Giúp người dùng nhập mật khẩu dễ hơn và biết ngay khi hai ô mật khẩu chưa khớp.
