@@ -782,6 +782,9 @@ export default function AdminPage() {
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
+  const [deleteReviewDialogOpen, setDeleteReviewDialogOpen] = useState(false);
+  const [deleteReviewReason, setDeleteReviewReason] = useState("");
+  const [pendingDeleteReview, setPendingDeleteReview] = useState(null);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
   const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
 
@@ -1674,25 +1677,33 @@ export default function AdminPage() {
   );
 
   async function removeReview(review) {
-    if (!token || !review?.id) {
+    if (!review?.id) return;
+    setPendingDeleteReview(review);
+    setDeleteReviewReason("");
+    setDeleteReviewDialogOpen(true);
+  }
+
+  async function confirmDeleteReview() {
+    if (!token || !pendingDeleteReview?.id || !deleteReviewReason.trim()) {
+      toast({
+        title: "Vui lòng nhập lý do xóa đánh giá",
+        variant: "destructive",
+      });
       return;
     }
 
-    const shouldDelete = window.confirm(
-      `Bạn có chắc muốn xóa đánh giá #${review.id}? Hành động này không thể hoàn tác.`,
-    );
-    if (!shouldDelete) {
-      return;
-    }
-
-    const reviewId = Number(review.id);
+    const reviewId = Number(pendingDeleteReview.id);
     setDeletingReviewId(reviewId);
+    setDeleteReviewDialogOpen(false);
+
     try {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ reason: deleteReviewReason.trim() }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1712,6 +1723,53 @@ export default function AdminPage() {
       });
     } finally {
       setDeletingReviewId(null);
+      setPendingDeleteReview(null);
+    }
+  }
+
+  async function resolveReview(review) {
+    if (!token || !review?.id) return;
+
+    try {
+      const resolved = !isReviewResolved;
+      const response = await fetch(
+        `/api/admin/reviews/${review.id}/resolve`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            resolved,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message ?? "Không thể cập nhật trạng thái");
+      }
+
+      // Cập nhật local state
+      setAdminReviews((prev) =>
+        prev.map((item) =>
+          Number(item.id) === Number(review.id)
+            ? { ...item, threadStatus: resolved ? "RESOLVED" : "OPEN" }
+            : item,
+        ),
+      );
+
+      toast({
+        title: resolved ? "Đã đánh dấu xử lý" : "Đã mở lại cuộc hội thoại",
+        description: `Review đã được ${resolved ? "đánh dấu xử lý" : "mở lại"}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Cập nhật trạng thái thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
     }
   }
 
@@ -3529,6 +3587,19 @@ export default function AdminPage() {
         ? selectedReviewThread[selectedReviewThread.length - 1]
         : null,
     [selectedReviewThread],
+  );
+
+  const latestCustomerMessage = useMemo(
+    () =>
+      selectedReviewThread.length > 0
+        ? selectedReviewThread.filter((m) => !m.isStaff).slice(-1)[0] ?? null
+        : null,
+    [selectedReviewThread],
+  );
+
+  const isReviewResolved = useMemo(
+    () => selectedReview?.threadStatus === "RESOLVED",
+    [selectedReview],
   );
 
   useEffect(() => {
@@ -7307,6 +7378,59 @@ export default function AdminPage() {
                             </p>
                           </div>
 
+                          {/* Review Metadata */}
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Tạo lúc
+                              </p>
+                              <p className="mt-1 text-sm font-medium text-slate-900">
+                                {selectedReview.createdAt
+                                  ? (() => {
+                                      const date = new Date(selectedReview.createdAt);
+                                      return date.toLocaleString("vi-VN");
+                                    })()
+                                  : "-"}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Cập nhật
+                              </p>
+                              <p className="mt-1 text-sm font-medium text-slate-900">
+                                {selectedReview.updatedAt
+                                  ? (() => {
+                                      const date = new Date(selectedReview.updatedAt);
+                                      return date.toLocaleString("vi-VN");
+                                    })()
+                                  : "-"}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                Kiểm duyệt
+                              </p>
+                              <p className="mt-1 flex items-center gap-2">
+                                <span className={`h-2 w-2 rounded-full ${
+                                  selectedReview.isApproved
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
+                                }`} />
+                                <span className="text-sm font-medium">
+                                  {selectedReview.isApproved ? "Đã duyệt" : "Chưa duyệt"}
+                                </span>
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                Người kiểm duyệt
+                              </p>
+                              <p className="mt-1 text-sm font-medium text-blue-900">
+                                {selectedReview.approvedBy || selectedReview.moderatedBy || "-"}
+                              </p>
+                            </div>
+                          </div>
+
                           {Array.isArray(selectedReview.images) &&
                           selectedReview.images.length > 0 ? (
                             <div className="space-y-3 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
@@ -7330,80 +7454,172 @@ export default function AdminPage() {
                                     key={image.id}
                                     className="overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm"
                                   >
-                                    <a
-                                      href={image.imageUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
-                                      <img
-                                        src={image.imageUrl}
-                                        alt="Ảnh đánh giá"
-                                        className="h-40 w-full object-cover"
-                                      />
-                                    </a>
-                                    <div className="space-y-2 p-3 text-xs">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="font-medium">
-                                          {image.isApproved
-                                            ? "Đã duyệt"
-                                            : "Chờ duyệt"}
-                                        </span>
-                                        {image.rejectionReason ? (
-                                          <span className="text-rose-600">
+                                    <div className="relative">
+                                      <a
+                                        href={image.imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        <img
+                                          src={image.imageUrl}
+                                          alt="Ảnh đánh giá"
+                                          className="h-40 w-full object-cover"
+                                        />
+                                      </a>
+                                      {/* Status badge overlay */}
+                                      <div className="absolute top-2 right-2">
+                                        {image.isApproved ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                            Đã duyệt
+                                          </span>
+                                        ) : image.rejectionReason ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                                             Từ chối
                                           </span>
-                                        ) : null}
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                            Chờ duyệt
+                                          </span>
+                                        )}
                                       </div>
+                                    </div>
+                                    <div className="space-y-3 p-3 text-xs">
                                       {image.rejectionReason ? (
-                                        <p className="text-muted-foreground">
-                                          Lý do: {image.rejectionReason}
-                                        </p>
+                                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
+                                          <p className="text-xs font-medium text-rose-700">
+                                            Lý do từ chối:
+                                          </p>
+                                          <p className="mt-1 text-rose-700">
+                                            {image.rejectionReason}
+                                          </p>
+                                        </div>
+                                      ) : null}
+                                      {image.isApproved && image.moderatedAt ? (
+                                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2">
+                                          <p className="text-xs text-emerald-700">
+                                            Duyệt bởi: {image.moderatedBy ?? "Admin"}
+                                          </p>
+                                          <p className="text-xs text-emerald-600">
+                                            {new Date(image.moderatedAt).toLocaleString("vi-VN")}
+                                          </p>
+                                        </div>
                                       ) : null}
                                       <div className="flex flex-wrap gap-2">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          disabled={
-                                            moderatingReviewId ===
-                                            Number(selectedReview.id)
-                                          }
-                                          onClick={() =>
-                                            moderateReviewImage(
-                                              selectedReview.id,
-                                              image.id,
-                                              true,
-                                            )
-                                          }
-                                        >
-                                          Duyệt
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          disabled={
-                                            moderatingReviewId ===
-                                            Number(selectedReview.id)
-                                          }
-                                          onClick={() => {
-                                            const reason = window.prompt(
-                                              "Nhập lý do từ chối ảnh (không bắt buộc):",
-                                              String(
-                                                image.rejectionReason ?? "",
-                                              ),
-                                            );
-                                            if (reason === null) {
-                                              return;
+                                        {image.isApproved ? (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={
+                                              moderatingReviewId ===
+                                              Number(selectedReview.id)
                                             }
-                                            moderateReviewImage(
-                                              selectedReview.id,
-                                              image.id,
-                                              false,
-                                              reason,
-                                            );
-                                          }}
-                                        >
-                                          Từ chối
-                                        </Button>
+                                            onClick={() =>
+                                              moderateReviewImage(
+                                                selectedReview.id,
+                                                image.id,
+                                                false,
+                                                "Gỡ bỏ duyệt",
+                                              )
+                                            }
+                                          >
+                                            Gỡ bỏ duyệt
+                                          </Button>
+                                        ) : image.rejectionReason ? (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() =>
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  true,
+                                                )
+                                              }
+                                            >
+                                              Duyệt lại
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() => {
+                                                const reason = window.prompt(
+                                                  "Nhập lý do từ chối ảnh:",
+                                                  String(
+                                                    image.rejectionReason ?? "",
+                                                  ),
+                                                );
+                                                if (reason === null) {
+                                                  return;
+                                                }
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  false,
+                                                  reason,
+                                                );
+                                              }}
+                                            >
+                                              Từ chối
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() =>
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  true,
+                                                )
+                                              }
+                                            >
+                                              Duyệt
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() => {
+                                                const reason = window.prompt(
+                                                  "Nhập lý do từ chối ảnh (không bắt buộc):",
+                                                  "",
+                                                );
+                                                if (reason === null) {
+                                                  return;
+                                                }
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  false,
+                                                  reason,
+                                                );
+                                              }}
+                                            >
+                                              Từ chối
+                                            </Button>
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -7477,6 +7693,21 @@ export default function AdminPage() {
                                 Chưa có trao đổi trong hội thoại này.
                               </div>
                             )}
+
+                            {latestCustomerMessage ? (
+                              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm shadow-sm">
+                                <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-emerald-700">
+                                  <span>Phản hồi khách hàng mới nhất</span>
+                                  <span>
+                                    {formatDate(latestCustomerMessage.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="whitespace-pre-wrap text-slate-700">
+                                  {latestCustomerMessage.message ||
+                                    "Không có nội dung"}
+                                </p>
+                              </div>
+                            ) : null}
 
                             <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
                               {selectedReviewThread.length > 0
@@ -7634,6 +7865,20 @@ export default function AdminPage() {
                           </div>
 
                           <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+                            <Button
+                              size="sm"
+                              variant={isReviewResolved ? "outline" : "default"}
+                              className={
+                                isReviewResolved
+                                  ? ""
+                                  : "bg-emerald-600 hover:bg-emerald-700"
+                              }
+                              onClick={() => resolveReview(selectedReview)}
+                            >
+                              {isReviewResolved
+                                ? "Mở lại cuộc hội thoại"
+                                : "✓ Đánh dấu đã xử lý"}
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -7895,6 +8140,52 @@ export default function AdminPage() {
             </Panel>
           </section>
         </main>
+
+        {/* Delete Review Dialog */}
+        <Dialog open={deleteReviewDialogOpen} onOpenChange={setDeleteReviewDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xóa đánh giá</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc muốn xóa đánh giá #{pendingDeleteReview?.id}? Hành động này không thể hoàn tác.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label htmlFor="delete-reason" className="text-sm font-medium">
+                  Lý do xóa <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="delete-reason"
+                  placeholder="Nhập lý do xóa đánh giá..."
+                  value={deleteReviewReason}
+                  onChange={(e) => setDeleteReviewReason(e.target.value)}
+                  className="h-24 w-full rounded-lg border border-border/60 bg-white/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteReviewDialogOpen(false);
+                  setPendingDeleteReview(null);
+                  setDeleteReviewReason("");
+                }}
+                disabled={deletingReviewId === pendingDeleteReview?.id}
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteReview}
+                disabled={deletingReviewId === pendingDeleteReview?.id}
+              >
+                {deletingReviewId === pendingDeleteReview?.id ? "Đang xóa..." : "Xóa"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
