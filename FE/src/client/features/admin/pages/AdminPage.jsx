@@ -7387,17 +7387,32 @@ export default function AdminPage() {
                               <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Kiểm duyệt</p>
                               <p className="mt-1.5 flex items-center gap-1.5">
                                 <span className={`h-2 w-2 rounded-full ${
-                                  selectedReview.isApproved ? "bg-emerald-500" : "bg-amber-500"
+                                  (selectedReview.moderatedAt ||
+                                    (Array.isArray(selectedReview.images) &&
+                                      selectedReview.images.some((i) => i.isApproved)))
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
                                 }`} />
                                 <span className="text-sm font-medium text-slate-900">
-                                  {selectedReview.isApproved ? "Đã kiểm duyệt" : "Chưa kiểm duyệt"}
+                                  {(selectedReview.moderatedAt ||
+                                    (Array.isArray(selectedReview.images) &&
+                                      selectedReview.images.some((i) => i.isApproved)))
+                                    ? "Đã kiểm duyệt"
+                                    : "Chưa kiểm duyệt"}
                                 </span>
                               </p>
                             </div>
                             <div>
                               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">Người kiểm duyệt</p>
                               <p className="mt-1.5 text-sm font-medium text-slate-900">
-                                {selectedReview.moderator?.fullName || selectedReview.approvedBy || selectedReview.moderatedBy || "-"}
+                                {selectedReview.moderator?.fullName ||
+                                  // fallback to image-level moderator if any image approved/rejected
+                                  (Array.isArray(selectedReview.images) &&
+                                    (selectedReview.images.find((i) => i.moderatedBy)?.moderatedBy ||
+                                      selectedReview.images.find((i) => i.isApproved)?.moderatedBy)) ||
+                                  selectedReview.approvedBy ||
+                                  selectedReview.moderatedBy ||
+                                  "-"}
                               </p>
                             </div>
                           </div>
