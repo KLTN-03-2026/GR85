@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+      "/uploads": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
       "/socket.io": {
         target: "http://localhost:3001",
         ws: true,
@@ -21,7 +25,9 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), mode === "development" && componentTagger()].filter(
+    Boolean,
+  ),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

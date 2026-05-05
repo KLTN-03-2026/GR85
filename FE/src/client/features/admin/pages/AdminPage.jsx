@@ -627,11 +627,19 @@ export default function AdminPage() {
   const [updatingReturnRequestId, setUpdatingReturnRequestId] = useState(null);
 
   const filteredReturnRequests = useMemo(() => {
-    const list = Array.isArray(adminReturnRequests) ? adminReturnRequests.slice() : [];
+    const list = Array.isArray(adminReturnRequests)
+      ? adminReturnRequests.slice()
+      : [];
 
     const statusFilter = String(returnStatusFilter || "").toUpperCase();
     if (statusFilter && statusFilter !== "ALL") {
-      list.splice(0, list.length, ...list.filter((r) => String(r.status ?? "").toUpperCase() === statusFilter));
+      list.splice(
+        0,
+        list.length,
+        ...list.filter(
+          (r) => String(r.status ?? "").toUpperCase() === statusFilter,
+        ),
+      );
     }
 
     const keyword = (returnSearchKeyword || "").toString().trim().toLowerCase();
@@ -642,7 +650,9 @@ export default function AdminPage() {
         ...list.filter((r) => {
           const id = String(r.id ?? "");
           const orderId = String(r.orderId ?? "");
-          const userText = (r.user?.fullName || r.user?.email || "").toString().toLowerCase();
+          const userText = (r.user?.fullName || r.user?.email || "")
+            .toString()
+            .toLowerCase();
           const reason = (r.reason || "").toString().toLowerCase();
           return (
             id.includes(keyword) ||
@@ -769,368 +779,13 @@ export default function AdminPage() {
   const [reviewQuickFilter, setReviewQuickFilter] = useState("all");
   const [selectedReviewId, setSelectedReviewId] = useState(null);
   const [adminReviews, setAdminReviews] = useState([]);
+  const [userNameCache, setUserNameCache] = useState({});
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
-  const [replyingReviewId, setReplyingReviewId] = useState(null);
-  const [reviewReplyDraftById, setReviewReplyDraftById] = useState({});
-
-  useEffect(() => {
-    const tabIdFromUrl = resolveTabIdFromLocation();
-    if (tabIdFromUrl) {
-      setActiveTab(tabIdFromUrl);
-    }
-  }, []);
-
-  useEffect(() => {
-    const currentTabFromUrl = resolveTabIdFromLocation();
-    const targetHash = `#${activeTab}`;
-
-    if (
-      currentTabFromUrl === activeTab &&
-      normalizeHash(window.location.hash || "") === targetHash
-    ) {
-      return;
-    }
-
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${window.location.search}${targetHash}`,
-    );
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadDashboard() {
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/admin/dashboard", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          throw new Error(
-            payload?.message || "Không tải được dữ liệu quản trị",
-          );
-        }
-
-        const payload = await response.json();
-        if (!cancelled) {
-          setDashboard(payload);
-          setUserDraftById(
-            Object.fromEntries(
-              (payload?.users ?? []).map((item) => [
-                item.id,
-                {
-                  fullName: item.fullName ?? "",
-                  email: item.email ?? "",
-                  phone: item.phone ?? "",
-                  address: item.address ?? "",
-                  avatarUrl: item.avatarUrl ?? "",
-                  roleId: item.roleId ? String(item.roleId) : "",
-                  status: item.status ?? "ACTIVE",
-                },
-              ]),
-            ),
-          );
-          setRolePermissionDraftByRoleId(
-            Object.fromEntries(
-              (payload?.roles ?? []).map((item) => [
-                item.id,
-                Array.isArray(item.permissions) ? item.permissions : [],
-              ]),
-            ),
-          );
-        }
-
-        try {
-          const targetsResponse = await fetch("/api/admin/permission-targets", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (targetsResponse.ok) {
-            const targetsPayload = await targetsResponse.json();
-            if (!cancelled) {
-              const targets = Array.isArray(targetsPayload?.users)
-                ? targetsPayload.users
-                : Array.isArray(targetsPayload)
-                  ? targetsPayload
-                  : [];
-
-              setPermissionTargets(targets);
-              setPermissionDraftByUserId(
-                Object.fromEntries(
-                  targets.map((item) => [
-                    item.id,
-                    Array.isArray(item.permissions) ? item.permissions : [],
-                  ]),
-                ),
-              );
-
-              if (!selectedPermissionTargetId && targets.length > 0) {
-                setSelectedPermissionTargetId(String(targets[0].id));
-              }
-            }
-          }
-        } catch {
-          if (!cancelled) {
-            setPermissionTargets([]);
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setDashboard(null);
-          toast({
-            title: "Không tải được dữ liệu",
-            description:
-              error instanceof Error ? error.message : "Đã xảy ra lỗi",
-            variant: "destructive",
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadDashboard();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, isHydrated, token, toast]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadCatalogMeta() {
-      try {
-        const response = await fetch("/api/products/overview");
-        if (!response.ok) {
-          throw new Error("Không tải được danh mục sản phẩm");
-        }
-
-        const payload = await response.json();
-        if (!cancelled) {
-          const categories = Array.isArray(payload.categories)
-            ? payload.categories
-            : [];
-          const products = Array.isArray(payload.products)
-            ? payload.products
-            : [];
-          const brands = Array.from(
-            new Set(
-              products
-                .map(
-                  (item) =>
-                    item?.specifications?.brand ||
-                    item?.supplier?.name ||
-                    "PC Perfect",
-                )
-                .map((item) => String(item).trim())
-                .filter(Boolean),
-            ),
-          ).sort((a, b) => a.localeCompare(b));
-
-          setCatalogCategories(categories);
-          setCatalogBrands(brands);
-
-          setProductForm((prev) => ({
-            ...prev,
-            categorySlug:
-              prev.categorySlug || String(categories[0]?.slug ?? ""),
-          }));
-        }
-      } catch {
-        if (!cancelled) {
-          setCatalogCategories([]);
-        }
-      }
-    }
-
-    loadCatalogMeta();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, isHydrated, token]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadManagedProducts() {
-      try {
-        const query = new URLSearchParams();
-        query.set("page", String(managedProductPage));
-        query.set("pageSize", "12");
-        if (managedProductKeyword) {
-          query.set("keyword", managedProductKeyword);
-        }
-        if (managedProductCategory !== "all") {
-          query.set("category", managedProductCategory);
-        }
-        if (managedProductBrand !== "all") {
-          query.set("brand", managedProductBrand);
-        }
-
-        const response = await fetch(`/api/products?${query.toString()}`);
-        if (!response.ok) {
-          throw new Error("Không tải được danh sách sản phẩm quản trị");
-        }
-
-        const payload = await response.json();
-        if (!cancelled) {
-          setManagedProducts(Array.isArray(payload.items) ? payload.items : []);
-          setManagedProductPagination(
-            payload.pagination ?? {
-              page: 1,
-              pageSize: 12,
-              totalItems: 0,
-              totalPages: 1,
-            },
-          );
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setManagedProducts([]);
-          setManagedProductPagination({
-            page: 1,
-            pageSize: 12,
-            totalItems: 0,
-            totalPages: 1,
-          });
-          toast({
-            title: "Không tải được sản phẩm",
-            description:
-              error instanceof Error ? error.message : "Đã xảy ra lỗi",
-            variant: "destructive",
-          });
-        }
-      }
-    }
-
-    loadManagedProducts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isAuthenticated,
-    isHydrated,
-    managedProductBrand,
-    managedProductCategory,
-    managedProductKeyword,
-    managedProductPage,
-    token,
-    toast,
-  ]);
-
-  const loadDisplayOrderDraft = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    setIsLoadingDisplayOrder(true);
-    try {
-      const response = await fetch("/api/products/display-order", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Không tải được thứ tự hiển thị");
-      }
-
-      setDisplayOrderDraft(
-        (Array.isArray(payload) ? payload : []).map((item) => ({
-          id: Number(item.id),
-          name: String(item.name ?? ""),
-          displayOrder: Number(item.displayOrder ?? 9999),
-          isHomepageFeatured: Boolean(item.isHomepageFeatured),
-          stockQuantity: Number(item.stockQuantity ?? 0),
-        })),
-      );
-    } catch (error) {
-      toast({
-        title: "Không tải được thứ tự hiển thị",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingDisplayOrder(false);
-    }
-  }, [token, toast]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token || activeTab !== "products") {
-      return;
-    }
-
-    loadDisplayOrderDraft();
-  }, [activeTab, isAuthenticated, isHydrated, token, loadDisplayOrderDraft]);
-
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadOrders() {
-      try {
-        const response = await fetch("/api/orders", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!response.ok) {
-          throw new Error("Không tải được danh sách đơn hàng");
-        }
-
-        const payload = await response.json();
-        if (!cancelled) {
-          setAdminOrders(Array.isArray(payload) ? payload : []);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast({
-            title: "Không tải được đơn hàng",
-            description:
-              error instanceof Error ? error.message : "Đã xảy ra lỗi",
-            variant: "destructive",
-          });
-        }
-      }
-    }
-
-    loadOrders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, isHydrated, token, toast]);
-
+  const [deleteReviewDialogOpen, setDeleteReviewDialogOpen] = useState(false);
+  const [deleteReviewReason, setDeleteReviewReason] = useState("");
+  const [pendingDeleteReview, setPendingDeleteReview] = useState(null);
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token) {
       return;
@@ -1170,7 +825,13 @@ export default function AdminPage() {
     return () => {
       socket.off("order_status_updated", handleOrderStatusUpdated);
     };
-  }, [isAuthenticated, isHydrated, token, selectedOrderDetail?.id]);
+  }, [
+    isAuthenticated,
+    isHydrated,
+    token,
+    selectedOrderDetail?.id,
+    loadOrderDetail,
+  ]);
 
   const loadWarehouseOverview = useCallback(async () => {
     if (!token) {
@@ -1301,85 +962,74 @@ export default function AdminPage() {
     loadAdminReviews();
   }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
 
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !token || activeTab !== "returns") {
-      return;
-    }
+  const DEFAULT_QUICK_REPLIES = [
+    "Cảm ơn bạn đã phản hồi!",
+    "Chúng tôi sẽ kiểm tra và phản hồi sớm.",
+    "Xin lỗi vì trải nghiệm này, chúng tôi sẽ xử lý ngay.",
+    "Đã ghi nhận, cảm ơn bạn rất nhiều!",
+  ];
 
-    loadAdminReturnRequests();
-  }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReturnRequests]);
-
-  async function handleReturnRequestAction(request, action) {
-    if (!token || !request?.id) {
-      return;
-    }
-
-    const requestId = Number(request.id);
-    let endpoint = `/api/admin/returns/${requestId}/review`;
-    let body = { action };
-
-    if (action === "REJECT") {
-      const rejectReason = window.prompt(
-        "Nhập lý do từ chối yêu cầu trả hàng:",
-        String(request.rejectReason ?? ""),
-      );
-      if (rejectReason === null) {
-        return;
-      }
-
-      const normalizedRejectReason = String(rejectReason ?? "").trim();
-      if (!normalizedRejectReason) {
-        toast({
-          title: "Thiếu lý do từ chối",
-          description: "Vui lòng nhập lý do để từ chối yêu cầu trả hàng",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      body = { action: "REJECT", rejectReason: normalizedRejectReason };
-    } else if (action === "APPROVE") {
-      body = { action: "APPROVE" };
-    } else if (action === "SHIPPING_BACK") {
-      endpoint = `/api/admin/returns/${requestId}/shipping-back`;
-      body = null;
-    } else if (action === "RECEIVED") {
-      endpoint = `/api/admin/returns/${requestId}/received`;
-      body = null;
-    } else if (action === "REFUND") {
-      endpoint = `/api/admin/returns/${requestId}/refund`;
-      body = null;
-    }
-
-    const confirmMessage =
-      action === "APPROVE"
-        ? "Duyệt yêu cầu trả hàng này?"
-        : action === "REJECT"
-          ? "Từ chối yêu cầu trả hàng này?"
-          : action === "SHIPPING_BACK"
-            ? "Đánh dấu đơn này đang được khách gửi trả?"
-            : action === "RECEIVED"
-              ? "Xác nhận đã nhận hàng trả về?"
-              : "Xử lý hoàn tiền cho yêu cầu này?";
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
-    setUpdatingReturnRequestId(requestId);
+  const [quickReplies, setQuickReplies] = useState(() => {
     try {
-      const response = await fetch(endpoint, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      const raw = window.localStorage.getItem("admin_quick_replies");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_QUICK_REPLIES;
+  });
+  const [showQuickEditor, setShowQuickEditor] = useState(false);
 
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Không thể cập nhật yêu cầu trả hàng");
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "admin_quick_replies",
+        JSON.stringify(quickReplies),
+      );
+    } catch {}
+  }, [quickReplies]);
+
+  async function handleQuickReplyClick(
+    reviewId,
+    text,
+    sendImmediately = false,
+  ) {
+    if (!reviewId) return;
+    setReviewReplyDraftById((prev) => ({
+      ...prev,
+      [reviewId]: `${String(prev[reviewId] ?? "").trim() ? String(prev[reviewId]) + "\n" : ""}${text}`,
+    }));
+
+    if (sendImmediately) {
+      await new Promise((r) => setTimeout(r, 50));
+      await saveReviewReply(reviewId);
+    }
+  }
+
+  function addQuickReply() {
+    setQuickReplies((prev) => [...prev, "Mẫu phản hồi mới..."]);
+  }
+
+  function updateQuickReply(index, value) {
+    setQuickReplies((prev) => prev.map((p, i) => (i === index ? value : p)));
+  }
+
+  function removeQuickReply(index) {
+    setQuickReplies((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || activeTab !== "reviews") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      loadAdminReviews();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, isAuthenticated, isHydrated, token, loadAdminReviews]);
+
       }
 
       toast({
@@ -1406,9 +1056,9 @@ export default function AdminPage() {
     const reviewId = Number(review.id);
     const hiddenReason = shouldHide
       ? window.prompt(
-        "Nhập lý do ẩn đánh giá (không bắt buộc):",
-        String(review.hiddenReason ?? ""),
-      )
+          "Nhập lý do ẩn đánh giá (không bắt buộc):",
+          String(review.hiddenReason ?? ""),
+        )
       : "";
 
     if (hiddenReason === null) {
@@ -1437,7 +1087,9 @@ export default function AdminPage() {
       }
 
       setAdminReviews((prev) =>
-        prev.map((item) => (Number(item.id) === reviewId ? payload : item)),
+        prev.map((item) =>
+          Number(item.id) === reviewId ? { ...item, ...(payload || {}) } : item,
+        ),
       );
       toast({
         title: shouldHide ? "Đã ẩn đánh giá" : "Đã hiện lại đánh giá",
@@ -1453,78 +1105,142 @@ export default function AdminPage() {
     }
   }
 
-  async function saveReviewReply(reviewId) {
-    if (!token || !reviewId) {
+  async function moderateReviewImage(
+    reviewId,
+    imageId,
+    approve,
+    rejectionReason = "",
+  ) {
+    if (!token || !reviewId || !imageId) {
       return;
     }
 
-    const reply = String(reviewReplyDraftById[reviewId] ?? "").trim();
-    if (!reply) {
-      toast({
-        title: "Nội dung phản hồi trống",
-        description: "Vui lòng nhập nội dung phản hồi trước khi lưu",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setReplyingReviewId(Number(reviewId));
+    setModeratingReviewId(Number(reviewId));
     try {
-      const response = await fetch(`/api/admin/reviews/${reviewId}/reply`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetch(
+        `/api/admin/reviews/${reviewId}/images/${imageId}/moderate`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            approve: Boolean(approve),
+            rejectionReason: String(rejectionReason ?? "").trim() || undefined,
+          }),
         },
-        body: JSON.stringify({ reply }),
-      });
+      );
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Không thể lưu phản hồi");
+        throw new Error(
+          payload?.message ?? "Không thể cập nhật trạng thái ảnh đánh giá",
+        );
       }
 
       setAdminReviews((prev) =>
         prev.map((item) =>
-          Number(item.id) === Number(reviewId) ? payload : item,
+          Number(item.id) === Number(reviewId) ? { ...item, ...(payload || {}) } : item,
         ),
       );
-      setReviewReplyDraftById((prev) => ({
-        ...prev,
-        [reviewId]: String(payload?.adminReply ?? ""),
-      }));
-      toast({ title: "Đã lưu phản hồi đánh giá" });
+      toast({
+        title: approve ? "Đã duyệt ảnh đánh giá" : "Đã từ chối ảnh đánh giá",
+      });
     } catch (error) {
       toast({
-        title: "Lưu phản hồi thất bại",
+        title: "Cập nhật ảnh đánh giá thất bại",
         description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
-      setReplyingReviewId(null);
+      setModeratingReviewId(null);
     }
   }
 
+  const saveReviewReply = useCallback(
+    async (reviewId) => {
+      if (!token || !reviewId) {
+        return;
+      }
+
+      const reply = String(reviewReplyDraftById[reviewId] ?? "").trim();
+      if (!reply) {
+        toast({
+          title: "Nội dung phản hồi trống",
+          description: "Vui lòng nhập nội dung phản hồi trước khi lưu",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setReplyingReviewId(Number(reviewId));
+      try {
+        const response = await fetch(`/api/admin/reviews/${reviewId}/reply`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: reply }),
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Không thể lưu phản hồi");
+        }
+
+        setAdminReviews((prev) =>
+          prev.map((item) =>
+            Number(item.id) === Number(reviewId) ? { ...item, ...(payload || {}) } : item,
+          ),
+        );
+        setReviewReplyDraftById((prev) => ({
+          ...prev,
+          [reviewId]: String(payload?.adminReply ?? ""),
+        }));
+        toast({ title: "Đã lưu phản hồi đánh giá" });
+      } catch (error) {
+        toast({
+          title: "Lưu phản hồi thất bại",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      } finally {
+        setReplyingReviewId(null);
+      }
+    },
+    [token, reviewReplyDraftById, toast],
+  );
+
   async function removeReview(review) {
-    if (!token || !review?.id) {
+    if (!review?.id) return;
+    setPendingDeleteReview(review);
+    setDeleteReviewReason("");
+    setDeleteReviewDialogOpen(true);
+  }
+
+  async function confirmDeleteReview() {
+    if (!token || !pendingDeleteReview?.id || !deleteReviewReason.trim()) {
+      toast({
+        title: "Vui lòng nhập lý do xóa đánh giá",
+        variant: "destructive",
+      });
       return;
     }
 
-    const shouldDelete = window.confirm(
-      `Bạn có chắc muốn xóa đánh giá #${review.id}? Hành động này không thể hoàn tác.`,
-    );
-    if (!shouldDelete) {
-      return;
-    }
-
-    const reviewId = Number(review.id);
+    const reviewId = Number(pendingDeleteReview.id);
     setDeletingReviewId(reviewId);
+    setDeleteReviewDialogOpen(false);
+
     try {
       const response = await fetch(`/api/admin/reviews/${reviewId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ reason: deleteReviewReason.trim() }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -1544,177 +1260,90 @@ export default function AdminPage() {
       });
     } finally {
       setDeletingReviewId(null);
+      setPendingDeleteReview(null);
     }
   }
 
-  async function updateOrderStatus(orderId, nextStatusOverride) {
+  async function resolveReview(review) {
+    if (!token || !review?.id) return;
+
+    try {
+      const resolved = !isReviewResolved;
+      const response = await fetch(
+        `/api/admin/reviews/${review.id}/resolve`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            resolved,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Không thể cập nhật trạng thái");
+      }
+
+      // Server returns the updated review object — sync both list and detail view
+      const updated = payload ?? { id: review.id, threadStatus: resolved ? "RESOLVED" : "OPEN" };
+      setAdminReviews((prev) =>
+        prev.map((item) =>
+          Number(item.id) === Number(review.id) ? { ...item, ...(updated || {}) } : item,
+        ),
+      );
+      // selectedReview is derived from `adminReviews` and `selectedReviewId`,
+      // updating `adminReviews` above is sufficient to refresh the detail view.
+
+      toast({
+        title: resolved ? "Đã đánh dấu xử lý" : "Đã mở lại cuộc hội thoại",
+        description: `Review đã được ${resolved ? "đánh dấu xử lý" : "mở lại"}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Cập nhật trạng thái thất bại",
+        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+        variant: "destructive",
+      });
     if (!token) {
       return;
     }
 
-    const targetOrder = adminOrders.find(
-      (order) => Number(order.id) === Number(orderId),
-    );
-    const nextStatus = String(nextStatusOverride ?? "")
-      .trim()
-      .toUpperCase();
-    if (!nextStatus) {
+    const confirmed = window.confirm(`Bạn có chắc muốn xóa đơn #${orderId}?`);
+    if (!confirmed) {
       return;
     }
 
-    if (!targetOrder) {
-      return;
-    }
-
-    setUpdatingOrderId(orderId);
+    setDeletingOrderId(orderId);
     try {
-      const response = await fetch(`/api/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: nextStatus }),
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Cập nhật trạng thái thất bại");
+        throw new Error(payload?.message ?? "Không thể xóa đơn hàng");
       }
 
       setAdminOrders((prev) =>
-        prev.map((order) =>
-          order.id === orderId
-            ? {
-              ...order,
-              orderStatus: payload.orderStatus,
-              updatedAt: payload.updatedAt,
-            }
-            : order,
-        ),
+        prev.filter((item) => Number(item.id) !== Number(orderId)),
       );
-
-      toast({ title: "Đã cập nhật trạng thái đơn hàng" });
-
-      if (selectedOrderDetail?.id === orderId) {
-        await loadOrderDetail(orderId);
+      if (Number(selectedOrderDetail?.id) === Number(orderId)) {
+        setSelectedOrderDetail(null);
       }
+
+      toast({ title: "Đã xóa đơn hàng" });
     } catch (error) {
       toast({
-        title: "Không thể cập nhật",
+        title: "Xóa đơn hàng thất bại",
         description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
         variant: "destructive",
       });
     } finally {
-      setUpdatingOrderId(null);
-    }
-  }
-
-  function renderOrderActionCell(item) {
-    const orderStatus = String(item.orderStatus ?? "").toUpperCase();
-    const paymentStatus = String(item.paymentStatus ?? "").toUpperCase();
-
-    if (orderStatus === "CANCELLED") {
-      return <span className="text-xs text-destructive">Đã hủy</span>;
-    }
-
-    if (orderStatus === "DELIVERED") {
-      return <span className="text-xs text-emerald-600">Đã hoàn thành</span>;
-    }
-
-    if (orderStatus === "PENDING" && paymentStatus === "PAID") {
-      return (
-        <div className="flex flex-col gap-2">
-          <span className="text-xs text-emerald-600">
-            Đã thanh toán, yêu cầu chuẩn bị hàng
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={updatingOrderId === item.id}
-              onClick={() => updateOrderStatus(item.id, "PROCESSING")}
-            >
-              Chuẩn bị xong
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={updatingOrderId === item.id}
-              onClick={() => updateOrderStatus(item.id, "CANCELLED")}
-            >
-              Hủy đơn
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (orderStatus === "PENDING") {
-      return (
-        <span className="text-xs text-muted-foreground">Chờ thanh toán</span>
-      );
-    }
-
-    if (orderStatus === "PROCESSING") {
-      return (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={updatingOrderId === item.id}
-            onClick={() => updateOrderStatus(item.id, "SHIPPING")}
-          >
-            Đã giao hàng
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={updatingOrderId === item.id}
-            onClick={() => updateOrderStatus(item.id, "CANCELLED")}
-          >
-            Hủy đơn
-          </Button>
-        </div>
-      );
-    }
-
-    if (orderStatus === "SHIPPING") {
-      return (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={updatingOrderId === item.id}
-          onClick={() => updateOrderStatus(item.id, "DELIVERED")}
-        >
-          Giao thành công
-        </Button>
-      );
-    }
-
-    return <span className="text-xs text-muted-foreground">-</span>;
-  }
-
-  async function loadOrderDetail(orderId) {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Không tải được chi tiết đơn");
-      }
-      setSelectedOrderDetail(payload);
-    } catch (error) {
-      toast({
-        title: "Không tải được chi tiết đơn",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
+      setDeletingOrderId(null);
     }
   }
 
@@ -1863,16 +1492,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === userId
               ? {
-                ...item,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
               : item,
           ),
         };
@@ -1885,30 +1514,30 @@ export default function AdminPage() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-              ...prev,
-              fullName: payload.fullName,
-              email: payload.email,
-              phone: payload.phone,
-              address: payload.address,
-              avatarUrl: payload.avatarUrl,
-              status: payload.status,
-              roleId: payload.roleId,
-              role: payload.role,
-            }
+                ...prev,
+                fullName: payload.fullName,
+                email: payload.email,
+                phone: payload.phone,
+                address: payload.address,
+                avatarUrl: payload.avatarUrl,
+                status: payload.status,
+                roleId: payload.roleId,
+                role: payload.role,
+              }
             : prev,
         );
         setSelectedUserDraft((prev) =>
           prev
             ? {
-              ...prev,
-              fullName: payload.fullName ?? "",
-              email: payload.email ?? "",
-              phone: payload.phone ?? "",
-              address: payload.address ?? "",
-              avatarUrl: payload.avatarUrl ?? "",
-              roleId: payload.roleId ? String(payload.roleId) : "",
-              status: payload.status ?? "ACTIVE",
-            }
+                ...prev,
+                fullName: payload.fullName ?? "",
+                email: payload.email ?? "",
+                phone: payload.phone ?? "",
+                address: payload.address ?? "",
+                avatarUrl: payload.avatarUrl ?? "",
+                roleId: payload.roleId ? String(payload.roleId) : "",
+                status: payload.status ?? "ACTIVE",
+              }
             : prev,
         );
       }
@@ -2053,16 +1682,16 @@ export default function AdminPage() {
           users: (prev.users ?? []).map((item) =>
             item.id === selectedUserDetail.id
               ? {
-                ...item,
-                fullName: payload.fullName,
-                email: payload.email,
-                phone: payload.phone,
-                address: payload.address,
-                avatarUrl: payload.avatarUrl,
-                status: payload.status,
-                roleId: payload.roleId,
-                role: payload.role,
-              }
+                  ...item,
+                  fullName: payload.fullName,
+                  email: payload.email,
+                  phone: payload.phone,
+                  address: payload.address,
+                  avatarUrl: payload.avatarUrl,
+                  status: payload.status,
+                  roleId: payload.roleId,
+                  role: payload.role,
+                }
               : item,
           ),
         };
@@ -2071,31 +1700,31 @@ export default function AdminPage() {
       setSelectedUserDetail((prev) =>
         prev
           ? {
-            ...prev,
-            fullName: payload.fullName,
-            email: payload.email,
-            phone: payload.phone,
-            address: payload.address,
-            avatarUrl: payload.avatarUrl,
-            status: payload.status,
-            roleId: payload.roleId,
-            role: payload.role,
-          }
+              ...prev,
+              fullName: payload.fullName,
+              email: payload.email,
+              phone: payload.phone,
+              address: payload.address,
+              avatarUrl: payload.avatarUrl,
+              status: payload.status,
+              roleId: payload.roleId,
+              role: payload.role,
+            }
           : prev,
       );
 
       setSelectedUserDraft((prev) =>
         prev
           ? {
-            ...prev,
-            fullName: payload.fullName ?? "",
-            email: payload.email ?? "",
-            phone: payload.phone ?? "",
-            address: payload.address ?? "",
-            avatarUrl: payload.avatarUrl ?? "",
-            roleId: payload.roleId ? String(payload.roleId) : "",
-            status: payload.status ?? "ACTIVE",
-          }
+              ...prev,
+              fullName: payload.fullName ?? "",
+              email: payload.email ?? "",
+              phone: payload.phone ?? "",
+              address: payload.address ?? "",
+              avatarUrl: payload.avatarUrl ?? "",
+              roleId: payload.roleId ? String(payload.roleId) : "",
+              status: payload.status ?? "ACTIVE",
+            }
           : prev,
       );
 
@@ -2183,7 +1812,7 @@ export default function AdminPage() {
     );
   }
 
-  function resetProductForm() {
+  const resetProductForm = useCallback(() => {
     setEditingProductId(null);
     setSelectedImageFile(null);
     setProductForm({
@@ -2208,7 +1837,7 @@ export default function AdminPage() {
       manualUrl: "",
       warrantyPolicy: "",
     });
-  }
+  }, [catalogCategories]);
 
   function startEditingProduct(product) {
     setEditingProductId(product.id);
@@ -2388,14 +2017,22 @@ export default function AdminPage() {
       });
 
       const responsePayload = await response.json().catch(() => {
-        console.error(`[SaveProduct] Response not JSON. Status: ${response.status}`);
+        console.error(
+          `[SaveProduct] Response not JSON. Status: ${response.status}`,
+        );
         return null;
       });
-      
-      console.info(`[SaveProduct] Response status: ${response.status}`, responsePayload);
-      
+
+      console.info(
+        `[SaveProduct] Response status: ${response.status}`,
+        responsePayload,
+      );
+
       if (!response.ok) {
-        throw new Error(responsePayload?.message ?? `HTTP ${response.status}: Lưu sản phẩm thất bại`);
+        throw new Error(
+          responsePayload?.message ??
+            `HTTP ${response.status}: Lưu sản phẩm thất bại`,
+        );
       }
 
       toast({
@@ -2561,7 +2198,7 @@ export default function AdminPage() {
           [...prev].sort(
             (a, b) =>
               Number(Boolean(b.isHomepageFeatured)) -
-              Number(Boolean(a.isHomepageFeatured)) ||
+                Number(Boolean(a.isHomepageFeatured)) ||
               Number(a.displayOrder ?? 9999) - Number(b.displayOrder ?? 9999),
           ),
         );
@@ -2873,10 +2510,16 @@ export default function AdminPage() {
       discountValue: String(item.discountValue ?? ""),
       minOrderValue: String(item.minOrderValue ?? "0"),
       usageLimit: String(item.usageLimit ?? "100"),
-      startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 16) : "",
-      endDate: item.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : "",
+      startDate: item.startDate
+        ? new Date(item.startDate).toISOString().slice(0, 16)
+        : "",
+      endDate: item.endDate
+        ? new Date(item.endDate).toISOString().slice(0, 16)
+        : "",
       status: String(item.status ?? "ACTIVE"),
-      assignedUserIds: (item.assignedUsers ?? []).map((user) => Number(user.id)),
+      assignedUserIds: (item.assignedUsers ?? []).map((user) =>
+        Number(user.id),
+      ),
     });
   }
 
@@ -2891,8 +2534,12 @@ export default function AdminPage() {
       const discountValue = Number(voucherForm.discountValue);
       const minOrderValue = Number(voucherForm.minOrderValue || 0);
       const usageLimit = Number(voucherForm.usageLimit || 100);
-      const startDate = voucherForm.startDate ? new Date(voucherForm.startDate) : null;
-      const endDate = voucherForm.endDate ? new Date(voucherForm.endDate) : null;
+      const startDate = voucherForm.startDate
+        ? new Date(voucherForm.startDate)
+        : null;
+      const endDate = voucherForm.endDate
+        ? new Date(voucherForm.endDate)
+        : null;
 
       if (!normalizedCode) {
         throw new Error("Mã giảm giá không được để trống");
@@ -2926,7 +2573,9 @@ export default function AdminPage() {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         status: voucherForm.status,
-        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) => Number(value)),
+        assignedUserIds: (voucherForm.assignedUserIds ?? []).map((value) =>
+          Number(value),
+        ),
       };
 
       const response = await fetch(`/api/admin/coupons/${editingVoucherId}`, {
@@ -2941,7 +2590,9 @@ export default function AdminPage() {
       const result = await response.json().catch(() => null);
       if (!response.ok) {
         const fieldMessage = extractIssueMessage(result?.issues);
-        throw new Error(fieldMessage || result?.message || "Cập nhật voucher thất bại");
+        throw new Error(
+          fieldMessage || result?.message || "Cập nhật voucher thất bại",
+        );
       }
 
       await refreshDashboardSummary();
@@ -3351,18 +3002,89 @@ export default function AdminPage() {
     [filteredReviews, selectedReviewId],
   );
 
-  useEffect(() => {
-    if (selectedReview) {
-      if (Number(selectedReviewId) !== Number(selectedReview.id)) {
-        setSelectedReviewId(Number(selectedReview.id));
+  const moderatorDisplay = useMemo(() => {
+    if (!selectedReview) return "-";
+    // prefer explicit moderator fullName
+    if (selectedReview.moderator?.fullName) return selectedReview.moderator.fullName;
+
+    // fallback: find an image-level moderator id and map to moderator fullName if possible
+    if (Array.isArray(selectedReview.images)) {
+      const imgWithMod = selectedReview.images.find((i) => i.moderatedBy || i.moderatedByName);
+      if (imgWithMod) {
+        if (imgWithMod.moderatedByName) return imgWithMod.moderatedByName;
+        if (imgWithMod.moderatedBy && userNameCache[String(imgWithMod.moderatedBy)]) {
+          return userNameCache[String(imgWithMod.moderatedBy)];
+        }
+        if (imgWithMod.moderatedBy) return String(imgWithMod.moderatedBy);
       }
-      return;
     }
 
-    if (selectedReviewId !== null) {
-      setSelectedReviewId(null);
-    }
-  }, [selectedReview, selectedReviewId]);
+    if (selectedReview.approvedBy) return String(selectedReview.approvedBy);
+    if (selectedReview.moderatedBy && userNameCache[String(selectedReview.moderatedBy)])
+      return userNameCache[String(selectedReview.moderatedBy)];
+    if (selectedReview.moderatedBy) return String(selectedReview.moderatedBy);
+    return "-";
+  }, [selectedReview, userNameCache]);
+
+  useEffect(() => {
+    // fetch moderator name when we only have an id
+    (async () => {
+      if (!token || !selectedReview) return;
+      const candidateIds = new Set();
+      if (selectedReview.moderatedBy && !userNameCache[String(selectedReview.moderatedBy)]) {
+        candidateIds.add(selectedReview.moderatedBy);
+      }
+      if (Array.isArray(selectedReview.images)) {
+        for (const img of selectedReview.images) {
+          if (img.moderatedBy && !userNameCache[String(img.moderatedBy)]) {
+            candidateIds.add(img.moderatedBy);
+          }
+        }
+      }
+
+      if (candidateIds.size === 0) return;
+
+      for (const id of Array.from(candidateIds)) {
+        try {
+          const res = await fetch(`/api/admin/users/${id}/detail`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok && data) {
+            setUserNameCache((prev) => ({ ...prev, [String(id)]: data.fullName || data.email || String(id) }));
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    })();
+  }, [selectedReview, token, userNameCache]);
+
+  const selectedReviewThread = useMemo(
+    () => (Array.isArray(selectedReview?.thread) ? selectedReview.thread : []),
+    [selectedReview],
+  );
+
+  const latestReviewThreadMessage = useMemo(
+    () =>
+      selectedReviewThread.length > 0
+        ? selectedReviewThread[selectedReviewThread.length - 1]
+        : null,
+    [selectedReviewThread],
+  );
+
+  const latestCustomerMessage = useMemo(
+    () =>
+      selectedReviewThread.length > 0
+        ? selectedReviewThread.filter((m) => !m.isStaff).slice(-1)[0] ?? null
+        : null,
+    [selectedReviewThread],
+  );
+
+  const isReviewResolved = useMemo(
+    () => selectedReview?.threadStatus === "RESOLVED",
+    [selectedReview],
+  );
 
   const filteredWarehouses = useMemo(() => {
     let filtered = warehouseOverview?.warehouses ?? dashboard?.warehouses ?? [];
@@ -3757,8 +3479,8 @@ export default function AdminPage() {
 
     return normalizePermissionActions(
       permissionDraftByUserId[selectedPermissionTarget.id] ??
-      selectedPermissionTarget.permissions ??
-      [],
+        selectedPermissionTarget.permissions ??
+        [],
     );
   }, [permissionCatalog, permissionDraftByUserId, selectedPermissionTarget]);
 
@@ -3820,11 +3542,11 @@ export default function AdminPage() {
           (prev ?? []).map((item) =>
             Number(item.id) === userId
               ? {
-                ...item,
-                permissions: payload.permissions ?? [],
-                roleId: payload.roleId ?? item.roleId,
-                role: payload.role ?? item.role,
-              }
+                  ...item,
+                  permissions: payload.permissions ?? [],
+                  roleId: payload.roleId ?? item.roleId,
+                  role: payload.role ?? item.role,
+                }
               : item,
           ),
         );
@@ -3909,7 +3631,7 @@ export default function AdminPage() {
     if (activeTab === "products-create" && editingProductId) {
       resetProductForm();
     }
-  }, [activeTab, editingProductId]);
+  }, [activeTab, editingProductId, resetProductForm]);
 
   const sectionClassName = (tabId) =>
     `space-y-6 ${activeTab === tabId ? "block" : "hidden"}`;
@@ -3967,10 +3689,11 @@ export default function AdminPage() {
                           key={item.id}
                           type="button"
                           onClick={() => setActiveTab(item.id)}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id
-                            ? "bg-primary text-primary-foreground"
-                            : "text-slate-700 hover:bg-secondary hover:text-primary"
-                            }`}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                            activeTab === item.id
+                              ? "bg-primary text-primary-foreground"
+                              : "text-slate-700 hover:bg-secondary hover:text-primary"
+                          }`}
                         >
                           <span className="flex items-center gap-3">
                             <item.icon className="h-4 w-4" />
@@ -4032,10 +3755,11 @@ export default function AdminPage() {
                       key={card.id}
                       type="button"
                       onClick={() => setSelectedSummaryCard(card.id)}
-                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${selectedSummaryCard === card.id
-                        ? "border-primary ring-2 ring-primary/20"
-                        : "hover:border-primary/50"
-                        }`}
+                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                        selectedSummaryCard === card.id
+                          ? "border-primary ring-2 ring-primary/20"
+                          : "hover:border-primary/50"
+                      }`}
                     >
                       <p className="text-sm text-muted-foreground">
                         {card.label}
@@ -4569,7 +4293,7 @@ export default function AdminPage() {
                               key={`cell-${index}`}
                               fill={
                                 ["#10b981", "#f59e0b", "#ef4444", "#6366f1"][
-                                index % 4
+                                  index % 4
                                 ]
                               }
                             />
@@ -4604,10 +4328,11 @@ export default function AdminPage() {
 
           <section
             id="products"
-            className={`space-y-6 ${isProductCreateTab || isProductInventoryTab || isProductEditTab
-              ? "block"
-              : "hidden"
-              }`}
+            className={`space-y-6 ${
+              isProductCreateTab || isProductInventoryTab || isProductEditTab
+                ? "block"
+                : "hidden"
+            }`}
           >
             <SectionHeader
               sectionId={activeTab}
@@ -4663,7 +4388,8 @@ export default function AdminPage() {
                         <div>
                           <div>
                             <span className="text-slate-400">name:</span>{" "}
-                            {selectedEditingProduct?.name || productForm.name ||
+                            {selectedEditingProduct?.name ||
+                              productForm.name ||
                               "-"}
                           </div>
                           <div>
@@ -5839,7 +5565,9 @@ export default function AdminPage() {
                         Đang sửa voucher ID: <strong>{editingVoucherId}</strong>
                       </p>
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Mã giảm giá</label>
+                        <label className="text-sm font-medium">
+                          Mã giảm giá
+                        </label>
                         <input
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.code}
@@ -5855,7 +5583,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Phạm vi mã</label>
+                          <label className="text-sm font-medium">
+                            Phạm vi mã
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.couponScope}
@@ -5867,12 +5597,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PRODUCT">Giảm giá sản phẩm</option>
-                            <option value="SHIPPING">Giảm phí vận chuyển</option>
+                            <option value="SHIPPING">
+                              Giảm phí vận chuyển
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Loại giảm</label>
+                          <label className="text-sm font-medium">
+                            Loại giảm
+                          </label>
                           <select
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             value={voucherForm.discountType}
@@ -5884,12 +5618,16 @@ export default function AdminPage() {
                             }
                           >
                             <option value="PERCENT">%</option>
-                            <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                            <option value="FIXED_AMOUNT">
+                              Số tiền cố định
+                            </option>
                           </select>
                         </div>
 
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Giá trị giảm</label>
+                          <label className="text-sm font-medium">
+                            Giá trị giảm
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -5907,7 +5645,9 @@ export default function AdminPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Đơn tối thiểu</label>
+                          <label className="text-sm font-medium">
+                            Đơn tối thiểu
+                          </label>
                           <input
                             type="number"
                             min="0"
@@ -5922,7 +5662,9 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="grid gap-2">
-                          <label className="text-sm font-medium">Số lượt dùng</label>
+                          <label className="text-sm font-medium">
+                            Số lượt dùng
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -5939,7 +5681,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian bắt đầu</label>
+                        <label className="text-sm font-medium">
+                          Thời gian bắt đầu
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -5954,7 +5698,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Thời gian kết thúc</label>
+                        <label className="text-sm font-medium">
+                          Thời gian kết thúc
+                        </label>
                         <input
                           type="datetime-local"
                           className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -5969,7 +5715,9 @@ export default function AdminPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Trạng thái</label>
+                        <label className="text-sm font-medium">
+                          Trạng thái
+                        </label>
                         <select
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           value={voucherForm.status}
@@ -6075,13 +5823,13 @@ export default function AdminPage() {
                         : formatMoney(item.discountValue),
                       formatMoney(item.minOrderValue),
                       Array.isArray(item.assignedUsers) &&
-                        item.assignedUsers.length > 0
+                      item.assignedUsers.length > 0
                         ? item.assignedUsers
-                          .map(
-                            (user) =>
-                              user.fullName || user.email || `#${user.id}`,
-                          )
-                          .join(", ")
+                            .map(
+                              (user) =>
+                                user.fullName || user.email || `#${user.id}`,
+                            )
+                            .join(", ")
                         : "Tất cả",
                       `${item.usedCount} / ${item.usageLimit}`,
                       `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`,
@@ -6293,7 +6041,7 @@ export default function AdminPage() {
             )}
           </section>
 
-          <section id="returns" className={sectionClassName("returns") }>
+          <section id="returns" className={sectionClassName("returns")}>
             <SectionHeader
               sectionId="returns"
               icon={RotateCcw}
@@ -6309,7 +6057,9 @@ export default function AdminPage() {
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-lg border bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">Tổng yêu cầu</p>
+                      <p className="text-xs text-muted-foreground">
+                        Tổng yêu cầu
+                      </p>
                       <p className="text-xl font-semibold">
                         {adminReturnRequests.length}
                       </p>
@@ -6317,28 +6067,39 @@ export default function AdminPage() {
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Đang chờ</p>
                       <p className="text-xl font-semibold text-amber-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "PENDING",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "PENDING",
+                          ).length
+                        }
                       </p>
                     </div>
                     <div className="rounded-lg border bg-muted/20 p-3">
                       <p className="text-xs text-muted-foreground">Đã duyệt</p>
                       <p className="text-xl font-semibold text-sky-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "APPROVED",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "APPROVED",
+                          ).length
+                        }
                       </p>
                     </div>
                     <div className="rounded-lg border bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">Đã hoàn tiền</p>
+                      <p className="text-xs text-muted-foreground">
+                        Đã hoàn tiền
+                      </p>
                       <p className="text-xl font-semibold text-emerald-600">
-                        {adminReturnRequests.filter(
-                          (item) =>
-                            String(item.status ?? "").toUpperCase() === "REFUNDED",
-                        ).length}
+                        {
+                          adminReturnRequests.filter(
+                            (item) =>
+                              String(item.status ?? "").toUpperCase() ===
+                              "REFUNDED",
+                          ).length
+                        }
                       </p>
                     </div>
                   </div>
@@ -6381,7 +6142,8 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center justify-between rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
                       <span>
-                        Tìm thấy: <strong>{filteredReturnRequests.length}</strong> yêu cầu
+                        Tìm thấy:{" "}
+                        <strong>{filteredReturnRequests.length}</strong> yêu cầu
                       </span>
                       <Button
                         size="sm"
@@ -6390,7 +6152,9 @@ export default function AdminPage() {
                           setReturnSearchKeyword("");
                           setReturnStatusFilter("all");
                         }}
-                        disabled={!returnSearchKeyword && returnStatusFilter === "all"}
+                        disabled={
+                          !returnSearchKeyword && returnStatusFilter === "all"
+                        }
                       >
                         Xóa lọc
                       </Button>
@@ -6428,7 +6192,9 @@ export default function AdminPage() {
                       rows={filteredReturnRequests.map((request) => {
                         const requestId = Number(request.id);
                         const isBusy = updatingReturnRequestId === requestId;
-                        const status = String(request.status ?? "").toUpperCase();
+                        const status = String(
+                          request.status ?? "",
+                        ).toUpperCase();
 
                         return [
                           `#${request.id}`,
@@ -6464,7 +6230,10 @@ export default function AdminPage() {
                                 <Button
                                   size="sm"
                                   onClick={() =>
-                                    handleReturnRequestAction(request, "APPROVE")
+                                    handleReturnRequestAction(
+                                      request,
+                                      "APPROVE",
+                                    )
                                   }
                                   disabled={isBusy}
                                 >
@@ -6854,25 +6623,25 @@ export default function AdminPage() {
             <div className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
-                  <p className="text-2xl font-bold">{reviewOverview.total}</p>
+                  <p className="text-xl font-bold">{reviewOverview.total}</p>
                 </Panel>
                 <Panel title="Chờ phản hồi" description="Ưu tiên xử lý">
-                  <p className="text-2xl font-bold text-amber-600">
+                  <p className="text-xl font-bold text-amber-600">
                     {reviewOverview.waitingReply}
                   </p>
                 </Panel>
                 <Panel title="Đã ẩn" description="Nội dung vi phạm">
-                  <p className="text-2xl font-bold text-slate-700">
+                  <p className="text-xl font-bold text-slate-700">
                     {reviewOverview.hidden}
                   </p>
                 </Panel>
                 <Panel title="Sao thấp" description="Từ 1 đến 2 sao">
-                  <p className="text-2xl font-bold text-rose-600">
+                  <p className="text-xl font-bold text-rose-600">
                     {reviewOverview.lowRating}
                   </p>
                 </Panel>
                 <Panel title="24 giờ qua" description="Đánh giá mới">
-                  <p className="text-2xl font-bold text-sky-600">
+                  <p className="text-xl font-bold text-sky-600">
                     {reviewOverview.recent24h}
                   </p>
                 </Panel>
@@ -6882,7 +6651,7 @@ export default function AdminPage() {
                 title="Kiểm duyệt đánh giá"
                 description="Danh sách gọn bên trái, xử lý chi tiết bên phải"
               >
-                <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(180px,220px)_minmax(180px,220px)_auto]">
                   <div className="grid gap-2">
                     <label className="text-xs font-medium">Tìm kiếm</label>
                     <input
@@ -6918,8 +6687,8 @@ export default function AdminPage() {
                       <option value="hidden">Đã ẩn</option>
                     </select>
                   </div>
-                  <div className="flex items-end">
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-end justify-start lg:justify-end">
+                    <span className="text-xs whitespace-nowrap text-muted-foreground">
                       Tìm thấy: <strong>{filteredReviews.length}</strong> đánh
                       giá
                     </span>
@@ -6938,10 +6707,11 @@ export default function AdminPage() {
                       key={chip.id}
                       type="button"
                       onClick={() => setReviewQuickFilter(chip.id)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${reviewQuickFilter === chip.id
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                        }`}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        reviewQuickFilter === chip.id
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                      }`}
                     >
                       {chip.label}
                     </button>
@@ -6957,96 +6727,355 @@ export default function AdminPage() {
                     Không có đánh giá phù hợp với bộ lọc hiện tại.
                   </p>
                 ) : (
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(200px,240px)_minmax(0,1.8fr)]">
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-secondary/20 p-3 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-y-auto">
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
+                        const thread = Array.isArray(item.thread)
+                          ? item.thread
+                          : [];
+                        const lastMsg =
+                          thread.length > 0 ? thread[thread.length - 1] : null;
+                        const unread = lastMsg && !lastMsg.isStaff;
                         return (
                           <button
                             key={`review-list-item-${item.id}`}
                             type="button"
                             onClick={() => setSelectedReviewId(Number(item.id))}
-                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${isSelected
-                              ? "border-primary bg-primary/5 shadow-sm"
-                              : "border-border/70 bg-background hover:border-primary/40"
-                              }`}
+                            className={`group w-full rounded-lg border px-3 py-2 text-left transition ${
+                              isSelected
+                                ? "border-primary bg-primary/8 shadow-sm"
+                                : "border-border/50 bg-white hover:border-primary/30 hover:bg-slate-50"
+                            }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold">
-                                  {item.product?.name ?? "-"}
-                                </p>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {item.user?.fullName ??
-                                    item.user?.email ??
-                                    "Ẩn danh"}
-                                </p>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm font-semibold text-slate-900">
+                                    {item.product?.name ?? "-"}
+                                  </p>
+                                  <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                    {item.rating} ⭐
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="truncate">
+                                    {item.user?.fullName ?? item.user?.email ?? "Ẩn danh"}
+                                  </span>
+                                  <span>•</span>
+                                  <span>{formatDate(item.createdAt)}</span>
+                                </div>
                               </div>
-                              {statusBadge(
-                                item.isHidden ? "Đã ẩn" : "Đang hiển thị",
-                              )}
+                              <div className="flex items-center gap-1.5">
+                                {statusBadge(
+                                  item.isHidden ? "Đã ẩn" : item.threadStatus === "RESOLVED" ? "Đã xử lý" : "Chưa xử lý",
+                                )}
+                                {unread ? (
+                                  <span className="inline-flex h-2 w-2 rounded-full bg-rose-500" title="Có tin nhắn mới" />
+                                ) : null}
+                              </div>
                             </div>
-                            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span className="font-semibold text-amber-600">{`${item.rating} sao`}</span>
-                              <span>•</span>
-                              <span>{formatDate(item.createdAt)}</span>
-                            </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">
-                              {item.comment || "Không có nội dung"}
-                            </p>
+                            {item.comment && (
+                              <p className="mt-1.5 line-clamp-1 text-xs text-slate-600">
+                                {item.comment}
+                              </p>
+                            )}
                           </button>
                         );
                       })}
                     </div>
 
-                    <div className="rounded-2xl border border-border/60 bg-background p-4">
+                    <div className="min-h-[720px] rounded-2xl border border-border/60 bg-background p-5 shadow-sm">
                       {selectedReview ? (
                         <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-3">
+                          {/* Header with Status Info */}
+                          <div className="grid gap-2 rounded-lg border border-border/60 bg-gradient-to-r from-slate-50 to-blue-50 p-3 sm:grid-cols-4">
                             <div>
-                              <h4 className="text-base font-semibold">
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">Sản phẩm</p>
+                              <p className="mt-1.5 text-sm font-semibold text-slate-900">
                                 {selectedReview.product?.name ?? "Sản phẩm"}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
+                              </p>
+                              <p className="text-xs text-slate-600 mt-0.5">
                                 {selectedReview.user?.fullName ??
                                   selectedReview.user?.email ??
                                   "Ẩn danh"}
                               </p>
                             </div>
-                            {statusBadge(
-                              selectedReview.isHidden
-                                ? "Đã ẩn"
-                                : "Đang hiển thị",
-                            )}
+                            <div className="flex flex-col justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">Trạng thái</p>
+                              <div className="mt-1.5">
+                                {statusBadge(
+                                  selectedReview.isHidden
+                                    ? "Đã ẩn"
+                                    : selectedReview.threadStatus === "RESOLVED"
+                                      ? "Đã xử lý"
+                                      : "Chưa xử lý",
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Kiểm duyệt</p>
+                              <p className="mt-1.5 flex items-center gap-1.5">
+                                <span className={`h-2 w-2 rounded-full ${
+                                  (selectedReview.moderatedAt ||
+                                    (Array.isArray(selectedReview.images) &&
+                                      selectedReview.images.some((i) => i.isApproved)))
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
+                                }`} />
+                                <span className="text-sm font-medium text-slate-900">
+                                  {(selectedReview.moderatedAt ||
+                                    (Array.isArray(selectedReview.images) &&
+                                      selectedReview.images.some((i) => i.isApproved)))
+                                    ? "Đã kiểm duyệt"
+                                    : "Chưa kiểm duyệt"}
+                                </span>
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">Người kiểm duyệt</p>
+                              <p className="mt-1.5 text-sm font-medium text-slate-900">
+                                {moderatorDisplay}
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 text-sm">
-                            <p className="font-medium text-amber-600">{`${selectedReview.rating} sao`}</p>
-                            <p className="mt-1 whitespace-pre-wrap">
-                              {selectedReview.comment ||
-                                "Không có nội dung đánh giá"}
+                          {/* Rating & Comment */}
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-lg font-bold text-amber-600">{selectedReview.rating} ⭐</span>
+                              <span className="text-xs text-slate-600">{formatDate(selectedReview.createdAt)}</span>
+                            </div>
+                            <p className="text-sm text-slate-700 leading-relaxed">
+                              {selectedReview.comment || "Không có nội dung đánh giá"}
                             </p>
                           </div>
 
-                          <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                            <div>
-                              Tạo lúc: {formatDate(selectedReview.createdAt)}
+                          {/* Timeline */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">Tạo</p>
+                              <p className="mt-1 text-xs font-medium text-slate-900">
+                                {selectedReview.createdAt
+                                  ? new Date(selectedReview.createdAt).toLocaleString("vi-VN", {
+                                      dateStyle: "short",
+                                      timeStyle: "short",
+                                    })
+                                  : "-"}
+                              </p>
                             </div>
-                            <div>
-                              Cập nhật: {formatDate(selectedReview.updatedAt)}
-                            </div>
-                            <div>
-                              Kiểm duyệt:{" "}
-                              {selectedReview.moderatedAt
-                                ? formatDate(selectedReview.moderatedAt)
-                                : "Chưa"}
-                            </div>
-                            <div>
-                              Người kiểm duyệt:{" "}
-                              {selectedReview.moderator?.fullName ?? "-"}
+                            <div className="flex flex-col rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">Cập nhật</p>
+                              <p className="mt-1 text-xs font-medium text-slate-900">
+                                {selectedReview.updatedAt
+                                  ? new Date(selectedReview.updatedAt).toLocaleString("vi-VN", {
+                                      dateStyle: "short",
+                                      timeStyle: "short",
+                                    })
+                                  : "-"}
+                              </p>
                             </div>
                           </div>
+
+                          {Array.isArray(selectedReview.images) &&
+                          selectedReview.images.length > 0 ? (
+                            <div className="space-y-3 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Ảnh đánh giá
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Duyệt ảnh trước khi hiển thị công khai
+                                  </p>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {selectedReview.images.length} ảnh
+                                </span>
+                              </div>
+
+                              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {selectedReview.images.map((image) => (
+                                  <div
+                                    key={image.id}
+                                    className="overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm"
+                                  >
+                                    <div className="relative">
+                                      <a
+                                        href={image.imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        <img
+                                          src={image.imageUrl}
+                                          alt="Ảnh đánh giá"
+                                          className="h-40 w-full object-cover"
+                                        />
+                                      </a>
+                                      {/* Status badge overlay */}
+                                      <div className="absolute top-2 right-2">
+                                        {image.isApproved ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                            Đã duyệt
+                                          </span>
+                                        ) : image.rejectionReason ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                            Từ chối
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                            Chờ duyệt
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="space-y-3 p-3 text-xs">
+                                      {image.rejectionReason ? (
+                                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
+                                          <p className="text-xs font-medium text-rose-700">
+                                            Lý do từ chối:
+                                          </p>
+                                          <p className="mt-1 text-rose-700">
+                                            {image.rejectionReason}
+                                          </p>
+                                        </div>
+                                      ) : null}
+                                      {image.isApproved && image.moderatedAt ? (
+                                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2">
+                                          <p className="text-xs text-emerald-700">
+                                            Duyệt bởi: {image.moderatedBy ?? "Admin"}
+                                          </p>
+                                          <p className="text-xs text-emerald-600">
+                                            {new Date(image.moderatedAt).toLocaleString("vi-VN")}
+                                          </p>
+                                        </div>
+                                      ) : null}
+                                      <div className="flex flex-wrap gap-2">
+                                        {image.isApproved ? (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={
+                                              moderatingReviewId ===
+                                              Number(selectedReview.id)
+                                            }
+                                            onClick={() =>
+                                              moderateReviewImage(
+                                                selectedReview.id,
+                                                image.id,
+                                                false,
+                                                "Gỡ bỏ duyệt",
+                                              )
+                                            }
+                                          >
+                                            Gỡ bỏ duyệt
+                                          </Button>
+                                        ) : image.rejectionReason ? (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() =>
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  true,
+                                                )
+                                              }
+                                            >
+                                              Duyệt lại
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() => {
+                                                const reason = window.prompt(
+                                                  "Nhập lý do từ chối ảnh:",
+                                                  String(
+                                                    image.rejectionReason ?? "",
+                                                  ),
+                                                );
+                                                if (reason === null) {
+                                                  return;
+                                                }
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  false,
+                                                  reason,
+                                                );
+                                              }}
+                                            >
+                                              Từ chối
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() =>
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  true,
+                                                )
+                                              }
+                                            >
+                                              Duyệt
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              disabled={
+                                                moderatingReviewId ===
+                                                Number(selectedReview.id)
+                                              }
+                                              onClick={() => {
+                                                const reason = window.prompt(
+                                                  "Nhập lý do từ chối ảnh (không bắt buộc):",
+                                                  "",
+                                                );
+                                                if (reason === null) {
+                                                  return;
+                                                }
+                                                moderateReviewImage(
+                                                  selectedReview.id,
+                                                  image.id,
+                                                  false,
+                                                  reason,
+                                                );
+                                              }}
+                                            >
+                                              Từ chối
+                                            </Button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {/* duplicate metadata removed: header already shows moderation status and moderator */}
 
                           {selectedReview.hiddenReason ? (
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -7054,13 +7083,167 @@ export default function AdminPage() {
                             </div>
                           ) : null}
 
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold">
-                              Phản hồi quản trị
+                          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
+                                  Luồng hội thoại
+                                </p>
+                                <p className="text-sm text-slate-600">
+                                  Xem toàn bộ trao đổi giữa khách hàng và nhân
+                                  viên
+                                </p>
+                              </div>
+                              <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-700 shadow-sm">
+                                {selectedReviewThread.length} tin nhắn
+                              </div>
+                            </div>
+
+                            {latestReviewThreadMessage ? (
+                              <div className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm shadow-sm">
+                                <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-sky-700">
+                                  <span>
+                                    {latestReviewThreadMessage.isStaff
+                                      ? "Phản hồi mới nhất từ nhân viên"
+                                      : "Phản hồi mới nhất từ khách hàng"}
+                                  </span>
+                                  <span>
+                                    {formatDate(
+                                      latestReviewThreadMessage.createdAt,
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="whitespace-pre-wrap text-slate-700">
+                                  {latestReviewThreadMessage.message ||
+                                    "Không có nội dung"}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-sky-200 bg-white px-3 py-4 text-sm text-slate-500">
+                                Chưa có trao đổi trong hội thoại này.
+                              </div>
+                            )}
+
+                            {latestCustomerMessage ? (
+                              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm shadow-sm">
+                                <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-emerald-700">
+                                  <span>Phản hồi khách hàng mới nhất</span>
+                                  <span>
+                                    {formatDate(latestCustomerMessage.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="whitespace-pre-wrap text-slate-700">
+                                  {latestCustomerMessage.message ||
+                                    "Không có nội dung"}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
+                              {selectedReviewThread.length > 0
+                                ? selectedReviewThread.map((message) => (
+                                    <div
+                                      key={message.id}
+                                      className={`rounded-xl border px-3 py-2 text-sm shadow-sm ${
+                                        message.isStaff
+                                          ? "border-sky-200 bg-white"
+                                          : "border-emerald-200 bg-emerald-50"
+                                      }`}
+                                    >
+                                      <div className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold">
+                                        <span
+                                          className={
+                                            message.isStaff
+                                              ? "text-sky-700"
+                                              : "text-emerald-700"
+                                          }
+                                        >
+                                          {message.isStaff
+                                            ? "Nhân viên"
+                                            : "Khách hàng"}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                          {formatDate(message.createdAt)}
+                                        </span>
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-slate-700">
+                                        {message.message || "(Trống)"}
+                                      </p>
+                                    </div>
+                                  ))
+                                : null}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-2xl border border-border/60 bg-background p-4 shadow-sm xl:sticky xl:bottom-6">
+                            {/* Quick replies */}
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground"
+                                  onClick={() => setShowQuickEditor((s) => !s)}
+                                >
+                                  {showQuickEditor
+                                    ? "Đóng quản lý mẫu"
+                                    : "Quản lý mẫu"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground"
+                                  onClick={addQuickReply}
+                                >
+                                  Thêm mẫu
+                                </button>
+                              </div>
+
+                              {!showQuickEditor
+                                ? quickReplies.map((qr, idx) => (
+                                    <button
+                                      key={`qr-${idx}`}
+                                      type="button"
+                                      className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground hover:bg-background"
+                                      onClick={() =>
+                                        handleQuickReplyClick(
+                                          selectedReview.id,
+                                          qr,
+                                          false,
+                                        )
+                                      }
+                                    >
+                                      {qr}
+                                    </button>
+                                  ))
+                                : quickReplies.map((qr, idx) => (
+                                    <div
+                                      key={`qr-edit-${idx}`}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <input
+                                        type="text"
+                                        className="rounded-md border px-2 py-1 text-xs"
+                                        value={qr}
+                                        onChange={(e) =>
+                                          updateQuickReply(idx, e.target.value)
+                                        }
+                                      />
+                                      <button
+                                        type="button"
+                                        className="text-xs text-destructive"
+                                        onClick={() => removeQuickReply(idx)}
+                                      >
+                                        Xóa
+                                      </button>
+                                    </div>
+                                  ))}
+                            </div>
+
+                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                              Phản hồi của admin
                             </label>
                             <textarea
-                              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                              rows={4}
+                              className="min-h-36 w-full rounded-xl border bg-white px-3 py-3 text-sm shadow-inner"
+                              rows={6}
                               placeholder="Nhập phản hồi tư vấn kỹ thuật hoặc cảm ơn khách hàng..."
                               value={
                                 reviewReplyDraftById[selectedReview.id] ?? ""
@@ -7078,141 +7261,56 @@ export default function AdminPage() {
                                   ? `Lần phản hồi cuối: ${formatDate(selectedReview.adminRepliedAt)}`
                                   : "Chưa có phản hồi"}
                               </span>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  replyingReviewId === Number(selectedReview.id)
-                                }
-                                onClick={() =>
-                                  saveReviewReply(Number(selectedReview.id))
-                                }
-                              >
-                                {replyingReviewId === Number(selectedReview.id)
-                                  ? "Đang lưu..."
-                                  : "Lưu phản hồi"}
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-sky-600 text-white hover:bg-sky-700"
+                                  disabled={
+                                    replyingReviewId ===
+                                    Number(selectedReview.id)
+                                  }
+                                  onClick={() =>
+                                    saveReviewReply(Number(selectedReview.id))
+                                  }
+                                >
+                                  {replyingReviewId ===
+                                  Number(selectedReview.id)
+                                    ? "Đang lưu..."
+                                    : "Lưu phản hồi"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setReviewReplyDraftById((prev) => ({
+                                      ...prev,
+                                      [selectedReview.id]: "",
+                                    }))
+                                  }
+                                >
+                                  Xóa
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
                           <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
                             <Button
                               size="sm"
-                              variant="outline"
-                              disabled={
-                                moderatingReviewId === Number(selectedReview.id)
+                              variant={isReviewResolved ? "outline" : "default"}
+                              className={
+                                isReviewResolved
+                                  ? ""
+                                  : "bg-emerald-600 hover:bg-emerald-700"
                               }
-                              onClick={() =>
-                                moderateReview(
-                                  selectedReview,
-                                  !selectedReview.isHidden,
-                                )
-                              }
+                              onClick={() => resolveReview(selectedReview)}
                             >
-                              {moderatingReviewId === Number(selectedReview.id)
-                                ? "Đang cập nhật..."
-                                : selectedReview.isHidden
-                                  ? "Hiện đánh giá"
-                                  : "Ẩn đánh giá"}
+                              {isReviewResolved
+                                ? "Mở lại cuộc hội thoại"
+                                : "✓ Đánh dấu đã xử lý"}
                             </Button>
                             <Button
                               size="sm"
-                              variant="destructive"
-                              disabled={
-                                deletingReviewId === Number(selectedReview.id)
-                              }
-                              onClick={() => removeReview(selectedReview)}
-                            >
-                              {deletingReviewId === Number(selectedReview.id)
-                                ? "Đang xóa..."
-                                : "Xóa đánh giá"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-              </Panel>
-            </div>
-          </section>
-
-          <section id="chat" className={sectionClassName("chat")}>
-            <SectionHeader
-              sectionId="chat"
-              icon={MessageSquareMore}
-              title="Chat khách hàng"
-              description="Phòng chat mới nhất"
-            />
-            <AdminChatPanel token={token} currentUser={user} toast={toast} />
-          </section>
-
-          <section id="ai-build" className={sectionClassName("ai-build")}>
-            <SectionHeader
-              sectionId="ai-build"
-              icon={Sparkles}
-              title="Cấu hình AI"
-              description="Build được lưu gần đây"
-            />
-            <Panel
-              title="Build đã lưu"
-              description="Dữ liệu trực tiếp từ bảng AI_Saved_Builds"
-            >
-              <DataTable
-                columns={["Tên build", "Chủ sở hữu", "Tổng giá", "Số món"]}
-                rows={(dashboard?.aiBuilds ?? []).map((item) => [
-                  item.buildName,
-                  item.owner,
-                  formatMoney(item.totalPrice),
-                  String(item.itemCount),
-                ])}
-              />
-            </Panel>
-          </section>
-
-          <section
-            id="verification"
-            className={sectionClassName("verification")}
-          >
-            <SectionHeader
-              sectionId="verification"
-              icon={MailCheck}
-              title="Xác thực email"
-              description="Danh sách OTP gần đây"
-            />
-            <Panel
-              title="Email verification queue"
-              description="Dữ liệu trực tiếp từ bảng Email_Verifications"
-            >
-              <DataTable
-                columns={[
-                  "Email",
-                  "OTP",
-                  "Mục đích",
-                  "Tạo lúc",
-                  "Hết hạn",
-                  "Trạng thái",
-                ]}
-                rows={(dashboard?.emailVerifications ?? []).map((item) => [
-                  item.email,
-                  item.otp,
-                  formatEnum(item.purpose),
-                  formatDate(item.createdAt),
-                  formatDate(item.expiredAt),
-                  statusBadge(item.usedAt ? "Đã dùng" : "Đang chờ"),
-                ])}
-              />
-            </Panel>
-          </section>
-
-          <section id="roles" className={sectionClassName("roles")}>
-              <SectionHeader
-                sectionId="roles"
-                icon={ShieldCheck}
-                title="Phân quyền"
-                description="Chọn tài khoản nhân viên và tick đúng chức năng được phép hiển thị"
-                showPill={false}
-              />
             <Panel
               title="Chọn tài khoản"
               description="Tài khoản admin@gmail.com luôn có toàn bộ quyền"
@@ -7252,7 +7350,7 @@ export default function AdminPage() {
                           .toLowerCase() === "admin@gmail.com"
                           ? "Siêu quản trị"
                           : selectedPermissionTarget.role?.name ||
-                          "Chưa có vai trò"}
+                            "Chưa có vai trò"}
                       </div>
                     </div>
                   ) : null}
@@ -7302,10 +7400,10 @@ export default function AdminPage() {
                             onChange={(event) =>
                               selectedPermissionTarget
                                 ? toggleUserPermission(
-                                  selectedPermissionTarget.id,
-                                  actionName,
-                                  event.target.checked,
-                                )
+                                    selectedPermissionTarget.id,
+                                    actionName,
+                                    event.target.checked,
+                                  )
                                 : null
                             }
                             className="mt-1"
@@ -7336,7 +7434,7 @@ export default function AdminPage() {
                     disabled={
                       !selectedPermissionTarget ||
                       savingPermissionTargetId ===
-                      Number(selectedPermissionTarget?.id) ||
+                        Number(selectedPermissionTarget?.id) ||
                       String(selectedPermissionTarget?.email ?? "")
                         .trim()
                         .toLowerCase() === "admin@gmail.com"
@@ -7344,11 +7442,11 @@ export default function AdminPage() {
                     className="w-full"
                   >
                     {savingPermissionTargetId ===
-                      Number(selectedPermissionTarget?.id)
+                    Number(selectedPermissionTarget?.id)
                       ? "Đang lưu quyền tài khoản..."
                       : String(selectedPermissionTarget?.email ?? "")
-                        .trim()
-                        .toLowerCase() === "admin@gmail.com"
+                            .trim()
+                            .toLowerCase() === "admin@gmail.com"
                         ? "Siêu quản trị luôn có toàn quyền"
                         : "Lưu quyền tài khoản"}
                   </Button>
@@ -7357,12 +7455,64 @@ export default function AdminPage() {
             </Panel>
           </section>
         </main>
+
+        {/* Delete Review Dialog */}
+        <Dialog open={deleteReviewDialogOpen} onOpenChange={setDeleteReviewDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xóa đánh giá</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc muốn xóa đánh giá #{pendingDeleteReview?.id}? Hành động này không thể hoàn tác.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label htmlFor="delete-reason" className="text-sm font-medium">
+                  Lý do xóa <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="delete-reason"
+                  placeholder="Nhập lý do xóa đánh giá..."
+                  value={deleteReviewReason}
+                  onChange={(e) => setDeleteReviewReason(e.target.value)}
+                  className="h-24 w-full rounded-lg border border-border/60 bg-white/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteReviewDialogOpen(false);
+                  setPendingDeleteReview(null);
+                  setDeleteReviewReason("");
+                }}
+                disabled={deletingReviewId === pendingDeleteReview?.id}
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteReview}
+                disabled={deletingReviewId === pendingDeleteReview?.id}
+              >
+                {deletingReviewId === pendingDeleteReview?.id ? "Đang xóa..." : "Xóa"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
 }
 
-function SectionHeader({ icon: Icon, title, description, sectionId, showPill = true }) {
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
+  sectionId,
+  showPill = true,
+}) {
   const schema = schemaBySection[sectionId] ?? schemaBySection.dashboard;
 
   return (
@@ -7428,42 +7578,42 @@ function DataTable({ columns, rows }) {
 function statusBadge(value) {
   const tone =
     value === "Đang hoạt động" ||
-      value === "Đã thanh toán" ||
-      value === "Đã hoàn tiền" ||
-      value === "Đã duyệt" ||
-      value === "Đã nhận hàng" ||
-      value === "Đã giao" ||
-      value === "Đã giao hàng" ||
-      value === "Đã kết nối" ||
-      value === "Đã đăng" ||
-      value === "Phổ biến" ||
-      value === "Đã xác minh" ||
-      value === "Còn hàng" ||
-      value === "Đã dùng" ||
-      value === "Đang hiển thị"
+    value === "Đã thanh toán" ||
+    value === "Đã hoàn tiền" ||
+    value === "Đã duyệt" ||
+    value === "Đã nhận hàng" ||
+    value === "Đã giao" ||
+    value === "Đã giao hàng" ||
+    value === "Đã kết nối" ||
+    value === "Đã đăng" ||
+    value === "Phổ biến" ||
+    value === "Đã xác minh" ||
+    value === "Còn hàng" ||
+    value === "Đã dùng" ||
+    value === "Đang hiển thị"
       ? "bg-emerald-100 text-emerald-700"
       : value === "Đang chờ" ||
-        value === "Chờ xác nhận" ||
-        value === "Chờ thanh toán" ||
-        value === "Đang xử lý" ||
-        value === "Đang chuẩn bị" ||
-        value === "Đang gửi trả" ||
-        value === "Tạm dừng" ||
-        value === "Cần xem xét" ||
-        value === "Bản nháp" ||
-        value === "Ổn định"
+          value === "Chờ xác nhận" ||
+          value === "Chờ thanh toán" ||
+          value === "Đang xử lý" ||
+          value === "Đang chuẩn bị" ||
+          value === "Đang gửi trả" ||
+          value === "Tạm dừng" ||
+          value === "Cần xem xét" ||
+          value === "Bản nháp" ||
+          value === "Ổn định"
         ? "bg-amber-100 text-amber-700"
         : value === "Đang giao" ||
-          value === "Đang vận chuyển" ||
-          value === "Quản trị viên" ||
-          value === "Nhân viên" ||
-          value === "Mở"
+            value === "Đang vận chuyển" ||
+            value === "Quản trị viên" ||
+            value === "Nhân viên" ||
+            value === "Mở"
           ? "bg-sky-100 text-sky-700"
           : value === "Đã từ chối"
             ? "bg-rose-100 text-rose-700"
-          : value === "Đã ẩn"
-            ? "bg-slate-200 text-slate-700"
-            : "bg-rose-100 text-rose-700";
+            : value === "Đã ẩn"
+              ? "bg-slate-200 text-slate-700"
+              : "bg-rose-100 text-rose-700";
 
   return (
     <span
@@ -7547,7 +7697,9 @@ function formatPaymentStatusLabelAdmin(value) {
 }
 
 function formatReturnStatusLabelAdmin(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (normalized === "PENDING") return "Đang chờ";
   if (normalized === "APPROVED") return "Đã duyệt";
   if (normalized === "REJECTED") return "Đã từ chối";

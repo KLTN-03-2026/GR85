@@ -11,6 +11,7 @@ import {
   moderateReviewByAdmin,
   resolveReviewThreadByAdmin,
   replyReviewByAdmin,
+  moderateReviewImageByAdmin,
   getWarehouseOverviewByAdmin,
   getUserDetailByAdmin,
   listCouponsForAdmin,
@@ -92,6 +93,11 @@ const reviewModerationSchema = z.object({
 
 const reviewReplySchema = z.object({
   message: z.string().min(1).max(2000),
+});
+
+const moderateReviewImageSchema = z.object({
+  approve: z.boolean(),
+  rejectionReason: z.string().max(2000).optional(),
 });
 
 router.get("/users/:userId/detail", requireAuth, async (req, res) => {
@@ -372,6 +378,48 @@ router.patch("/reviews/:reviewId/moderate", requireAuth, async (req, res) => {
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
   }
 });
+
+router.patch(
+  "/reviews/:reviewId/images/:imageId/moderate",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!isAdminRole(req.auth.role)) {
+        return res.status(403).json({
+          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+        });
+      }
+      if (!hasPermission(req, "admin_reviews_manage")) {
+        return res
+          .status(403)
+          .json({ message: "Bạn không có quyền thực hiện chức năng này" });
+      }
+
+      const parsed = moderateReviewImageSchema.parse(req.body ?? {});
+      const data = await moderateReviewImageByAdmin(
+        Number(req.auth?.sub),
+        Number(req.params.reviewId),
+        Number(req.params.imageId),
+        parsed,
+      );
+      return res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Dữ liệu yêu cầu không hợp lệ",
+          issues: error.flatten(),
+        });
+      }
+
+      if (error instanceof Error) {
+        const status = error.message.includes("not found") ? 404 : 400;
+        return res.status(status).json({ message: error.message });
+      }
+
+      return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+    }
+  },
+);
 
 router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
   try {

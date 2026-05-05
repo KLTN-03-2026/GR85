@@ -165,9 +165,9 @@ export async function getAdminDashboard() {
     prisma.user.count(),
     prisma.order.count(),
     prisma.product.count(),
-    prisma.order.aggregate({ 
+    prisma.order.aggregate({
       _sum: { totalAmount: true },
-      where: { orderStatus: { in: ["PROCESSING", "SHIPPING", "DELIVERED"] } }
+      where: { orderStatus: { in: ["PROCESSING", "SHIPPING", "DELIVERED"] } },
     }),
     prisma.order.groupBy({
       by: ["orderStatus"],
@@ -376,8 +376,30 @@ export async function listReviewsForAdmin() {
     },
   });
 
+  // Collect image-level moderator ids so we can resolve their names in a single query
+  const imageModeratorIds = new Set();
+  for (const r of reviews) {
+    if (Array.isArray(r.images)) {
+      for (const img of r.images) {
+        if (img.moderatedBy) imageModeratorIds.add(Number(img.moderatedBy));
+      }
+    }
+  }
+
+  const imageModerators =
+    imageModeratorIds.size > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: Array.from(imageModeratorIds) } },
+          select: { id: true, fullName: true, email: true },
+        })
+      : [];
+
+  const imageModeratorMap = Object.fromEntries(
+    imageModerators.map((u) => [String(u.id), u]),
+  );
+
   return serializeData({
-    items: reviews.map(mapAdminReview),
+    items: reviews.map((r) => mapAdminReview(r, imageModeratorMap)),
   });
 }
 
@@ -487,6 +509,84 @@ export async function moderateReviewByAdmin(
   return serializeData(mapAdminReview(updated));
 }
 
+export async function moderateReviewImageByAdmin(
+  adminUserId,
+  reviewIdInput,
+  imageIdInput,
+  input = {},
+) {
+  const reviewId = Number(reviewIdInput);
+  const imageId = Number(imageIdInput);
+  const moderatorId = Number(adminUserId);
+  const approve = Boolean(input.approve);
+  const rejectionReason = String(input.rejectionReason ?? "").trim() || null;
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("Invalid review id");
+  }
+  if (!Number.isFinite(imageId) || imageId <= 0) {
+    throw new Error("Invalid image id");
+  }
+  if (!Number.isFinite(moderatorId) || moderatorId <= 0) {
+    throw new Error("Invalid admin id");
+  }
+
+  const existingReview = await prisma.review.findUnique({
+    where: { id: reviewId },
+  });
+  if (!existingReview) {
+    throw new Error("Review not found");
+  }
+
+  const existingImage = await prisma.reviewImage.findUnique({
+    where: { id: imageId },
+  });
+  if (!existingImage || Number(existingImage.reviewId) !== Number(reviewId)) {
+    throw new Error("Review image not found");
+  }
+
+  await prisma.reviewImage.update({
+    where: { id: imageId },
+    data: {
+      isApproved: approve,
+      moderatedBy: moderatorId,
+      moderatedAt: new Date(),
+      rejectionReason: approve ? null : rejectionReason,
+    },
+  });
+
+  // Return updated review for admin view
+  const updated = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: {
+      user: { select: { id: true, fullName: true, email: true } },
+      product: { select: { id: true, name: true, slug: true } },
+      moderator: { select: { id: true, fullName: true, email: true } },
+      replier: { select: { id: true, fullName: true, email: true } },
+      resolver: { select: { id: true, fullName: true, email: true } },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: { select: { id: true, fullName: true, email: true } },
+        },
+      },
+      images: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
+    },
+  });
+
+  await createReviewModerationNotification({
+    userId: updated.userId,
+    reviewId: updated.id,
+    product: updated.product,
+    action: approve ? "IMAGE_APPROVED" : "IMAGE_REJECTED",
+    reason: rejectionReason || undefined,
+  });
+
+  return serializeData(mapAdminReview(updated));
+}
+
+
 export async function replyReviewByAdmin(
   adminUserId,
   reviewIdInput,
@@ -494,7 +594,7 @@ export async function replyReviewByAdmin(
 ) {
   const reviewId = Number(reviewIdInput);
   const replierId = Number(adminUserId);
-  const adminReply = String(input.reply ?? "").trim();
+  const adminReply = String(input.reply ?? input.message ?? "").trim();
 
   if (!Number.isFinite(reviewId) || reviewId <= 0) {
     throw new Error("Invalid review id");
@@ -1816,7 +1916,7 @@ function buildBatchCode(productId, warehouseId) {
   return `B${dateText}-P${productId}-W${warehouseId}-${randomPart}`;
 }
 
-function mapAdminReview(review) {
+function mapAdminReview(review, imageModeratorMap = {}) {
   const reviewUserId = Number(review.userId);
 
   return {
@@ -1835,6 +1935,14 @@ function mapAdminReview(review) {
           id: image.id,
           imageUrl: String(image.imageUrl ?? ""),
           sortOrder: Number(image.sortOrder ?? 0),
+          isApproved: Boolean(image.isApproved),
+          moderatedBy: image.moderatedBy ?? null,
+          moderatedByName:
+            image.moderatedBy && imageModeratorMap[String(image.moderatedBy)]
+              ? String(imageModeratorMap[String(image.moderatedBy)].fullName || imageModeratorMap[String(image.moderatedBy)].email)
+              : null,
+          moderatedAt: image.moderatedAt ?? null,
+          rejectionReason: image.rejectionReason ?? null,
         }))
       : [],
     createdAt: review.createdAt,
