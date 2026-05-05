@@ -1368,7 +1368,11 @@ export default function AdminPage() {
     } catch {}
   }, [quickReplies]);
 
-  async function handleQuickReplyClick(reviewId, text, sendImmediately = false) {
+  async function handleQuickReplyClick(
+    reviewId,
+    text,
+    sendImmediately = false,
+  ) {
     if (!reviewId) return;
     setReviewReplyDraftById((prev) => ({
       ...prev,
@@ -1561,7 +1565,12 @@ export default function AdminPage() {
     }
   }
 
-  async function moderateReviewImage(reviewId, imageId, approve, rejectionReason = "") {
+  async function moderateReviewImage(
+    reviewId,
+    imageId,
+    approve,
+    rejectionReason = "",
+  ) {
     if (!token || !reviewId || !imageId) {
       return;
     }
@@ -1591,7 +1600,9 @@ export default function AdminPage() {
       }
 
       setAdminReviews((prev) =>
-        prev.map((item) => (Number(item.id) === Number(reviewId) ? payload : item)),
+        prev.map((item) =>
+          Number(item.id) === Number(reviewId) ? payload : item,
+        ),
       );
       toast({
         title: approve ? "Đã duyệt ảnh đánh giá" : "Đã từ chối ảnh đánh giá",
@@ -1607,57 +1618,60 @@ export default function AdminPage() {
     }
   }
 
-  const saveReviewReply = useCallback(async (reviewId) => {
-    if (!token || !reviewId) {
-      return;
-    }
-
-    const reply = String(reviewReplyDraftById[reviewId] ?? "").trim();
-    if (!reply) {
-      toast({
-        title: "Nội dung phản hồi trống",
-        description: "Vui lòng nhập nội dung phản hồi trước khi lưu",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setReplyingReviewId(Number(reviewId));
-    try {
-      const response = await fetch(`/api/admin/reviews/${reviewId}/reply`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: reply }),
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Không thể lưu phản hồi");
+  const saveReviewReply = useCallback(
+    async (reviewId) => {
+      if (!token || !reviewId) {
+        return;
       }
 
-      setAdminReviews((prev) =>
-        prev.map((item) =>
-          Number(item.id) === Number(reviewId) ? payload : item,
-        ),
-      );
-      setReviewReplyDraftById((prev) => ({
-        ...prev,
-        [reviewId]: String(payload?.adminReply ?? ""),
-      }));
-      toast({ title: "Đã lưu phản hồi đánh giá" });
-    } catch (error) {
-      toast({
-        title: "Lưu phản hồi thất bại",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setReplyingReviewId(null);
-    }
-  }, [token, reviewReplyDraftById, toast]);
+      const reply = String(reviewReplyDraftById[reviewId] ?? "").trim();
+      if (!reply) {
+        toast({
+          title: "Nội dung phản hồi trống",
+          description: "Vui lòng nhập nội dung phản hồi trước khi lưu",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setReplyingReviewId(Number(reviewId));
+      try {
+        const response = await fetch(`/api/admin/reviews/${reviewId}/reply`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: reply }),
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Không thể lưu phản hồi");
+        }
+
+        setAdminReviews((prev) =>
+          prev.map((item) =>
+            Number(item.id) === Number(reviewId) ? payload : item,
+          ),
+        );
+        setReviewReplyDraftById((prev) => ({
+          ...prev,
+          [reviewId]: String(payload?.adminReply ?? ""),
+        }));
+        toast({ title: "Đã lưu phản hồi đánh giá" });
+      } catch (error) {
+        toast({
+          title: "Lưu phản hồi thất bại",
+          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
+          variant: "destructive",
+        });
+      } finally {
+        setReplyingReviewId(null);
+      }
+    },
+    [token, reviewReplyDraftById, toast],
+  );
 
   async function removeReview(review) {
     if (!token || !review?.id) {
@@ -3537,11 +3551,17 @@ export default function AdminPage() {
     function onKey(e) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        if (!Array.isArray(filteredReviews) || filteredReviews.length === 0) return;
-        const currentIndex = filteredReviews.findIndex((r) => Number(r.id) === Number(selectedReviewId));
+        if (!Array.isArray(filteredReviews) || filteredReviews.length === 0)
+          return;
+        const currentIndex = filteredReviews.findIndex(
+          (r) => Number(r.id) === Number(selectedReviewId),
+        );
         let nextIndex = currentIndex;
         if (e.key === "ArrowDown") {
-          nextIndex = currentIndex < 0 ? 0 : Math.min(filteredReviews.length - 1, currentIndex + 1);
+          nextIndex =
+            currentIndex < 0
+              ? 0
+              : Math.min(filteredReviews.length - 1, currentIndex + 1);
         } else {
           nextIndex = currentIndex < 0 ? 0 : Math.max(0, currentIndex - 1);
         }
@@ -7208,8 +7228,11 @@ export default function AdminPage() {
                       {filteredReviews.map((item) => {
                         const isSelected =
                           Number(selectedReview?.id) === Number(item.id);
-                        const thread = Array.isArray(item.thread) ? item.thread : [];
-                        const lastMsg = thread.length > 0 ? thread[thread.length - 1] : null;
+                        const thread = Array.isArray(item.thread)
+                          ? item.thread
+                          : [];
+                        const lastMsg =
+                          thread.length > 0 ? thread[thread.length - 1] : null;
                         const unread = lastMsg && !lastMsg.isStaff;
                         return (
                           <button
@@ -7284,7 +7307,8 @@ export default function AdminPage() {
                             </p>
                           </div>
 
-                          {Array.isArray(selectedReview.images) && selectedReview.images.length > 0 ? (
+                          {Array.isArray(selectedReview.images) &&
+                          selectedReview.images.length > 0 ? (
                             <div className="space-y-3 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
@@ -7302,8 +7326,15 @@ export default function AdminPage() {
 
                               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                 {selectedReview.images.map((image) => (
-                                  <div key={image.id} className="overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm">
-                                    <a href={image.imageUrl} target="_blank" rel="noreferrer">
+                                  <div
+                                    key={image.id}
+                                    className="overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm"
+                                  >
+                                    <a
+                                      href={image.imageUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
                                       <img
                                         src={image.imageUrl}
                                         alt="Ảnh đánh giá"
@@ -7313,10 +7344,14 @@ export default function AdminPage() {
                                     <div className="space-y-2 p-3 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-medium">
-                                          {image.isApproved ? "Đã duyệt" : "Chờ duyệt"}
+                                          {image.isApproved
+                                            ? "Đã duyệt"
+                                            : "Chờ duyệt"}
                                         </span>
                                         {image.rejectionReason ? (
-                                          <span className="text-rose-600">Từ chối</span>
+                                          <span className="text-rose-600">
+                                            Từ chối
+                                          </span>
                                         ) : null}
                                       </div>
                                       {image.rejectionReason ? (
@@ -7328,7 +7363,10 @@ export default function AdminPage() {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          disabled={moderatingReviewId === Number(selectedReview.id)}
+                                          disabled={
+                                            moderatingReviewId ===
+                                            Number(selectedReview.id)
+                                          }
                                           onClick={() =>
                                             moderateReviewImage(
                                               selectedReview.id,
@@ -7342,11 +7380,16 @@ export default function AdminPage() {
                                         <Button
                                           size="sm"
                                           variant="destructive"
-                                          disabled={moderatingReviewId === Number(selectedReview.id)}
+                                          disabled={
+                                            moderatingReviewId ===
+                                            Number(selectedReview.id)
+                                          }
                                           onClick={() => {
                                             const reason = window.prompt(
                                               "Nhập lý do từ chối ảnh (không bắt buộc):",
-                                              String(image.rejectionReason ?? ""),
+                                              String(
+                                                image.rejectionReason ?? "",
+                                              ),
                                             );
                                             if (reason === null) {
                                               return;
@@ -7480,7 +7523,9 @@ export default function AdminPage() {
                                   className="text-xs text-muted-foreground"
                                   onClick={() => setShowQuickEditor((s) => !s)}
                                 >
-                                  {showQuickEditor ? "Đóng quản lý mẫu" : "Quản lý mẫu"}
+                                  {showQuickEditor
+                                    ? "Đóng quản lý mẫu"
+                                    : "Quản lý mẫu"}
                                 </button>
                                 <button
                                   type="button"
@@ -7497,18 +7542,29 @@ export default function AdminPage() {
                                       key={`qr-${idx}`}
                                       type="button"
                                       className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground hover:bg-background"
-                                      onClick={() => handleQuickReplyClick(selectedReview.id, qr, false)}
+                                      onClick={() =>
+                                        handleQuickReplyClick(
+                                          selectedReview.id,
+                                          qr,
+                                          false,
+                                        )
+                                      }
                                     >
                                       {qr}
                                     </button>
                                   ))
                                 : quickReplies.map((qr, idx) => (
-                                    <div key={`qr-edit-${idx}`} className="flex items-center gap-2">
+                                    <div
+                                      key={`qr-edit-${idx}`}
+                                      className="flex items-center gap-2"
+                                    >
                                       <input
                                         type="text"
                                         className="rounded-md border px-2 py-1 text-xs"
                                         value={qr}
-                                        onChange={(e) => updateQuickReply(idx, e.target.value)}
+                                        onChange={(e) =>
+                                          updateQuickReply(idx, e.target.value)
+                                        }
                                       />
                                       <button
                                         type="button"
@@ -7546,26 +7602,30 @@ export default function AdminPage() {
                               </span>
                               <div className="flex items-center gap-2">
                                 <Button
-                                size="sm"
-                                className="bg-sky-600 text-white hover:bg-sky-700"
-                                disabled={
-                                  replyingReviewId === Number(selectedReview.id)
-                                }
-                                onClick={() =>
-                                  saveReviewReply(Number(selectedReview.id))
-                                }
-                              >
-                                {replyingReviewId === Number(selectedReview.id)
-                                  ? "Đang lưu..."
-                                  : "Lưu phản hồi"}
-                              </Button>
+                                  size="sm"
+                                  className="bg-sky-600 text-white hover:bg-sky-700"
+                                  disabled={
+                                    replyingReviewId ===
+                                    Number(selectedReview.id)
+                                  }
+                                  onClick={() =>
+                                    saveReviewReply(Number(selectedReview.id))
+                                  }
+                                >
+                                  {replyingReviewId ===
+                                  Number(selectedReview.id)
+                                    ? "Đang lưu..."
+                                    : "Lưu phản hồi"}
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => setReviewReplyDraftById((prev) => ({
-                                    ...prev,
-                                    [selectedReview.id]: "",
-                                  }))}
+                                  onClick={() =>
+                                    setReviewReplyDraftById((prev) => ({
+                                      ...prev,
+                                      [selectedReview.id]: "",
+                                    }))
+                                  }
                                 >
                                   Xóa
                                 </Button>

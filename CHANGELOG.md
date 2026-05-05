@@ -5,6 +5,76 @@ Mục mới nhất luôn được thêm ở cuối file.
 
 ---
 
+## 2026-05-04 — Sửa lỗi Prisma Schema & Proxy ảnh đánh giá
+
+### Vấn đề gặp phải
+- Khách hàng tạo đánh giá với ảnh bị lỗi: `Unknown argument 'isApproved'` từ Prisma
+- Ảnh đánh giá không hiển thị được trên product detail và admin panel vì thiếu proxy `/uploads`
+
+### Thay đổi đã thực hiện
+
+- **BE/prisma/migrations/20260504000000_review_image_moderation/**
+  - **Thay đổi gì:** Tạo migration để thêm 4 cột vào bảng `Review_Images`:
+    - `is_approved` (BOOLEAN DEFAULT FALSE)
+    - `moderated_by` (INTEGER NULL)
+    - `moderated_at` (DATETIME NULL)
+    - `rejection_reason` (TEXT NULL)
+  - **Lý do:** Lưu trữ thông tin duyệt ảnh từ admin
+
+- **BE/prisma/schema.prisma**
+  - **Thay đổi gì:** Cập nhật model `ReviewImage` thêm 4 trường mới cho moderation
+  - **Lý do:** Đồng bộ schema Prisma với database
+
+- **BE/src/services/product.service.js**
+  - **Thay đổi gì:**
+    - `createProductReviewBySlug`: Tạo review image với `isApproved: false` (chờ duyệt)
+    - `listProductReviewsBySlug`: Thêm trường `isApproved` vào response và chỉ hiển thị ảnh đã duyệt (`where: { isApproved: true }`)
+  - **Lý do:** Đảm bảo ảnh chỉ hiển thị công khai sau khi admin duyệt
+
+- **BE/src/services/admin.service.js**
+  - **Thay đổi gì:**
+    - Thêm hàm `moderateReviewImageByAdmin()`: Admin có thể duyệt/từ chối từng ảnh và ghi lý do từ chối
+    - Cập nhật `mapAdminReview()`: Include thông tin duyệt ảnh trong response (isApproved, moderatedBy, moderatedAt, rejectionReason)
+  - **Lý do:** Cung cấp API cho admin quản lý duyệt ảnh
+
+- **BE/src/api/routes/admin.routes.js**
+  - **Thay đổi gì:**
+    - Thêm route `PATCH /admin/reviews/:reviewId/images/:imageId/moderate` 
+    - Thêm schema validation `moderateReviewImageSchema`
+  - **Lý do:** Cung cấp endpoint cho admin moderateImage
+
+- **FE/src/client/features/admin/pages/AdminPage.jsx**
+  - **Thay đổi gì:**
+    - Thêm hàm `moderateReviewImage()`: Gọi API moderate
+    - Thêm image grid trong review detail panel để hiển thị ảnh với nút "Duyệt" và "Từ chối"
+    - Hiển thị trạng thái duyệt ảnh và lý do từ chối
+  - **Lý do:** Admin có giao diện để duyệt ảnh
+
+- **FE/vite.config.js**
+  - **Thay đổi gì:** Thêm proxy rule cho `/uploads`:
+    ```javascript
+    "/uploads": {
+      target: "http://localhost:3001",
+      changeOrigin: true,
+    }
+    ```
+  - **Lý do:** Frontend (port 8080) có thể truy cập static files từ backend (port 3001)
+
+### Quy trình khắc phục
+
+1. ✅ `npx prisma generate` - Tái tạo Prisma Client
+2. ✅ `npx prisma db push` - Đồng bộ database schema
+3. ✅ Khởi động lại FE & BE server
+
+### Kết quả
+
+✅ Ảnh đánh giá hiển thị đúng ở admin panel với nút duyệt/từ chối  
+✅ Ảnh được lưu vào database với `isApproved: false` (chờ duyệt)  
+✅ Admin có thể duyệt/từ chối từng ảnh riêng lẻ  
+✅ Khách hàng thấy ảnh sau khi admin duyệt công khai
+
+---
+
 ## 2026-04-25 — Review Hybrid (mỗi lần mua 1 đánh giá) + Thread/Notification
 
 ### Thay đổi đã thực hiện

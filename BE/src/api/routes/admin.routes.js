@@ -259,11 +259,9 @@ router.get("/reviews", requireAuth, async (req, res) => {
 router.get("/categories", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chi quan tri vien moi co the truy cap endpoint nay",
-        });
+      return res.status(403).json({
+        message: "Chi quan tri vien moi co the truy cap endpoint nay",
+      });
     }
     if (!canManageCategories(req)) {
       return res
@@ -286,11 +284,9 @@ router.get("/categories", requireAuth, async (req, res) => {
 router.post("/categories", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chi quan tri vien moi co the truy cap endpoint nay",
-        });
+      return res.status(403).json({
+        message: "Chi quan tri vien moi co the truy cap endpoint nay",
+      });
     }
     if (!canManageCategories(req)) {
       return res
@@ -313,11 +309,9 @@ router.post("/categories", requireAuth, async (req, res) => {
 router.patch("/categories/:categoryId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chi quan tri vien moi co the truy cap endpoint nay",
-        });
+      return res.status(403).json({
+        message: "Chi quan tri vien moi co the truy cap endpoint nay",
+      });
     }
     if (!canManageCategories(req)) {
       return res
@@ -340,11 +334,9 @@ router.patch("/categories/:categoryId", requireAuth, async (req, res) => {
 router.delete("/categories/:categoryId", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chi quan tri vien moi co the truy cap endpoint nay",
-        });
+      return res.status(403).json({
+        message: "Chi quan tri vien moi co the truy cap endpoint nay",
+      });
     }
     if (!canManageCategories(req)) {
       return res
@@ -464,12 +456,10 @@ router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
     return res.status(201).json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -484,11 +474,9 @@ router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
 router.patch("/reviews/:reviewId/moderation", requireAuth, async (req, res) => {
   try {
     if (!isAdminRole(req.auth.role)) {
-      return res
-        .status(403)
-        .json({
-          message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
-        });
+      return res.status(403).json({
+        message: "Chỉ quản trị viên mới có thể truy cập endpoint này",
+      });
     }
     if (!hasPermission(req, "admin_reviews_manage")) {
       return res
@@ -817,12 +805,10 @@ router.post("/reviews/:reviewId/replies", requireAuth, async (req, res) => {
     return res.status(201).json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {
@@ -856,12 +842,10 @@ router.patch("/reviews/:reviewId/reply", requireAuth, async (req, res) => {
     return res.status(201).json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({
-          message: "Dữ liệu yêu cầu không hợp lệ",
-          issues: error.flatten(),
-        });
+      return res.status(400).json({
+        message: "Dữ liệu yêu cầu không hợp lệ",
+        issues: error.flatten(),
+      });
     }
 
     if (error instanceof Error) {

@@ -509,12 +509,16 @@ export async function moderateReviewImageByAdmin(
     throw new Error("Invalid admin id");
   }
 
-  const existingReview = await prisma.review.findUnique({ where: { id: reviewId } });
+  const existingReview = await prisma.review.findUnique({
+    where: { id: reviewId },
+  });
   if (!existingReview) {
     throw new Error("Review not found");
   }
 
-  const existingImage = await prisma.reviewImage.findUnique({ where: { id: imageId } });
+  const existingImage = await prisma.reviewImage.findUnique({
+    where: { id: imageId },
+  });
   if (!existingImage || Number(existingImage.reviewId) !== Number(reviewId)) {
     throw new Error("Review image not found");
   }
@@ -538,7 +542,13 @@ export async function moderateReviewImageByAdmin(
       moderator: { select: { id: true, fullName: true, email: true } },
       replier: { select: { id: true, fullName: true, email: true } },
       resolver: { select: { id: true, fullName: true, email: true } },
-      replies: { orderBy: { createdAt: "asc" }, take: 200, include: { sender: { select: { id: true, fullName: true, email: true } } } },
+      replies: {
+        orderBy: { createdAt: "asc" },
+        take: 200,
+        include: {
+          sender: { select: { id: true, fullName: true, email: true } },
+        },
+      },
       images: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
     },
   });
