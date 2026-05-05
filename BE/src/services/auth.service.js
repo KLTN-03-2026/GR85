@@ -16,49 +16,6 @@ import { adminPermissionCatalog } from "./admin.service.js";
 const defaultUserPermissions = ["place_order", "save_build", "send_review"];
 const SUPER_ADMIN_EMAIL = "admin@gmail.com";
 const OTP_SEND_COOLDOWN_SECONDS = 90;
-const verificationPurposes = {
-  EMAIL_VERIFY: "EMAIL_VERIFY",
-  PASSWORD_RESET: "PASSWORD_RESET",
-};
-const otpSendCooldownState = new Map();
-
-class OtpCooldownError extends Error {
-  constructor(message, retryAfterSeconds) {
-    super(message);
-    this.name = "OtpCooldownError";
-    this.statusCode = 429;
-    this.retryAfterSeconds = retryAfterSeconds;
-  }
-}
-
-try {
-  dns.setDefaultResultOrder("ipv4first");
-} catch {
-  // Ignore when runtime does not support setting DNS result order.
-}
-
-const mailTransport = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  family: 4,
-  auth: {
-    user: env.EMAIL,
-    pass: env.APP_PASSWORD.replace(/\s+/g, ""),
-  },
-  tls: {
-    servername: "smtp.gmail.com",
-  },
-});
-
-export async function registerUser(input) {
-  const cooldownReservation = reserveOtpSendCooldown({
-    purpose: verificationPurposes.EMAIL_VERIFY,
-    email: input.email,
-    ip: input.ip,
-  });
-
-  try {
   const provisionalFullName = buildProvisionalFullNameFromEmail(input.email);
 
   const existingUser = await prisma.user.findUnique({
