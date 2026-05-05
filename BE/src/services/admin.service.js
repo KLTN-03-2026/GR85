@@ -376,8 +376,30 @@ export async function listReviewsForAdmin() {
     },
   });
 
+  // Collect image-level moderator ids so we can resolve their names in a single query
+  const imageModeratorIds = new Set();
+  for (const r of reviews) {
+    if (Array.isArray(r.images)) {
+      for (const img of r.images) {
+        if (img.moderatedBy) imageModeratorIds.add(Number(img.moderatedBy));
+      }
+    }
+  }
+
+  const imageModerators =
+    imageModeratorIds.size > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: Array.from(imageModeratorIds) } },
+          select: { id: true, fullName: true, email: true },
+        })
+      : [];
+
+  const imageModeratorMap = Object.fromEntries(
+    imageModerators.map((u) => [String(u.id), u]),
+  );
+
   return serializeData({
-    items: reviews.map(mapAdminReview),
+    items: reviews.map((r) => mapAdminReview(r, imageModeratorMap)),
   });
 }
 
@@ -1893,7 +1915,7 @@ function buildBatchCode(productId, warehouseId) {
   return `B${dateText}-P${productId}-W${warehouseId}-${randomPart}`;
 }
 
-function mapAdminReview(review) {
+function mapAdminReview(review, imageModeratorMap = {}) {
   const reviewUserId = Number(review.userId);
 
   return {
@@ -1914,6 +1936,10 @@ function mapAdminReview(review) {
           sortOrder: Number(image.sortOrder ?? 0),
           isApproved: Boolean(image.isApproved),
           moderatedBy: image.moderatedBy ?? null,
+          moderatedByName:
+            image.moderatedBy && imageModeratorMap[String(image.moderatedBy)]
+              ? String(imageModeratorMap[String(image.moderatedBy)].fullName || imageModeratorMap[String(image.moderatedBy)].email)
+              : null,
           moderatedAt: image.moderatedAt ?? null,
           rejectionReason: image.rejectionReason ?? null,
         }))
