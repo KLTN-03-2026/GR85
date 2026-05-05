@@ -779,6 +779,7 @@ export default function AdminPage() {
   const [reviewQuickFilter, setReviewQuickFilter] = useState("all");
   const [selectedReviewId, setSelectedReviewId] = useState(null);
   const [adminReviews, setAdminReviews] = useState([]);
+  const [userNameCache, setUserNameCache] = useState({});
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [moderatingReviewId, setModeratingReviewId] = useState(null);
   const [deletingReviewId, setDeletingReviewId] = useState(null);
@@ -3000,6 +3001,64 @@ export default function AdminPage() {
       null,
     [filteredReviews, selectedReviewId],
   );
+
+  const moderatorDisplay = useMemo(() => {
+    if (!selectedReview) return "-";
+    // prefer explicit moderator fullName
+    if (selectedReview.moderator?.fullName) return selectedReview.moderator.fullName;
+
+    // fallback: find an image-level moderator id and map to moderator fullName if possible
+    if (Array.isArray(selectedReview.images)) {
+      const imgWithMod = selectedReview.images.find((i) => i.moderatedBy || i.moderatedByName);
+      if (imgWithMod) {
+        if (imgWithMod.moderatedByName) return imgWithMod.moderatedByName;
+        if (imgWithMod.moderatedBy && userNameCache[String(imgWithMod.moderatedBy)]) {
+          return userNameCache[String(imgWithMod.moderatedBy)];
+        }
+        if (imgWithMod.moderatedBy) return String(imgWithMod.moderatedBy);
+      }
+    }
+
+    if (selectedReview.approvedBy) return String(selectedReview.approvedBy);
+    if (selectedReview.moderatedBy && userNameCache[String(selectedReview.moderatedBy)])
+      return userNameCache[String(selectedReview.moderatedBy)];
+    if (selectedReview.moderatedBy) return String(selectedReview.moderatedBy);
+    return "-";
+  }, [selectedReview, userNameCache]);
+
+  useEffect(() => {
+    // fetch moderator name when we only have an id
+    (async () => {
+      if (!token || !selectedReview) return;
+      const candidateIds = new Set();
+      if (selectedReview.moderatedBy && !userNameCache[String(selectedReview.moderatedBy)]) {
+        candidateIds.add(selectedReview.moderatedBy);
+      }
+      if (Array.isArray(selectedReview.images)) {
+        for (const img of selectedReview.images) {
+          if (img.moderatedBy && !userNameCache[String(img.moderatedBy)]) {
+            candidateIds.add(img.moderatedBy);
+          }
+        }
+      }
+
+      if (candidateIds.size === 0) return;
+
+      for (const id of Array.from(candidateIds)) {
+        try {
+          const res = await fetch(`/api/admin/users/${id}/detail`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok && data) {
+            setUserNameCache((prev) => ({ ...prev, [String(id)]: data.fullName || data.email || String(id) }));
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    })();
+  }, [selectedReview, token, userNameCache]);
 
   const selectedReviewThread = useMemo(
     () => (Array.isArray(selectedReview?.thread) ? selectedReview.thread : []),
@@ -6777,14 +6836,7 @@ export default function AdminPage() {
                             <div>
                               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">Người kiểm duyệt</p>
                               <p className="mt-1.5 text-sm font-medium text-slate-900">
-                                {selectedReview.moderator?.fullName ||
-                                  // fallback to image-level moderator if any image approved/rejected
-                                  (Array.isArray(selectedReview.images) &&
-                                    (selectedReview.images.find((i) => i.moderatedBy)?.moderatedBy ||
-                                      selectedReview.images.find((i) => i.isApproved)?.moderatedBy)) ||
-                                  selectedReview.approvedBy ||
-                                  selectedReview.moderatedBy ||
-                                  "-"}
+                                {moderatorDisplay}
                               </p>
                             </div>
                           </div>
