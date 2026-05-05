@@ -867,11 +867,10 @@ export default function ProfilePage() {
         {/* Message Alert */}
         {message && (
           <Alert
-            className={`mb-6 ${
-              message.type === "success"
+            className={`mb-6 ${message.type === "success"
                 ? "border-green-500 bg-green-500/10"
                 : "border-red-500 bg-red-500/10"
-            }`}
+              }`}
           >
             {message.type === "success" ? (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -1434,68 +1433,68 @@ export default function ProfilePage() {
                                   key={order.id}
                                   className="border-b border-border/40"
                                 >
-                                <td className="px-3 py-3">#{order.id}</td>
-                                <td className="px-3 py-3">
-                                  {formatDate(order.createdAt)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  {formatMoney(order.totalAmount)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  {formatPaymentMethod(order.paymentMethod)} -{" "}
-                                  {formatPaymentStatus(order.paymentStatus)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  <Badge variant="outline">
-                                    {formatOrderStatus(
-                                      order.orderStatus,
-                                      order.paymentStatus,
-                                    )}
-                                  </Badge>
-                                </td>
-                                <td className="px-3 py-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => loadOrderDetail(order.id)}
-                                  >
-                                    Xem chi tiết
-                                  </Button>
-                                </td>
-                                <td className="px-3 py-3">
-                                  {orderReturnRequest ? (
-                                    <div className="space-y-2">
-                                      <Badge
-                                        variant="outline"
-                                        className={getReturnBadgeClass(orderReturnRequest.status)}
-                                      >
-                                        {formatReturnStatus(orderReturnRequest.status)}
-                                      </Badge>
-                                      <p className="text-[11px] text-muted-foreground">
-                                        {getReturnStatusHint(orderReturnRequest)}
-                                      </p>
-                                    </div>
-                                  ) : canRequestReturn(order) ? (
+                                  <td className="px-3 py-3">#{order.id}</td>
+                                  <td className="px-3 py-3">
+                                    {formatDate(order.createdAt)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {formatMoney(order.totalAmount)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {formatPaymentMethod(order.paymentMethod)} -{" "}
+                                    {formatPaymentStatus(order.paymentStatus)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <Badge variant="outline">
+                                      {formatOrderStatus(
+                                        order.orderStatus,
+                                        order.paymentStatus,
+                                      )}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-3 py-3">
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      disabled={
-                                        submittingReturnOrderId === order.id
-                                      }
-                                      onClick={() =>
-                                        handleRequestReturn(order.id)
-                                      }
+                                      onClick={() => loadOrderDetail(order.id)}
                                     >
-                                      {submittingReturnOrderId === order.id
-                                        ? "Đang gửi..."
-                                        : "Yêu cầu trả"}
+                                      Xem chi tiết
                                     </Button>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">
-                                      Không khả dụng
-                                    </span>
-                                  )}
-                                </td>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {orderReturnRequest ? (
+                                      <div className="space-y-2">
+                                        <Badge
+                                          variant="outline"
+                                          className={getReturnBadgeClass(orderReturnRequest.status)}
+                                        >
+                                          {formatReturnStatus(orderReturnRequest.status)}
+                                        </Badge>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          {getReturnStatusHint(orderReturnRequest)}
+                                        </p>
+                                      </div>
+                                    ) : canRequestReturn(order) ? (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={
+                                          submittingReturnOrderId === order.id
+                                        }
+                                        onClick={() =>
+                                          handleRequestReturn(order.id)
+                                        }
+                                      >
+                                        {submittingReturnOrderId === order.id
+                                          ? "Đang gửi..."
+                                          : "Yêu cầu trả"}
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">
+                                        Không khả dụng
+                                      </span>
+                                    )}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -1577,13 +1576,12 @@ export default function ProfilePage() {
                             (step) => (
                               <div
                                 key={`tracking-step-${step.key}`}
-                                className={`rounded-lg border p-3 text-xs ${
-                                  step.state === "done"
+                                className={`rounded-lg border p-3 text-xs ${step.state === "done"
                                     ? "border-emerald-300 bg-emerald-100/70"
                                     : step.state === "active"
                                       ? "border-sky-300 bg-sky-100/70"
                                       : "border-slate-200 bg-white"
-                                }`}
+                                  }`}
                               >
                                 <p className="font-semibold text-slate-900">
                                   {step.title}
@@ -1653,13 +1651,12 @@ export default function ProfilePage() {
                               {returnSteps.map((step) => (
                                 <div
                                   key={`return-step-${step.key}`}
-                                  className={`rounded-lg border p-3 text-xs ${
-                                    step.state === "done"
+                                  className={`rounded-lg border p-3 text-xs ${step.state === "done"
                                       ? "border-emerald-300 bg-emerald-100/70"
                                       : step.state === "active"
                                         ? "border-orange-300 bg-orange-100/70"
                                         : "border-slate-200 bg-white"
-                                  }`}
+                                    }`}
                                 >
                                   <p className="font-semibold text-slate-900">
                                     {step.title}
@@ -1775,11 +1772,10 @@ export default function ProfilePage() {
 
                 {addressFeedback && (
                   <Alert
-                    className={`mb-4 ${
-                      addressFeedback.type === "success"
+                    className={`mb-4 ${addressFeedback.type === "success"
                         ? "border-green-500 bg-green-500/10"
                         : "border-red-500 bg-red-500/10"
-                    }`}
+                      }`}
                   >
                     <AlertDescription
                       className={
@@ -2103,7 +2099,7 @@ export default function ProfilePage() {
                                   )}
 
                                   {Array.isArray(review?.images) &&
-                                  review.images.length > 0 ? (
+                                    review.images.length > 0 ? (
                                     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                                       {review.images.map((image) => (
                                         <img
@@ -2173,11 +2169,10 @@ export default function ProfilePage() {
                                         {thread.map((msg) => (
                                           <div
                                             key={String(msg.id)}
-                                            className={`rounded-lg border p-3 text-sm ${
-                                              msg.isStaff
+                                            className={`rounded-lg border p-3 text-sm ${msg.isStaff
                                                 ? "border-sky-200 bg-sky-50"
                                                 : "border-emerald-200 bg-emerald-50"
-                                            }`}
+                                              }`}
                                           >
                                             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                                               <span className="font-medium text-slate-700">
