@@ -32,6 +32,7 @@ export default function ProductDetailPage() {
   const isWishlisted = product ? isFavorite(product.id) : false;
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
+  const [reviewFilterRating, setReviewFilterRating] = useState("ALL");
 
   const refreshReviewEligibility = useCallback(
     async (productSlug, authToken, isCancelled = () => false) => {

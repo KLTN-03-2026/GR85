@@ -9,6 +9,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Cpu,
+  Eye,
+  EyeOff,
   KeyRound,
   Lock,
   Loader2,
@@ -112,367 +114,36 @@ export default function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVerifyingResetOtp, setIsVerifyingResetOtp] = useState(false);
   const [isResetOtpVerified, setIsResetOtpVerified] = useState(false);
-  const hasAutoVerifiedRef = useRef(false);
-
-  useEffect(() => {
-    setForm({
-      email: queryEmail,
-      password: "",
-      confirmPassword: "",
-      otp: /^\d{6}$/.test(queryOtp) ? queryOtp : "",
-    });
-  }, [mode, queryEmail, queryOtp]);
-
-  const pageCopy = useMemo(() => modeConfig[mode], [mode]);
-  const SubmitIcon = pageCopy.submitIcon;
-  const isResetOtpComplete =
-    mode !== "reset" || /^\d{6}$/.test(String(form.otp ?? ""));
-
-  useEffect(() => {
-    if (mode !== "reset") {
-      return;
-    }
-
-    setIsResetOtpVerified(false);
-  }, [form.email, form.otp, mode]);
-
-  const handleChange = (field) => (valueOrEvent) => {
-    const value = valueOrEvent?.target
-      ? valueOrEvent.target.value
-      : valueOrEvent;
-
-    setForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (mode === "reset" && !isResetOtpComplete) {
-      toast({
-        title: "OTP chưa hoàn tất",
-        description: "Vui lòng nhập đủ 6 số OTP trước khi đặt mật khẩu mới.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mode === "reset" && !isResetOtpVerified) {
-      toast({
-        title: "OTP chưa được xác minh",
-        description: "Vui lòng bấm Xác minh mã OTP trước khi đặt mật khẩu mới.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mode === "register" && form.password !== form.confirmPassword) {
-      toast({
-        title: "Mật khẩu chưa khớp",
-        description: "Bạn kiểm tra lại phần xác nhận mật khẩu giúp mình nhé.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mode === "register" && String(form.password ?? "").length < 8) {
-      toast({
-        title: "Mật khẩu chưa hợp lệ",
-        description: "Mật khẩu đăng ký phải có ít nhất 8 ký tự.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mode === "reset" && form.password !== form.confirmPassword) {
-      toast({
-        title: "Mật khẩu chưa khớp",
-        description: "Mật khẩu mới và xác nhận mật khẩu phải giống nhau.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mode === "reset" && String(form.password ?? "").length < 8) {
-      toast({
-        title: "Mật khẩu mới chưa hợp lệ",
-        description: "Mật khẩu mới phải có ít nhất 8 ký tự.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      switch (mode) {
-        case "register": {
-          const result = await authApi.register({
-            email: form.email,
-            password: form.password,
-          });
-
-          toast({
-            title: "Đã gửi mã xác minh",
-            description: "Kiểm tra Gmail để lấy mã OTP và xác minh tài khoản.",
-          });
-
-          navigate(`/verify-email?email=${encodeURIComponent(result.email)}`);
-          break;
-        }
-        case "forgot": {
-          const result = await authApi.forgotPassword({
-            email: form.email,
-          });
-
-          toast({
-            title: "Đã gửi mã đặt lại mật khẩu",
-            description: "Kiểm tra Gmail để lấy mã OTP mới.",
-          });
-
-          navigate(`/reset-password?email=${encodeURIComponent(result.email)}`);
-          break;
-        }
-        case "verify": {
-          const result = await authApi.verifyEmail({
-            email: form.email,
-            otp: form.otp,
-          });
-
-          setSession(result);
-          toast({
-            title: "Xác minh thành công",
-            description: "Tài khoản đã kích hoạt. Hãy cập nhật hồ sơ của bạn.",
-          });
-          window.location.assign("/profile");
-          break;
-        }
-        case "reset": {
-          await authApi.resetPassword({
-            email: form.email,
-            otp: form.otp,
-            password: form.password,
-          });
-
-          toast({
-            title: "Đã đổi mật khẩu",
-            description: "Bạn có thể đăng nhập lại bằng mật khẩu mới.",
-          });
-          navigate("/login");
-          break;
-        }
-        default: {
-          const result = await authApi.login({
-            email: form.email,
-            password: form.password,
-          });
-
-          setSession(result);
-          toast({
-            title: "Đăng nhập thành công",
-            description: `Xin chào ${result.user.fullName ?? result.user.email}`,
-          });
-          window.location.assign(resolvePostLoginPath(result?.user?.role));
-        }
-      }
-    } catch (error) {
-      toast({
-        title: "Không thể xử lý yêu cầu",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleResend = async () => {
-    try {
-      await authApi.resendVerification({ email: form.email });
-      toast({
-        title: "Đã gửi lại mã",
-        description: "Kiểm tra Gmail để lấy OTP mới.",
-      });
-    } catch (error) {
-      toast({
-        title: "Không thể gửi lại mã",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleVerifyResetOtp = async () => {
-    if (!form.email || !/^\d{6}$/.test(String(form.otp ?? ""))) {
-      toast({
-        title: "OTP chưa hợp lệ",
-        description: "Vui lòng nhập đúng email và đủ 6 số OTP.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsVerifyingResetOtp(true);
-      await authApi.validateResetOtp({
-        email: form.email,
-        otp: form.otp,
-      });
-
-      setIsResetOtpVerified(true);
-      toast({
-        title: "OTP hợp lệ",
-        description: "Bạn có thể nhập mật khẩu mới ngay bây giờ.",
-      });
-    } catch (error) {
-      setIsResetOtpVerified(false);
-      toast({
-        title: "Xác minh OTP thất bại",
-        description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-        variant: "destructive",
-      });
-    } finally {
-      setIsVerifyingResetOtp(false);
-    }
-  };
-
-  useEffect(() => {
-    if (mode !== "verify" || !autoVerify) {
-      return;
-    }
-
-    if (hasAutoVerifiedRef.current) {
-      return;
-    }
-
-    if (!form.email || !/^\d{6}$/.test(String(form.otp ?? ""))) {
-      return;
-    }
-
-    hasAutoVerifiedRef.current = true;
-
-    (async () => {
-      setIsSubmitting(true);
-      try {
-        const result = await authApi.verifyEmail({
-          email: form.email,
-          otp: form.otp,
-        });
-
-        setSession(result);
-        toast({
-          title: "Kích hoạt thành công",
-          description: "Tài khoản đã được xác minh. Hãy cập nhật hồ sơ của bạn.",
-        });
-
-        window.location.assign("/profile");
-      } catch (error) {
-        hasAutoVerifiedRef.current = false;
-        toast({
-          title: "Kích hoạt tự động thất bại",
-          description: error instanceof Error ? error.message : "Đã xảy ra lỗi",
-          variant: "destructive",
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    })();
-  }, [autoVerify, form.email, form.otp, mode, setSession, toast]);
-
-  return (
-    <div className="relative h-screen overflow-hidden bg-[linear-gradient(125deg,_rgba(6,78,59,0.10)_0%,_rgba(255,255,255,1)_30%,_rgba(14,165,233,0.12)_100%)]">
-      <div className="pointer-events-none absolute left-8 top-16 h-56 w-56 rounded-full bg-emerald-300/25 blur-3xl animate-pulse-glow" />
-      <div
-        className="pointer-events-none absolute right-8 bottom-10 h-72 w-72 rounded-full bg-sky-300/25 blur-3xl animate-pulse-glow"
-        style={{ animationDelay: "1s" }}
-      />
-      <div className="mx-auto grid h-screen max-w-7xl lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="relative hidden overflow-hidden px-8 py-8 lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.22),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.18),_transparent_30%)]" />
-          <div className="pointer-events-none absolute left-10 top-32 h-px w-56 bg-gradient-to-r from-emerald-300/0 via-emerald-500/80 to-emerald-300/0 animate-pulse" />
-          <div
-            className="pointer-events-none absolute right-20 top-44 h-px w-40 bg-gradient-to-r from-sky-300/0 via-sky-500/80 to-sky-300/0 animate-pulse"
-            style={{ animationDelay: "0.5s" }}
-          />
-          <div className="relative z-10">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-3 rounded-full bg-white/80 px-4 py-2 shadow-sm backdrop-blur"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl gradient-primary shadow-[0_10px_30px_hsl(var(--primary)/0.32)]">
-                <Cpu className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">TechBuiltAI</div>
-                <div className="font-semibold">Studio PC</div>
-              </div>
-            </Link>
-          </div>
-
-          <div className="relative z-10 flex h-full items-center justify-center py-4">
-            <InteractivePcViewer />
-          </div>
-        </section>
-
-        <section className="flex h-screen items-center justify-center overflow-hidden px-4 py-3 sm:px-6 lg:px-10">
-          <div className="auth-card animate-slide-up w-full max-w-xl rounded-[30px] border border-border/60 bg-white/90 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
-            <Link
-              to="/"
-              className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Về trang chủ
-            </Link>
-
-            <div className="auth-header mb-4 space-y-2">
-              <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                {pageCopy.badge}
-              </span>
-              <h2 className="auth-title text-2xl font-bold leading-tight">
-                {pageCopy.title}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {pageCopy.description}
-              </p>
-            </div>
-
-            <form className="auth-form space-y-4" onSubmit={handleSubmit}>
-              {(mode === "login" ||
-                mode === "register" ||
-                mode === "forgot" ||
-                mode === "verify" ||
-                mode === "reset") && (
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      className="h-11 pl-10"
-                      placeholder="admin@pcperfect.vn"
-                      value={form.email}
-                      onChange={handleChange("email")}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {(mode === "login" || mode === "register") && (
-                <div className="space-y-2">
-                  <Label htmlFor="password">Mật khẩu</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type="password"
-                      minLength={mode === "register" ? 8 : undefined}
-                      className="h-11 pl-10"
+  const [showPasswords, setShowPasswords] = useState({
+    password: false,
+    confirmPassword: false,
+    resetPassword: false,
+    resetConfirmPassword: false,
+  });
                       placeholder={
                         mode === "register" ? "Tạo mật khẩu" : "Nhập mật khẩu"
                       }
                       value={form.password}
                       onChange={handleChange("password")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("password")}
+                      aria-label={
+                        showPasswords.password
+                          ? "Ẩn mật khẩu"
+                          : "Hiện mật khẩu"
+                      }
+                    >
+                      {showPasswords.password ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -484,14 +155,43 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={showPasswords.confirmPassword ? "text" : "password"}
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập lại mật khẩu"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("confirmPassword")}
+                      aria-label={
+                        showPasswords.confirmPassword
+                          ? "Ẩn mật khẩu xác nhận"
+                          : "Hiện mật khẩu xác nhận"
+                      }
+                    >
+                      {showPasswords.confirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
+                  {registerPasswordMatchMessage ? (
+                    <p
+                      className={`text-xs font-medium ${
+                        form.password === form.confirmPassword
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {registerPasswordMatchMessage}
+                    </p>
+                  ) : null}
                 </div>
               )}
 
@@ -536,13 +236,31 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPasswords.resetPassword ? "text" : "password"}
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập mật khẩu mới"
                       value={form.password}
                       onChange={handleChange("password")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() => togglePasswordVisibility("resetPassword")}
+                      aria-label={
+                        showPasswords.resetPassword
+                          ? "Ẩn mật khẩu mới"
+                          : "Hiện mật khẩu mới"
+                      }
+                    >
+                      {showPasswords.resetPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -554,13 +272,35 @@ export default function AuthPage() {
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={
+                        showPasswords.resetConfirmPassword ? "text" : "password"
+                      }
                       minLength={8}
-                      className="h-11 pl-10"
+                      className="h-11 pl-10 pr-11"
                       placeholder="Nhập lại mật khẩu mới"
                       value={form.confirmPassword}
                       onChange={handleChange("confirmPassword")}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      onClick={() =>
+                        togglePasswordVisibility("resetConfirmPassword")
+                      }
+                      aria-label={
+                        showPasswords.resetConfirmPassword
+                          ? "Ẩn mật khẩu xác nhận mới"
+                          : "Hiện mật khẩu xác nhận mới"
+                      }
+                    >
+                      {showPasswords.resetConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}

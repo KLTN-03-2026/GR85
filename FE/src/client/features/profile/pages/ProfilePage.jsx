@@ -374,19 +374,20 @@ export default function ProfilePage() {
     }
   }
 
-  const filteredOrders = useMemo(
-    () => {
-      let result = orders;
-      if (!showPendingOrders) {
-        result = result.filter((order) => getOrderFilterKey(order) !== "PENDING_PAYMENT");
-      }
-      if (orderFilter !== "ALL") {
-        result = result.filter((order) => getOrderFilterKey(order) === orderFilter);
-      }
-      return result;
-    },
-    [orderFilter, orders, showPendingOrders],
-  );
+  const filteredOrders = useMemo(() => {
+    let result = orders;
+    if (!showPendingOrders) {
+      result = result.filter(
+        (order) => getOrderFilterKey(order) !== "PENDING_PAYMENT",
+      );
+    }
+    if (orderFilter !== "ALL") {
+      result = result.filter(
+        (order) => getOrderFilterKey(order) === orderFilter,
+      );
+    }
+    return result;
+  }, [orderFilter, orders, showPendingOrders]);
 
   const sortedVisibleOrders = useMemo(
     () =>
@@ -402,7 +403,10 @@ export default function ProfilePage() {
     () =>
       myReviewFilter === "ALL"
         ? myReviews
-        : myReviews.filter((review) => String(review?.status ?? "").toUpperCase() === myReviewFilter),
+        : myReviews.filter(
+            (review) =>
+              String(review?.status ?? "").toUpperCase() === myReviewFilter,
+          ),
     [myReviewFilter, myReviews],
   );
 
@@ -511,14 +515,17 @@ export default function ProfilePage() {
 
     try {
       setReplyingReviewId(review.id);
-      const response = await fetch(`/api/products/${review.product.slug}/reviews/${review.id}/replies`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetch(
+        `/api/products/${review.product.slug}/reviews/${review.id}/replies`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: messageText.trim() }),
         },
-        body: JSON.stringify({ message: messageText.trim() }),
-      });
+      );
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -753,7 +760,8 @@ export default function ProfilePage() {
       }
 
       // Compose full address including district and city for storage
-      const composedAddressLine = `${String(addressForm.addressLine ?? "").trim()}${addressForm.district ? `, ${addressForm.district}` : ""}${addressForm.city ? `, ${addressForm.city}` : ""}`.trim();
+      const composedAddressLine =
+        `${String(addressForm.addressLine ?? "").trim()}${addressForm.district ? `, ${addressForm.district}` : ""}${addressForm.city ? `, ${addressForm.city}` : ""}`.trim();
 
       const payload = {
         label: String(addressForm.label ?? "").trim(),
@@ -969,13 +977,6 @@ export default function ProfilePage() {
                 className="rounded-b-none"
               >
                 Sổ địa chỉ
-              </Button>
-              <Button
-                variant={activeTab === "reviews" ? "default" : "ghost"}
-                onClick={() => setActiveTab("reviews")}
-                className="rounded-b-none"
-              >
-                Đánh giá của tôi
               </Button>
             </div>
 
@@ -1378,9 +1379,6 @@ export default function ProfilePage() {
                         Tải lại
                       </Button>
                     </div>
-                    <Button variant="outline" onClick={loadMyOrders}>
-                      Tải lại
-                    </Button>
                   </div>
 
                   <div className="flex flex-wrap gap-2 border-b border-border pb-2">
@@ -1389,7 +1387,9 @@ export default function ProfilePage() {
                         key={tab.key}
                         type="button"
                         size="sm"
-                        variant={orderFilter === tab.key ? "default" : "outline"}
+                        variant={
+                          orderFilter === tab.key ? "default" : "outline"
+                        }
                         onClick={() => setOrderFilter(tab.key)}
                       >
                         {tab.label}
@@ -1435,77 +1435,82 @@ export default function ProfilePage() {
                           </thead>
                           <tbody>
                             {pagedOrders.map((order) => {
-                              const orderReturnRequest = returnRequestByOrderId.get(
-                                Number(order.id),
-                              );
+                              const orderReturnRequest =
+                                returnRequestByOrderId.get(Number(order.id));
 
                               return (
                                 <tr
                                   key={order.id}
                                   className="border-b border-border/40"
                                 >
-                                <td className="px-3 py-3">#{order.id}</td>
-                                <td className="px-3 py-3">
-                                  {formatDate(order.createdAt)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  {formatMoney(order.totalAmount)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  {formatPaymentMethod(order.paymentMethod)} -{" "}
-                                  {formatPaymentStatus(order.paymentStatus)}
-                                </td>
-                                <td className="px-3 py-3">
-                                  <Badge variant="outline">
-                                    {formatOrderStatus(
-                                      order.orderStatus,
-                                      order.paymentStatus,
-                                    )}
-                                  </Badge>
-                                </td>
-                                <td className="px-3 py-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => loadOrderDetail(order.id)}
-                                  >
-                                    Xem chi tiết
-                                  </Button>
-                                </td>
-                                <td className="px-3 py-3">
-                                  {orderReturnRequest ? (
-                                    <div className="space-y-2">
-                                      <Badge
-                                        variant="outline"
-                                        className={getReturnBadgeClass(orderReturnRequest.status)}
-                                      >
-                                        {formatReturnStatus(orderReturnRequest.status)}
-                                      </Badge>
-                                      <p className="text-[11px] text-muted-foreground">
-                                        {getReturnStatusHint(orderReturnRequest)}
-                                      </p>
-                                    </div>
-                                  ) : canRequestReturn(order) ? (
+                                  <td className="px-3 py-3">#{order.id}</td>
+                                  <td className="px-3 py-3">
+                                    {formatDate(order.createdAt)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {formatMoney(order.totalAmount)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {formatPaymentMethod(order.paymentMethod)} -{" "}
+                                    {formatPaymentStatus(order.paymentStatus)}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <Badge variant="outline">
+                                      {formatOrderStatus(
+                                        order.orderStatus,
+                                        order.paymentStatus,
+                                      )}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-3 py-3">
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      disabled={
-                                        submittingReturnOrderId === order.id
-                                      }
-                                      onClick={() =>
-                                        handleRequestReturn(order.id)
-                                      }
+                                      onClick={() => loadOrderDetail(order.id)}
                                     >
-                                      {submittingReturnOrderId === order.id
-                                        ? "Đang gửi..."
-                                        : "Yêu cầu trả"}
+                                      Xem chi tiết
                                     </Button>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">
-                                      Không khả dụng
-                                    </span>
-                                  )}
-                                </td>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {orderReturnRequest ? (
+                                      <div className="space-y-2">
+                                        <Badge
+                                          variant="outline"
+                                          className={getReturnBadgeClass(
+                                            orderReturnRequest.status,
+                                          )}
+                                        >
+                                          {formatReturnStatus(
+                                            orderReturnRequest.status,
+                                          )}
+                                        </Badge>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          {getReturnStatusHint(
+                                            orderReturnRequest,
+                                          )}
+                                        </p>
+                                      </div>
+                                    ) : canRequestReturn(order) ? (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={
+                                          submittingReturnOrderId === order.id
+                                        }
+                                        onClick={() =>
+                                          handleRequestReturn(order.id)
+                                        }
+                                      >
+                                        {submittingReturnOrderId === order.id
+                                          ? "Đang gửi..."
+                                          : "Yêu cầu trả"}
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">
+                                        Không khả dụng
+                                      </span>
+                                    )}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -1639,7 +1644,8 @@ export default function ProfilePage() {
                           return null;
                         }
 
-                        const returnSteps = buildReturnTrackingSteps(orderReturnRequest);
+                        const returnSteps =
+                          buildReturnTrackingSteps(orderReturnRequest);
 
                         return (
                           <div className="mt-4 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-yellow-50 p-4">
@@ -1649,7 +1655,9 @@ export default function ProfilePage() {
                               </p>
                               <Badge
                                 variant="outline"
-                                className={getReturnBadgeClass(orderReturnRequest.status)}
+                                className={getReturnBadgeClass(
+                                  orderReturnRequest.status,
+                                )}
                               >
                                 {formatReturnStatus(orderReturnRequest.status)}
                               </Badge>
@@ -1690,7 +1698,8 @@ export default function ProfilePage() {
                               <Alert className="mt-4 border-red-300 bg-red-50">
                                 <AlertCircle className="h-4 w-4" />
                                 <AlertDescription>
-                                  Lý do từ chối: {orderReturnRequest.rejectReason}
+                                  Lý do từ chối:{" "}
+                                  {orderReturnRequest.rejectReason}
                                 </AlertDescription>
                               </Alert>
                             ) : null}
@@ -1767,7 +1776,9 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold">Lịch sử đánh giá</h3>
+                      <h3 className="text-lg font-semibold">
+                        Lịch sử đánh giá
+                      </h3>
                       <p className="text-sm text-muted-foreground">
                         Xem các review của bạn và theo dõi phản hồi từ admin.
                       </p>
@@ -1783,7 +1794,9 @@ export default function ProfilePage() {
                         key={`review-filter-${status}`}
                         type="button"
                         size="sm"
-                        variant={myReviewFilter === status ? "default" : "outline"}
+                        variant={
+                          myReviewFilter === status ? "default" : "outline"
+                        }
                         onClick={() => setMyReviewFilter(status)}
                       >
                         {status === "ALL"
@@ -1803,7 +1816,9 @@ export default function ProfilePage() {
                       Đang tải lịch sử đánh giá...
                     </div>
                   ) : filteredMyReviews.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Bạn chưa có đánh giá nào phù hợp bộ lọc hiện tại.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Bạn chưa có đánh giá nào phù hợp bộ lọc hiện tại.
+                    </p>
                   ) : (
                     <div className="space-y-4">
                       {filteredMyReviews.map((review) => (
@@ -1811,19 +1826,29 @@ export default function ProfilePage() {
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div className="flex items-start gap-3">
                               <img
-                                src={review.product?.imageUrl || "/images/component-placeholder.svg"}
+                                src={
+                                  review.product?.imageUrl ||
+                                  "/images/component-placeholder.svg"
+                                }
                                 alt={review.product?.name || "Sản phẩm"}
                                 className="h-16 w-16 rounded-xl object-cover"
                               />
                               <div>
-                                <p className="font-semibold">{review.product?.name ?? "Sản phẩm"}</p>
+                                <p className="font-semibold">
+                                  {review.product?.name ?? "Sản phẩm"}
+                                </p>
                                 <p className="text-sm text-muted-foreground">
-                                  {formatRelativeTime(review.createdAt)} · {"★".repeat(Number(review.rating ?? 0))}
+                                  {formatRelativeTime(review.createdAt)} ·{" "}
+                                  {"★".repeat(Number(review.rating ?? 0))}
                                 </p>
                                 <div className="mt-2 flex flex-wrap gap-2">
-                                  <Badge variant="outline">{formatReviewStatus(review.status)}</Badge>
+                                  <Badge variant="outline">
+                                    {formatReviewStatus(review.status)}
+                                  </Badge>
                                   {review.moderationReason ? (
-                                    <Badge variant="secondary">{review.moderationReason}</Badge>
+                                    <Badge variant="secondary">
+                                      {review.moderationReason}
+                                    </Badge>
                                   ) : null}
                                 </div>
                               </div>
@@ -1835,25 +1860,36 @@ export default function ProfilePage() {
                           </div>
 
                           {review.comment ? (
-                            <p className="mt-3 rounded-lg bg-muted/40 p-3 text-sm">{review.comment}</p>
+                            <p className="mt-3 rounded-lg bg-muted/40 p-3 text-sm">
+                              {review.comment}
+                            </p>
                           ) : null}
 
                           <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
                             {(review.replies ?? []).length > 0 ? (
                               review.replies.map((reply) => (
-                                <div key={reply.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
+                                <div
+                                  key={reply.id}
+                                  className="rounded-lg border border-border/60 bg-background p-3 text-sm"
+                                >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="font-medium">
                                       {reply.user?.fullName ?? "Ẩn danh"}
-                                      {reply.user?.role ? ` · ${reply.user.role}` : ""}
+                                      {reply.user?.role
+                                        ? ` · ${reply.user.role}`
+                                        : ""}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">{formatRelativeTime(reply.createdAt)}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {formatRelativeTime(reply.createdAt)}
+                                    </p>
                                   </div>
                                   <p className="mt-1">{reply.message}</p>
                                 </div>
                               ))
                             ) : (
-                              <p className="text-xs text-muted-foreground">Chưa có phản hồi trong thread này.</p>
+                              <p className="text-xs text-muted-foreground">
+                                Chưa có phản hồi trong thread này.
+                              </p>
                             )}
                           </div>
 
@@ -1865,7 +1901,9 @@ export default function ProfilePage() {
                               disabled={replyingReviewId === review.id}
                               onClick={() => handleReplyMyReview(review)}
                             >
-                              {replyingReviewId === review.id ? "Đang gửi..." : "Phản hồi"}
+                              {replyingReviewId === review.id
+                                ? "Đang gửi..."
+                                : "Phản hồi"}
                             </Button>
                           </div>
                         </Card>
@@ -2457,7 +2495,11 @@ function formatPaymentMethod(value) {
   if (normalized === "COD") {
     return "COD";
   }
-  if (normalized === "VNPAY" || normalized === "PAYOS" || normalized === "SEPAY") {
+  if (
+    normalized === "VNPAY" ||
+    normalized === "PAYOS" ||
+    normalized === "SEPAY"
+  ) {
     return "Thanh toán qua mã QR";
   }
   return normalized || "UNKNOWN";
@@ -2515,7 +2557,9 @@ function formatOrderStatus(orderStatusValue, paymentStatusValue) {
 }
 
 function formatReviewStatus(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (normalized === "VISIBLE") {
     return "Đang hiển thị";
   }
@@ -2530,8 +2574,12 @@ function formatReviewStatus(value) {
 }
 
 function getOrderFilterKey(order) {
-  const orderStatus = String(order?.orderStatus ?? "").trim().toUpperCase();
-  const paymentStatus = String(order?.paymentStatus ?? "").trim().toUpperCase();
+  const orderStatus = String(order?.orderStatus ?? "")
+    .trim()
+    .toUpperCase();
+  const paymentStatus = String(order?.paymentStatus ?? "")
+    .trim()
+    .toUpperCase();
 
   if (orderStatus === "CANCELLED") {
     return "CANCELLED";
@@ -2595,7 +2643,10 @@ function formatOrderHistoryNote(note) {
     return "Thanh toán VNPAY đã xác nhận thành công.";
   }
 
-  if (normalized.includes("SePay confirmed via") || normalized.includes("SePay")) {
+  if (
+    normalized.includes("SePay confirmed via") ||
+    normalized.includes("SePay")
+  ) {
     return "Thanh toán SePay đã xác nhận thành công.";
   }
   if (
@@ -2879,7 +2930,10 @@ function formatRelativeTime(value) {
     return "-";
   }
 
-  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  const diffSeconds = Math.max(
+    1,
+    Math.floor((Date.now() - date.getTime()) / 1000),
+  );
   if (diffSeconds < 60) {
     return `${diffSeconds} giây trước`;
   }

@@ -486,6 +486,10 @@ model ReviewImage {
     id        Int      @id @default(autoincrement())
     reviewId  Int      @map("review_id")
     imageUrl  String   @map("image_url")
+    isApproved Boolean @default(false) @map("is_approved")
+    moderatedBy Int?   @map("moderated_by")
+    moderatedAt DateTime? @map("moderated_at")
+    rejectionReason String? @map("rejection_reason")
     sortOrder  Int     @default(0) @map("sort_order")
     createdAt DateTime @default(now()) @map("created_at")
 

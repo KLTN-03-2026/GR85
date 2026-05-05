@@ -15,32 +15,7 @@ import { adminPermissionCatalog } from "./admin.service.js";
 
 const defaultUserPermissions = ["place_order", "save_build", "send_review"];
 const SUPER_ADMIN_EMAIL = "admin@gmail.com";
-const verificationPurposes = {
-  EMAIL_VERIFY: "EMAIL_VERIFY",
-  PASSWORD_RESET: "PASSWORD_RESET",
-};
-
-try {
-  dns.setDefaultResultOrder("ipv4first");
-} catch {
-  // Ignore when runtime does not support setting DNS result order.
-}
-
-const mailTransport = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  family: 4,
-  auth: {
-    user: env.EMAIL,
-    pass: env.APP_PASSWORD.replace(/\s+/g, ""),
-  },
-  tls: {
-    servername: "smtp.gmail.com",
-  },
-});
-
-export async function registerUser(input) {
+const OTP_SEND_COOLDOWN_SECONDS = 90;
   const provisionalFullName = buildProvisionalFullNameFromEmail(input.email);
 
   const existingUser = await prisma.user.findUnique({
@@ -98,6 +73,7 @@ export async function registerUser(input) {
       purpose: verificationPurposes.EMAIL_VERIFY,
     });
   } catch (error) {
+    cooldownReservation.release();
     await prisma.$transaction([
       prisma.emailVerification.deleteMany({
         where: {
@@ -117,6 +93,10 @@ export async function registerUser(input) {
     email: user.email,
     verificationRequired: true,
   });
+  } catch (error) {
+    cooldownReservation.release();
+    throw error;
+  }
 }
 
 export async function loginUser(input) {
@@ -190,26 +170,32 @@ export async function verifyEmail(input) {
 }
 
 export async function resendVerificationCode(input) {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
-  });
-
-  if (!user) {
-    throw new Error("Email không tồn tại");
-  }
-
-  if (user.status === UserStatus.BANNED) {
-    throw new Error("Tài khoản này đã bị cấm");
-  }
-
-  const verificationCode = await prisma.$transaction(async (tx) => {
-    return issueEmailVerification(tx, {
-      email: input.email,
-      purpose: verificationPurposes.EMAIL_VERIFY,
-    });
+  const cooldownReservation = reserveOtpSendCooldown({
+    purpose: verificationPurposes.EMAIL_VERIFY,
+    email: input.email,
+    ip: input.ip,
   });
 
   try {
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+    });
+
+    if (!user) {
+      throw new Error("Email không tồn tại");
+    }
+
+    if (user.status === UserStatus.BANNED) {
+      throw new Error("Tài khoản này đã bị cấm");
+    }
+
+    const verificationCode = await prisma.$transaction(async (tx) => {
+      return issueEmailVerification(tx, {
+        email: input.email,
+        purpose: verificationPurposes.EMAIL_VERIFY,
+      });
+    });
+
     try {
       await sendOtpEmail({
         email: user.email,
@@ -220,37 +206,44 @@ export async function resendVerificationCode(input) {
     } catch {
       throw new Error("Không thể gửi lại email xác minh. Vui lòng thử lại sau");
     }
-  } catch {
-    throw new Error("Không thể gửi lại email xác minh. Vui lòng thử lại sau");
-  }
 
-  return serializeData({
-    message: "Mã xác minh đã được gửi lại đến email của bạn",
-    email: user.email,
-  });
+    return serializeData({
+      message: "Mã xác minh đã được gửi lại đến email của bạn",
+      email: user.email,
+    });
+  } catch (error) {
+    cooldownReservation.release();
+    throw error;
+  }
 }
 
 export async function requestPasswordReset(input) {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
-  });
-
-  if (!user) {
-    throw new Error("Email không tồn tại");
-  }
-
-  if (user.status === UserStatus.BANNED) {
-    throw new Error("Tài khoản này đã bị cấm");
-  }
-
-  const resetCode = await prisma.$transaction(async (tx) => {
-    return issueEmailVerification(tx, {
-      email: input.email,
-      purpose: verificationPurposes.PASSWORD_RESET,
-    });
+  const cooldownReservation = reserveOtpSendCooldown({
+    purpose: verificationPurposes.PASSWORD_RESET,
+    email: input.email,
+    ip: input.ip,
   });
 
   try {
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+    });
+
+    if (!user) {
+      throw new Error("Email không tồn tại");
+    }
+
+    if (user.status === UserStatus.BANNED) {
+      throw new Error("Tài khoản này đã bị cấm");
+    }
+
+    const resetCode = await prisma.$transaction(async (tx) => {
+      return issueEmailVerification(tx, {
+        email: input.email,
+        purpose: verificationPurposes.PASSWORD_RESET,
+      });
+    });
+
     try {
       await sendOtpEmail({
         email: user.email,
@@ -263,16 +256,15 @@ export async function requestPasswordReset(input) {
         "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau",
       );
     }
-  } catch {
-    throw new Error(
-      "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau",
-    );
-  }
 
-  return serializeData({
-    message: "Mã đặt lại mật khẩu đã được gửi đến email của bạn",
-    email: user.email,
-  });
+    return serializeData({
+      message: "Mã đặt lại mật khẩu đã được gửi đến email của bạn",
+      email: user.email,
+    });
+  } catch (error) {
+    cooldownReservation.release();
+    throw error;
+  }
 }
 
 export async function validatePasswordResetOtp(input) {
@@ -773,6 +765,71 @@ function mapReviewThread(review, userId) {
 
 function createOtp() {
   return String(crypto.randomInt(100000, 1000000));
+}
+
+function reserveOtpSendCooldown({ purpose, email, ip }) {
+  const keys = buildOtpCooldownKeys({ purpose, email, ip });
+  const retryAfterSeconds = getActiveOtpCooldownSeconds(keys);
+
+  if (retryAfterSeconds > 0) {
+    throw new OtpCooldownError(
+      `Vui lòng chờ ${retryAfterSeconds} giây trước khi gửi lại mã OTP`,
+      retryAfterSeconds,
+    );
+  }
+
+  const expiresAt = Date.now() + OTP_SEND_COOLDOWN_SECONDS * 1000;
+  for (const key of keys) {
+    otpSendCooldownState.set(key, expiresAt);
+  }
+
+  return {
+    release() {
+      for (const key of keys) {
+        otpSendCooldownState.delete(key);
+      }
+    },
+  };
+}
+
+function getActiveOtpCooldownSeconds(keys) {
+  const now = Date.now();
+  let longestRemainingSeconds = 0;
+
+  for (const key of keys) {
+    const expiresAt = otpSendCooldownState.get(key);
+    if (!expiresAt) {
+      continue;
+    }
+
+    if (expiresAt <= now) {
+      otpSendCooldownState.delete(key);
+      continue;
+    }
+
+    const remainingSeconds = Math.ceil((expiresAt - now) / 1000);
+    if (remainingSeconds > longestRemainingSeconds) {
+      longestRemainingSeconds = remainingSeconds;
+    }
+  }
+
+  return longestRemainingSeconds;
+}
+
+function buildOtpCooldownKeys({ purpose, email, ip }) {
+  const normalizedPurpose = String(purpose ?? "OTP").trim().toUpperCase();
+  const normalizedEmail = String(email ?? "").trim().toLowerCase();
+  const normalizedIp = String(ip ?? "").trim().toLowerCase();
+
+  const keys = [];
+  if (normalizedEmail) {
+    keys.push(`otp-cooldown:${normalizedPurpose}:email:${normalizedEmail}`);
+  }
+  if (normalizedIp) {
+    keys.push(`otp-cooldown:${normalizedPurpose}:ip:${normalizedIp}`);
+  }
+
+  return keys;
 }
 
 async function issueEmailVerification(tx, { email, purpose }) {
