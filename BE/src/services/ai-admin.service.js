@@ -80,8 +80,9 @@ export async function listAiLogs(query = {}) {
   
   if (search) {
     where.OR = [
-      { prompt: { contains: search } },
-      { response: { contains: search } },
+      { prompt: { contains: search, mode: "insensitive" } },
+      { response: { contains: search, mode: "insensitive" } },
+      { modelUsed: { contains: search, mode: "insensitive" } },
     ];
   }
 
@@ -120,9 +121,46 @@ export async function deleteAiLog(logId) {
 
 // Stats & Analytics
 export async function getAiStats() {
-  const [totalLogs, logs] = await Promise.all([
+  const settings = await getAiSettings();
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 13);
+  startDate.setHours(0, 0, 0, 0);
+
+  const [
+    totalRequests,
+    aggregate,
+    endpointGroups,
+    recentLogs,
+    byUserGroups,
+  ] = await Promise.all([
     prisma.aiRequestLog.count(),
+    prisma.aiRequestLog.aggregate({
+      _sum: {
+        totalTokens: true,
+        cost: true,
+      },
+    }),
+    prisma.aiRequestLog.groupBy({
+      by: ["endpoint"],
+      _count: { endpoint: true },
+      _sum: {
+        totalTokens: true,
+        cost: true,
+      },
+      orderBy: {
+        _count: {
+          endpoint: "desc",
+        },
+      },
+    }),
     prisma.aiRequestLog.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+        },
+      },
       select: {
         endpoint: true,
         totalTokens: true,
@@ -130,33 +168,121 @@ export async function getAiStats() {
         createdAt: true,
       },
     }),
+    prisma.aiRequestLog.groupBy({
+      by: ["userId"],
+      where: {
+        userId: {
+          not: null,
+        },
+      },
+      _count: {
+        userId: true,
+      },
+      _sum: {
+        totalTokens: true,
+        cost: true,
+      },
+      orderBy: {
+        _count: {
+          userId: "desc",
+        },
+      },
+      take: 5,
+    }),
   ]);
 
-  // Aggregate stats
-  let totalTokens = 0;
-  let totalCost = 0;
-  const endpointCounts = {};
+  const topUserIds = byUserGroups
+    .map((item) => item.userId)
+    .filter((item) => Number.isInteger(item));
 
-  logs.forEach(log => {
-    totalTokens += log.totalTokens;
-    totalCost += Number(log.cost || 0);
-    
-    if (log.endpoint) {
-      endpointCounts[log.endpoint] = (endpointCounts[log.endpoint] || 0) + 1;
+  const users = topUserIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: {
+            in: topUserIds,
+          },
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      })
+    : [];
+
+  const userById = new Map(users.map((item) => [item.id, item]));
+
+  const endpointDistribution = endpointGroups.reduce((acc, item) => {
+    const key = String(item.endpoint ?? "unknown");
+    acc[key] = Number(item._count.endpoint ?? 0);
+    return acc;
+  }, {});
+
+  const endpointCostBreakdown = endpointGroups.map((item) => ({
+    endpoint: String(item.endpoint ?? "unknown"),
+    requests: Number(item._count.endpoint ?? 0),
+    tokens: Number(item._sum.totalTokens ?? 0),
+    cost: Number(item._sum.cost ?? 0),
+  }));
+
+  const dailyMap = new Map();
+  for (let i = 0; i < 14; i += 1) {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    const key = date.toISOString().slice(0, 10);
+    dailyMap.set(key, {
+      date: key,
+      requests: 0,
+      tokens: 0,
+      cost: 0,
+    });
+  }
+
+  for (const log of recentLogs) {
+    const key = new Date(log.createdAt).toISOString().slice(0, 10);
+    const bucket = dailyMap.get(key);
+    if (!bucket) {
+      continue;
     }
+
+    bucket.requests += 1;
+    bucket.tokens += Number(log.totalTokens ?? 0);
+    bucket.cost += Number(log.cost ?? 0);
+  }
+
+  const dailyUsage = Array.from(dailyMap.values());
+
+  const topUsers = byUserGroups.map((item) => {
+    const user = userById.get(item.userId);
+    return {
+      userId: item.userId,
+      name: user?.fullName || user?.email || `User #${item.userId}`,
+      email: user?.email || null,
+      requests: Number(item._count.userId ?? 0),
+      tokens: Number(item._sum.totalTokens ?? 0),
+      cost: Number(item._sum.cost ?? 0),
+    };
   });
 
-  // Calculate top topics from logs (a rough estimate based on endpoints for now, or just dummy top topics if we don't have a specific text analysis)
+  const totalTokens = Number(aggregate._sum.totalTokens ?? 0);
+  const totalCost = Number(aggregate._sum.cost ?? 0);
+
+  const topicRatios = endpointCostBreakdown.reduce((acc, item) => {
+    const percentage =
+      totalRequests > 0 ? Math.round((item.requests / totalRequests) * 100) : 0;
+    acc[item.endpoint] = percentage;
+    return acc;
+  }, {});
+
   return {
-    totalRequests: totalLogs,
+    aiEnabled: Boolean(settings.isEnabled),
+    totalRequests,
     totalTokens,
     totalCost,
-    endpointDistribution: endpointCounts,
-    // Add dummy ratios since we don't do deep text analysis by default unless asked
-    topicRatios: {
-      "Hỗ trợ cấu hình": 45,
-      "Hỏi đáp sản phẩm": 30,
-      "Hỗ trợ chung": 25,
-    }
+    endpointDistribution,
+    endpointCostBreakdown,
+    dailyUsage,
+    topUsers,
+    topicRatios,
   };
 }

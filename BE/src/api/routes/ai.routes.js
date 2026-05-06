@@ -6,6 +6,8 @@ import {
 } from "../../services/ai.service.js";
 import { askAiAdvisorHandler } from "../controllers/ai-advisor.controller.js";
 import { optionalAuth } from "../../middleware/auth.js";
+import { isAiEnabled } from "../../services/ai-admin.service.js";
+import { prisma } from "../../db/prisma.js";
 
 const router = Router();
 
@@ -30,10 +32,45 @@ const chatSchema = z.object({
     .default([]),
 });
 
-router.post("/recommend-build", async (req, res) => {
+async function ensureAiEnabled(req, res, next) {
+  try {
+    const enabled = await isAiEnabled();
+    if (!enabled) {
+      return res.status(503).json({
+        message: "Tính năng AI hiện đang tắt bởi quản trị viên.",
+      });
+    }
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể kiểm tra trạng thái hệ thống AI.",
+    });
+  }
+}
+
+router.post("/recommend-build", optionalAuth, ensureAiEnabled, async (req, res) => {
   try {
     const payload = recommendSchema.parse(req.body);
     const data = await buildAiRecommendation(payload);
+
+    prisma.aiRequestLog
+      .create({
+        data: {
+          userId: req.auth ? Number(req.auth.sub) : null,
+          endpoint: "recommend-build",
+          prompt: JSON.stringify(payload),
+          response: String(data?.summary ?? "Recommend build generated"),
+          modelUsed: "RULE_BASED",
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          cost: 0,
+        },
+      })
+      .catch((err) => {
+        console.error("Error logging recommend-build request", err);
+      });
+
     return res.json(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -51,9 +88,9 @@ router.post("/recommend-build", async (req, res) => {
   }
 });
 
-router.post("/ask", askAiAdvisorHandler);
+router.post("/ask", optionalAuth, ensureAiEnabled, askAiAdvisorHandler);
 
-router.post("/chat-build", optionalAuth, async (req, res) => {
+router.post("/chat-build", optionalAuth, ensureAiEnabled, async (req, res) => {
   try {
     const payload = chatSchema.parse(req.body);
     const userId = req.auth ? Number(req.auth.sub) : null;

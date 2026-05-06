@@ -7,3 +7,7 @@ dist-ssr
 .idea
 .vscode/*
 !.vscode/extensions.json
+*.docx
+*.xlsx
+*.py
+*.csv

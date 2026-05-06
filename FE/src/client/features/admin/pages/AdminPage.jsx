@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { AdminAIPanel } from "@/client/features/admin/components/AdminAIPanel.jsx";
 import { AdminChatPanel } from "@/client/features/admin/components/AdminChatPanel.jsx";
 import { CategoryManagementPanel } from "@/client/features/admin/components/CategoryManagementPanel.jsx";
 import { connectChatSocket } from "@/client/features/chat/data/chat.socket.js";
@@ -7991,22 +7992,9 @@ export default function AdminPage() {
               sectionId="ai-build"
               icon={Sparkles}
               title="Cấu hình AI"
-              description="Build được lưu gần đây"
+              description="Quản trị toàn bộ AI của hệ thống"
             />
-            <Panel
-              title="Build đã lưu"
-              description="Dữ liệu trực tiếp từ bảng AI_Saved_Builds"
-            >
-              <DataTable
-                columns={["Tên build", "Chủ sở hữu", "Tổng giá", "Số món"]}
-                rows={(dashboard?.aiBuilds ?? []).map((item) => [
-                  item.buildName,
-                  item.owner,
-                  formatMoney(item.totalPrice),
-                  String(item.itemCount),
-                ])}
-              />
-            </Panel>
+            <AdminAIPanel />
           </section>
 
           <section
