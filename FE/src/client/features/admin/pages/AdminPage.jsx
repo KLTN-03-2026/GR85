@@ -2423,7 +2423,11 @@ export default function AdminPage() {
     });
   }, [catalogCategories]);
 
-  function startEditingProduct(product) {
+  function applyProductToForm(product) {
+    if (!product) {
+      return;
+    }
+
     setEditingProductId(product.id);
     setSelectedImageFile(null);
     const specs = product.specifications ?? {};
@@ -2450,6 +2454,47 @@ export default function AdminPage() {
       manualUrl: String(detail.manualUrl ?? ""),
       warrantyPolicy: String(detail.warrantyPolicy ?? ""),
     });
+  }
+
+  function startEditingProduct(product) {
+    applyProductToForm(product);
+  }
+
+  async function loadProductById(productId) {
+    const id = Number(productId);
+    if (!Number.isFinite(id)) {
+      resetProductForm();
+      return;
+    }
+
+    const cachedProduct = managedProducts.find(
+      (item) => Number(item.id) === id,
+    );
+
+    if (cachedProduct) {
+      if (cachedProduct.detail || cachedProduct.images) {
+        applyProductToForm(cachedProduct);
+        return;
+      }
+
+      if (cachedProduct.slug && token) {
+        try {
+          const response = await fetch(`/api/products/${cachedProduct.slug}`);
+          const payload = await response.json().catch(() => null);
+          if (response.ok && payload) {
+            applyProductToForm(payload);
+            return;
+          }
+        } catch {
+          // Fallback về dữ liệu danh sách nếu fetch chi tiết thất bại.
+        }
+      }
+
+      applyProductToForm(cachedProduct);
+      return;
+    }
+
+    resetProductForm();
   }
 
   function validateProductForm() {
@@ -4933,8 +4978,132 @@ export default function AdminPage() {
                     : "Chọn sản phẩm trong kho và chỉnh sửa chi tiết"
               }
             />
+
+            {isProductEditTab ? (
+              <Panel
+                title="Kho sản phẩm"
+                description="Chọn nhanh sản phẩm từ danh sách hoặc dropdown để nạp dữ liệu vào form chỉnh sửa"
+              >
+                <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="space-y-4">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">
+                        DropDownList sản phẩm
+                      </label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        value={editingProductId ?? ""}
+                        onChange={(event) => loadProductById(event.target.value)}
+                      >
+                        <option value="">-- Chọn sản phẩm --</option>
+                        {managedProducts.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} #{product.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+                      Chọn sản phẩm từ dropdown hoặc bấm <strong>Sửa</strong> ở
+                      thẻ bên phải. Cả hai đều dùng chung dữ liệu đổ vào form.
+                    </div>
+
+                    <div className="rounded-xl border bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold">Tổng sản phẩm</p>
+                          <p className="text-xs text-muted-foreground">
+                            {managedProducts.length} sản phẩm đang hiển thị
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={refreshManagedProducts}
+                        >
+                          Tải lại
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {managedProducts.length === 0 ? (
+                      <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
+                        Chưa có sản phẩm trong kho để hiển thị.
+                      </div>
+                    ) : (
+                      managedProducts.map((product) => {
+                        const isActive = Number(product.id) === Number(editingProductId);
+                        const description =
+                          product?.detail?.fullDescription ||
+                          product?.description ||
+                          product?.specifications?.summary ||
+                          "Không có mô tả";
+
+                        return (
+                          <div
+                            key={product.id}
+                            className={`rounded-2xl border bg-white p-4 shadow-sm transition ${isActive ? "border-emerald-400 ring-2 ring-emerald-200" : "border-border/70"}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  ID #{product.id}
+                                </p>
+                                <h4 className="mt-1 line-clamp-2 font-semibold leading-snug">
+                                  {product.name}
+                                </h4>
+                              </div>
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                                {product.stockQuantity ?? 0} sp
+                              </span>
+                            </div>
+
+                            <p className="mt-2 text-sm font-semibold text-emerald-600">
+                              {formatMoney(Number(product.price ?? 0))}
+                            </p>
+                            <p className="mt-2 line-clamp-3 text-sm text-slate-600">
+                              {description}
+                            </p>
+
+                            <div className="mt-4 flex gap-2">
+                              <Button
+                                type="button"
+                                className="flex-1"
+                                onClick={() => loadProductById(product.id)}
+                              >
+                                Sửa
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => startEditingProduct(product)}
+                              >
+                                Nạp lại
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            ) : null}
+
             <div className="grid gap-6">
-              <div className={`${isProductInventoryTab ? "hidden" : ""}`}>
+              <div
+                className={
+                  isProductEditTab
+                    ? editingProductId
+                      ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-4 backdrop-blur-sm sm:py-6"
+                      : "hidden"
+                    : `${isProductInventoryTab ? "hidden" : ""}`
+                }
+              >
                 <Panel
                   title={
                     isProductEditTab
@@ -4946,59 +5115,54 @@ export default function AdminPage() {
                       ? "Cập nhật thông tin sản phẩm đã có trong kho"
                       : "Điền thông tin cơ bản, giá bán, tồn kho và hình ảnh sản phẩm"
                   }
+                  className={
+                    isProductEditTab
+                      ? "relative mt-4 w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-y-auto border-white/70 bg-white/95 shadow-[0_32px_100px_rgba(15,23,42,0.28)] ring-1 ring-black/5 sm:mt-6"
+                      : ""
+                  }
                 >
-                  <div className="space-y-3">
-                    {isProductEditTab && !editingProductId ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                        Chưa chọn sản phẩm để sửa. Vui lòng bấm "Sửa" ở danh
-                        sách Kho sản phẩm.
+                  {isProductEditTab && editingProductId ? (
+                    <div className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-4 py-4 shadow-sm">
+                      <div className="text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">
+                          Đang nhập thông tin sản phẩm
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Bấm X để đóng nếu không muốn sửa tiếp.
+                        </p>
                       </div>
-                    ) : null}
-
-                    {isProductEditTab && editingProductId ? (
-                      <div className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-emerald-300 shadow-inner">
-                        <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-800 pb-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                          <span>[EDIT MODE]</span>
-                          <span>
-                            #{editingProductId}
-                            {selectedEditingProduct?.slug
-                              ? ` / ${selectedEditingProduct.slug}`
-                              : ""}
-                          </span>
-                        </div>
-                        <div>
-                          <div>
-                            <span className="text-slate-400">name:</span>{" "}
-                            {selectedEditingProduct?.name ||
-                              productForm.name ||
-                              "-"}
-                          </div>
-                          <div>
-                            <span className="text-slate-400">category:</span>{" "}
-                            {selectedEditingProduct?.category?.name ||
-                              productForm.categorySlug ||
-                              "-"}
-                          </div>
-                          <div>
-                            <span className="text-slate-400">status:</span>{" "}
-                            ready to update
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
-                      <p className="font-semibold">
-                        {isProductEditTab
-                          ? "Hướng dẫn chỉnh sửa"
-                          : "Hướng dẫn nhanh"}
-                      </p>
-                      <p className="mt-1">
-                        {isProductEditTab
-                          ? "1) Chọn sản phẩm từ Kho sản phẩm. 2) Cập nhật thông tin cần sửa. 3) Bấm Cập nhật để lưu thay đổi."
-                          : "1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu."}
-                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-950"
+                        onClick={resetProductForm}
+                        aria-label="Đóng form chỉnh sửa"
+                      >
+                        <span className="text-2xl leading-none">×</span>
+                      </Button>
                     </div>
+                  ) : null}
+
+                  <div className="space-y-4">
+                    {isProductEditTab && editingProductId ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm">
+                        Đang sửa: <strong>{selectedEditingProduct?.name || productForm.name}</strong>
+                        {selectedEditingProduct?.slug ? <span> · #{selectedEditingProduct.slug}</span> : null}
+                      </div>
+                    ) : null}
+
+                    {!isProductEditTab ? (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+                        <p className="font-semibold">Hướng dẫn nhanh</p>
+                        <p className="mt-1">
+                          1) Nhập tên và danh mục. 2) Nhập giá bán, tồn kho, mã sản phẩm. 3) Chọn ảnh hoặc dán URL ảnh. 4) Bấm Lưu.
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {!isProductEditTab || editingProductId ? (
+                      <>
 
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">
@@ -5444,6 +5608,8 @@ export default function AdminPage() {
                         Làm mới form
                       </Button>
                     </div>
+                      </>
+                    ) : null}
                   </div>
                 </Panel>
               </div>
@@ -8291,9 +8457,9 @@ function SectionHeader({
   );
 }
 
-function Panel({ title, description, children }) {
+function Panel({ title, description, children, className = "" }) {
   return (
-    <div className="rounded-[28px] border border-border/60 bg-white/90 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+    <div className={`rounded-[28px] border border-border/60 bg-white/90 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)] ${className}`}>
       <div className="mb-5 flex flex-col gap-1">
         <h4 className="text-lg font-semibold">{title}</h4>
         <p className="text-sm text-muted-foreground">{description}</p>
