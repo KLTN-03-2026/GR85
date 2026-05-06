@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import {
   Activity,
@@ -4372,94 +4372,98 @@ export default function AdminPage() {
             </div>
           </div>
           <section id="dashboard" className={sectionClassName("dashboard")}>
-            <SectionHeader
-              sectionId="dashboard"
-              icon={LayoutDashboard}
-              title="Bảng tổng quan"
-              description="Dữ liệu tổng quan từ MySQL"
-            />
+            {detailView === null && (
+              <>
+                <SectionHeader
+                  sectionId="dashboard"
+                  icon={LayoutDashboard}
+                  title="Bảng tổng quan"
+                  description="Dữ liệu tổng quan từ MySQL"
+                />
 
-            {isLoading ? (
-              <Panel title="Đang tải" description="Đang lấy dữ liệu từ máy chủ">
-                <p className="text-sm text-muted-foreground">
-                  Vui lòng chờ trong giây lát.
-                </p>
-              </Panel>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {summaryCards.map((card) => (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => setSelectedSummaryCard(card.id)}
-                      className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
-                        selectedSummaryCard === card.id
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "hover:border-primary/50"
-                      }`}
+                {isLoading ? (
+                  <Panel title="Đang tải" description="Đang lấy dữ liệu từ máy chủ">
+                    <p className="text-sm text-muted-foreground">
+                      Vui lòng chờ trong giây lát.
+                    </p>
+                  </Panel>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      {summaryCards.map((card) => (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => setSelectedSummaryCard(card.id)}
+                          className={`rounded-3xl border bg-white p-5 text-left shadow-sm transition ${
+                            selectedSummaryCard === card.id
+                              ? "border-primary ring-2 ring-primary/20"
+                              : "hover:border-primary/50"
+                          }`}
+                        >
+                          <p className="text-sm text-muted-foreground">
+                            {card.label}
+                          </p>
+                          <div className="mt-3 text-3xl font-bold">
+                            {card.value}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <Panel
+                      title={selectedSummaryDetail.title}
+                      description={selectedSummaryDetail.description}
                     >
-                      <p className="text-sm text-muted-foreground">
-                        {card.label}
-                      </p>
-                      <div className="mt-3 text-3xl font-bold">
-                        {card.value}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                      {selectedSummaryDetail.rows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Chưa có dữ liệu chi tiết cho mục này.
+                        </p>
+                      ) : (
+                        <DataTable
+                          columns={selectedSummaryDetail.columns}
+                          rows={selectedSummaryDetail.rows}
+                        />
+                      )}
+                    </Panel>
+                  </div>
+                )}
 
                 <Panel
-                  title={selectedSummaryDetail.title}
-                  description={selectedSummaryDetail.description}
+                  title="Trạng thái đơn hàng"
+                  description="Số lượng theo trạng thái"
                 >
-                  {selectedSummaryDetail.rows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Chưa có dữ liệu chi tiết cho mục này.
-                    </p>
-                  ) : (
-                    <DataTable
-                      columns={selectedSummaryDetail.columns}
-                      rows={selectedSummaryDetail.rows}
-                    />
-                  )}
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <h4 className="mb-2 text-sm font-semibold">Biểu đồ cột</h4>
+                      {orderStatusChartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={orderStatusChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="value" fill="#3b82f6" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Chưa có dữ liệu
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="mb-2 text-sm font-semibold">Bảng dữ liệu</h4>
+                      <DataTable
+                        columns={["Trạng thái", "Số lượng"]}
+                        rows={orderStatusRows}
+                      />
+                    </div>
+                  </div>
                 </Panel>
-              </div>
+              </>
             )}
 
-            <Panel
-              title="Trạng thái đơn hàng"
-              description="Số lượng theo trạng thái"
-            >
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div>
-                  <h4 className="mb-2 text-sm font-semibold">Biểu đồ cột</h4>
-                  {orderStatusChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={orderStatusChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="value" fill="#3b82f6" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Chưa có dữ liệu
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <h4 className="mb-2 text-sm font-semibold">Bảng dữ liệu</h4>
-                  <DataTable
-                    columns={["Trạng thái", "Số lượng"]}
-                    rows={orderStatusRows}
-                  />
-                </div>
-              </div>
-            </Panel>
-          </section>
             {detailView === null ? (
               <AdminReportsPanel 
                 onShowDetail={(type) => {
@@ -4499,6 +4503,7 @@ export default function AdminPage() {
                 />
               </div>
             ) : null}
+          </section>
 
           <section id="users" className={sectionClassName("users")}>
             <SectionHeader
