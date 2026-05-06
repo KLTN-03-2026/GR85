@@ -22,7 +22,7 @@ export function buildComponentDetail(component, payload, fallbackImage) {
       payload?.specifications?.brand ||
       payload?.supplier?.name ||
       component.brand ||
-      "PC Perfect",
+      "TechBuildAi",
     price: Number(payload?.price ?? component.price ?? 0),
     stock: Number(payload?.stockQuantity ?? component.stock ?? 0),
     specs: payload?.specifications ?? component.specs ?? {},

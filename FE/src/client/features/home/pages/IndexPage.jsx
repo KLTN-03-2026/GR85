@@ -325,7 +325,7 @@ export default Index;
 function mapProductToCardData(product) {
   return {
     id: product.id, slug: product.slug, name: product.name,
-    brand: product.category?.name ?? "PC Perfect",
+    brand: product.category?.name ?? "TechBuildAi",
     category: normalizeCategory(product.category?.slug),
     price: Number(product.price ?? 0),
     usedPrice: null,

@@ -88,7 +88,7 @@ export default function ComponentsPage() {
             const brand =
               item?.specifications?.brand ||
               item?.supplier?.name ||
-              "PC Perfect";
+              "TechBuildAi";
             if (brand) {
               allBrands.add(String(brand));
             }
@@ -803,7 +803,7 @@ function mapProductToCardData(product) {
     brand:
       product?.specifications?.brand ||
       product?.supplier?.name ||
-      "PC Perfect",
+      "TechBuildAi",
     category,
     price: Number(product.price ?? 0),
     usedPrice: null,

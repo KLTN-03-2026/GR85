@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requestAiBuildRecommendation, requestAiAdvisorChat } from "@/client/features/recommend/data/aiRecommend.api.js";
 import { useCart } from "@/contexts/CartContext";
+import { BuildComparisonView } from "@/client/features/recommend/components/BuildComparisonView";
 import {
   Sparkles,
   Loader2,
@@ -67,6 +68,20 @@ export default function AIRecommendPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isAddingCombo, setIsAddingCombo] = useState(false);
   
+  // ===== CÁC TÍNH NĂNG MỚI =====
+  // 1. Chỉ linh kiện PC (không bao gồm gear)
+  const [pcComponentsOnly, setPcComponentsOnly] = useState(true);
+  
+  // 2. Lưu cấu hình & so sánh
+  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [currentConfigName, setCurrentConfigName] = useState("");
+  const [showSaveConfig, setShowSaveConfig] = useState(false);
+  const [showCompareMode, setShowCompareMode] = useState(false);
+  const [compareConfigs, setCompareConfigs] = useState([]);
+  
+  // 3. Ngôn ngữ & định dạng tên
+  const [showProductImages, setShowProductImages] = useState(true);
+  
   const [aiReview, setAiReview] = useState("");
   const [isFetchingAiReview, setIsFetchingAiReview] = useState(false);
 
@@ -74,7 +89,7 @@ export default function AIRecommendPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [isChatSending, setIsChatSending] = useState(false);
-  const [chatMode, setChatMode] = useState("web"); // "web" or "external"
+  const [chatMode, setChatMode] = useState("unrestricted"); // "web" (chỉ sản phẩm web) | "unrestricted" (toàn bộ thị trường)
 
   const handleSendChatMessage = async () => {
     const question = chatInput.trim();
@@ -87,8 +102,16 @@ export default function AIRecommendPage() {
     setChatMessages((prev) => [...prev, userMessage]);
 
     try {
+      // Chuẩn bị message với context cấu hình hiện tại
+      const configContext = recommendationData ? 
+        `\n\n[Cấu hình hiện tại: ${displayItems.map(c => `${c.category}: ${c.name}`).join(', ')}]` : '';
+      
+      const enhancedMessage = chatMode === "web" 
+        ? `(Chỉ tư vấn sản phẩm có trên web) ${question}${configContext}`
+        : question + configContext;
+
       const response = await requestAiAdvisorChat({
-        message: chatMode === "web" ? `(Chỉ tư vấn sản phẩm có trên web) ${question}` : question,
+        message: enhancedMessage,
         history: chatMessages,
       });
 
@@ -144,6 +167,7 @@ export default function AIRecommendPage() {
         targetCategories: buildMode === "partial" ? targetCategories : null,
         preferredBrands,
         allowUsed,
+        pcComponentsOnly, // Thêm tham số mới
       });
 
       setRecommendationData(response);
@@ -239,6 +263,42 @@ export default function AIRecommendPage() {
       setIsFetchingAiReview(false);
     }
   };
+
+  // ===== HÀM LƯU CẤU HÌNH =====
+  const saveCurrentConfig = () => {
+    if (!currentConfigName.trim() || !recommendationData) return;
+    
+    const newConfig = {
+      id: Date.now(),
+      name: currentConfigName,
+      budget,
+      usage,
+      items: displayItems,
+      totalPrice,
+      createdAt: new Date().toISOString(),
+      pcComponentsOnly,
+    };
+    
+    setSavedConfigs([...savedConfigs, newConfig]);
+    setCurrentConfigName("");
+    setShowSaveConfig(false);
+    window.alert("✅ Cấu hình đã được lưu!");
+  };
+
+  // ===== HÀM SO SÁNH CẤU HÌNH =====
+  const toggleConfigForComparison = (configId) => {
+    if (compareConfigs.includes(configId)) {
+      setCompareConfigs(compareConfigs.filter(id => id !== configId));
+    } else {
+      if (compareConfigs.length >= 3) {
+        window.alert("Chỉ có thể so sánh tối đa 3 cấu hình!");
+        return;
+      }
+      setCompareConfigs([...compareConfigs, configId]);
+    }
+  };
+
+  const getConfigById = (id) => savedConfigs.find(c => c.id === id);
 
   return (
     <div className="min-h-screen bg-background">
@@ -377,10 +437,29 @@ export default function AIRecommendPage() {
 
                 <Separator />
 
+                {/* PC Components Only */}
+                <div className="flex items-center justify-between">
+                  <Label>Chỉ linh kiện PC (không gear)</Label>
+                  <Switch checked={pcComponentsOnly} onCheckedChange={setPcComponentsOnly} />
+                </div>
+
                 {/* Allow Used */}
                 <div className="flex items-center justify-between">
                   <Label>Cho phép đồ cũ</Label>
                   <Switch checked={allowUsed} onCheckedChange={setAllowUsed} />
+                </div>
+
+                {/* Chat Mode */}
+                <div className="space-y-2">
+                  <Label className="text-base">Chế độ tư vấn</Label>
+                  <select 
+                    value={chatMode} 
+                    onChange={(e) => setChatMode(e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
+                  >
+                    <option value="web">Chỉ sản phẩm của web</option>
+                    <option value="unrestricted">Toàn bộ thị trường</option>
+                  </select>
                 </div>
 
                 {/* Generate Button */}
@@ -462,16 +541,86 @@ export default function AIRecommendPage() {
                     </div>
 
                     {!isSingleModeResult && (
-                      <div className="mt-4 flex justify-end">
-                        <Button
-                          variant="hero"
-                          className="gap-2"
-                          onClick={addRecommendedComboToCart}
-                          disabled={displayItems.length === 0 || isAddingCombo}
-                        >
-                          {isAddingCombo ? "Đang thêm combo..." : "Mua cả combo"}
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
+                      <div className="mt-4 space-y-2">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowSaveConfig(true)}
+                            disabled={displayItems.length === 0}
+                          >
+                            💾 Lưu cấu hình
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowCompareMode(!showCompareMode)}
+                            disabled={savedConfigs.length < 2}
+                          >
+                            🔄 So sánh ({compareConfigs.length})
+                          </Button>
+                          <Button
+                            variant="hero"
+                            className="gap-2"
+                            onClick={addRecommendedComboToCart}
+                            disabled={displayItems.length === 0 || isAddingCombo}
+                          >
+                            {isAddingCombo ? "Đang thêm combo..." : "Mua cả combo"}
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Save Config Modal */}
+                        {showSaveConfig && (
+                          <Card className="bg-blue-50 border-blue-200 p-4">
+                            <div className="flex gap-2">
+                              <input 
+                                type="text"
+                                placeholder="Tên cấu hình (VD: Gaming High-End)"
+                                value={currentConfigName}
+                                onChange={(e) => setCurrentConfigName(e.target.value)}
+                                className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm bg-white"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={saveCurrentConfig}
+                                disabled={!currentConfigName.trim()}
+                              >
+                                Lưu
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setShowSaveConfig(false);
+                                  setCurrentConfigName("");
+                                }}
+                              >
+                                Hủy
+                              </Button>
+                            </div>
+                          </Card>
+                        )}
+
+                        {/* Compare Mode */}
+                        {showCompareMode && savedConfigs.length > 0 && (
+                          <Card className="bg-purple-50 border-purple-200 p-4">
+                            <p className="text-sm font-medium mb-2">Chọn cấu hình để so sánh (tối đa 3):</p>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {savedConfigs.map(config => (
+                                <label key={config.id} className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={compareConfigs.includes(config.id)}
+                                    onChange={() => toggleConfigForComparison(config.id)}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-sm">{config.name} - {formatPrice(config.totalPrice)}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </Card>
+                        )}
                       </div>
                     )}
 
@@ -749,6 +898,14 @@ export default function AIRecommendPage() {
           </div>
         </div>
       </main>
+
+      {/* Comparison Modal */}
+      {showCompareMode && compareConfigs.length >= 2 && (
+        <BuildComparisonView 
+          configs={compareConfigs.map(id => getConfigById(id)).filter(Boolean)} 
+          onClose={() => setShowCompareMode(false)}
+        />
+      )}
     </div>
   );
 }

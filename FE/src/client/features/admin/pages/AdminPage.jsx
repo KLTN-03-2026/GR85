@@ -962,7 +962,7 @@ export default function AdminPage() {
                   (item) =>
                     item?.specifications?.brand ||
                     item?.supplier?.name ||
-                    "PC Perfect",
+                    "TechBuildAi",
                 )
                 .map((item) => String(item).trim())
                 .filter(Boolean),

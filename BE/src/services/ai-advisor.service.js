@@ -49,6 +49,15 @@ export async function askAiAdvisor({ question, scope = "BOTH" }) {
   const normalizedScope = resolveScope(scope, cleanedQuestion);
   const requestedComponentSlug = detectRequestedComponentSlug(cleanedQuestion);
 
+  const shortenReason = (reason) => {
+    if (reason.length > 120) {
+      let cut = reason.lastIndexOf(".", 120) || reason.lastIndexOf(",", 120) || 120;
+      if (cut < 60) cut = 120;
+      return reason.substring(0, cut) + "...";
+    }
+    return reason;
+  };
+
   if (requestedComponentSlug) {
     const componentProducts = await findProductsForSuggestionByScope({
       limit: 5,
@@ -62,7 +71,7 @@ export async function askAiAdvisor({ question, scope = "BOTH" }) {
       suggestions: componentProducts.map((item) => ({
         name: item.name,
         price: Number(item.salePrice ?? item.price ?? 0),
-        reason: `Phù hợp cho mục tiêu ${usage}. Danh mục ${String(item.category?.name ?? requestedComponentSlug)}.`,
+        reason: shortenReason(`Phù hợp cho mục tiêu ${usage}. Danh mục ${String(item.category?.name ?? requestedComponentSlug)}.`),
       })),
     };
   }
@@ -79,7 +88,7 @@ export async function askAiAdvisor({ question, scope = "BOTH" }) {
       ? recommendation.items.slice(0, 5).map((item) => ({
           name: item.name,
           price: Number(item.price ?? 0),
-          reason: `Phu hop nhu cau ${usage}, danh muc ${String(item.category ?? "component")}, diem ${Number(item?.score?.total ?? 0)}/100`,
+          reason: shortenReason(`Phù hợp ${usage}, danh mục ${String(item.category ?? "component")}, điểm ${Number(item?.score?.total ?? 0)}/100`),
         }))
       : [];
 
@@ -103,7 +112,7 @@ export async function askAiAdvisor({ question, scope = "BOTH" }) {
   const suggestions = fallbackProducts.map((product) => ({
     name: product.name,
     price: Number(product.salePrice ?? product.price ?? 0),
-    reason: `Goi y fallback theo ton kho danh muc ${String(product.category?.name ?? "linh kien")}. ${String(chatReply?.reply ?? "")}`.trim(),
+    reason: shortenReason(`Gợi ý fallback danh mục ${String(product.category?.name ?? "linh kiện")}. ${String(chatReply?.reply ?? "").substring(0, 80)}`).trim(),
   }));
 
   return {

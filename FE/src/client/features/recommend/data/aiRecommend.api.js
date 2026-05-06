@@ -16,6 +16,7 @@ export async function requestAiBuildRecommendation(input) {
         ? input.preferredBrands.map((brand) => String(brand))
         : [],
       allowUsed: Boolean(input?.allowUsed),
+      pcComponentsOnly: Boolean(input?.pcComponentsOnly), // Thêm tham số mới
     }),
   });
 
@@ -241,7 +242,7 @@ function normalizeCatalogProduct(item, index) {
     id: item.id ?? `catalog-item-${index}`,
     slug: String(item.slug ?? ""),
     name: String(item.name ?? "").trim(),
-    brand: String(item.brand ?? "PC Perfect"),
+    brand: String(item.brand ?? "TechBuildAi"),
     price: normalizeNumber(item.price),
     stockQuantity: normalizeNumber(item.stockQuantity),
     specCount: normalizeNumber(item.specCount),

@@ -417,7 +417,7 @@ export default function ProductDetailPage() {
                       id: product.id,
                       slug: product.slug,
                       name: product.name,
-                      brand: product.specifications?.brand || "PC Perfect",
+                      brand: product.specifications?.brand || "TechBuildAi",
                       image:
                         product.primaryImage ||
                         "/images/component-placeholder.svg",

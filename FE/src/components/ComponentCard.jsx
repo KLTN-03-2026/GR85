@@ -24,7 +24,7 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
   const isFav = isFavorite(component.id); // Check if the component is marked as favorite
   const stock = Number(component.stock ?? component.stockQuantity ?? 0); // Determine the stock quantity
   const categorySlug = typeof component.category === "object" ? component.category?.slug : component.category; // Get the category slug
-  const brand = component.brand || component.specifications?.brand || component.supplier?.name || "PC Perfect"; // Determine the brand of the component
+  const brand = component.brand || component.specifications?.brand || component.supplier?.name || "TechBuildAi"; // Determine the brand of the component
   const specs = component.specs || component.specifications || {}; // Get the specifications of the component
 
   return (

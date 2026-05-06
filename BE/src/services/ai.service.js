@@ -73,9 +73,13 @@ export async function buildAiRecommendation(input) {
   const preferredBrands = Array.isArray(input.preferredBrands)
     ? input.preferredBrands.map((item) => String(item).trim()).filter(Boolean)
     : [];
+  const pcComponentsOnly = input.pcComponentsOnly === true; // Tính năng mới
 
   const ratioMap = USAGE_BUDGET_RATIO[usage] || USAGE_BUDGET_RATIO.general;
-  const categoriesToBuild = targetCategories || REQUIRED_CATEGORY_SLUGS;
+  
+  // Nếu pcComponentsOnly = true, chỉ lấy các linh kiện core, không lấy gear
+  const defaultCategories = pcComponentsOnly ? CORE_CATEGORY_SLUGS : REQUIRED_CATEGORY_SLUGS;
+  const categoriesToBuild = targetCategories || defaultCategories;
 
   const targetBudgetMap = buildTargetBudgetMap({
     budget,
@@ -112,7 +116,7 @@ export async function buildAiRecommendation(input) {
         .map((item) => {
           const price = Number(item.price);
           const brand =
-            item.supplier?.name || extractBrand(item.specifications) || "PC Perfect";
+            item.supplier?.name || extractBrand(item.specifications) || "TechBuildAi";
           const specCount = Object.keys(item.specifications ?? {}).length;
 
           const performanceScore = normalizePriceScore(price, minPrice, maxPrice);
@@ -343,9 +347,9 @@ export async function generateAiChatReply(input, userId = null) {
     settings = {
       isEnabled: true,
       model: defaultModel,
-      temperature: 0.7,
-      maxToken: 2000,
-      systemPrompt: "Bạn là một chuyên gia tư vấn build PC am hiểu sâu về các linh kiện máy tính (CPU, GPU, RAM, Mainboard, v.v.). Người dùng sẽ hỏi bạn về các linh kiện cụ thể. Hãy tư vấn chi tiết, đánh giá ưu nhược điểm của từng linh kiện dựa trên nhu cầu của người dùng, KHÔNG TƯ VẤN NGUYÊN CẢ DÀN PC trừ khi được yêu cầu rõ ràng. Trả lời ngắn gọn, súc tích, dễ hiểu và chuyên nghiệp bằng tiếng Việt."
+      temperature: 0.6,
+      maxToken: 300,
+      systemPrompt: "Trả lời 1 câu ngắn gọn nhất. Tiếng Việt. CHỈ nội dung chính. Nếu trả lời vượt 150 ký tự, sẽ bị cắt + thêm 'Hỏi thêm nếu cần chi tiết.' Thêm 🛒 để gợi ý mua TechBuildAi nếu liên quan."
     };
   }
 
@@ -417,7 +421,19 @@ export async function generateAiChatReply(input, userId = null) {
       }
   
       const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời lúc này.";
+      let reply = data.choices?.[0]?.message?.content || "Không thể trả lời.";
+      
+      // Giữ ngắn gọn - cắt nếu dài quá
+      reply = reply.trim();
+      if (reply.length > 150) {
+        // Tìm điểm cắt hợp lý (dấu câu hoặc khoảng trắng)
+        let cutPoint = reply.lastIndexOf(".", 150) || reply.lastIndexOf("!", 150) || reply.lastIndexOf("?", 150) || 150;
+        if (cutPoint < 80) cutPoint = 150; // Nếu quá sớm, cắt ở 150
+        reply = reply.substring(0, cutPoint) + "\n\nHỏi thêm nếu cần chi tiết.";
+      } else if (reply.length > 0 && !reply.includes("🛒")) {
+        // Trả lời ngắn, thêm CTA
+        reply = reply + " 🛒";
+      }
   
       // Calculate token usage and cost
       const promptTokens = data.usage?.prompt_tokens || 0;

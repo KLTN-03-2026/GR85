@@ -972,7 +972,7 @@ async function main() {
       <p>Xét theo hướng nâng cấp, đây là lựa chọn phù hợp cho cả hệ thống mới và kịch bản nâng cấp từng giai đoạn. Bạn có thể tối ưu theo ngân sách, xử lý đúng điểm nghẽn hiệu năng trước và mở rộng dần khi cần. Khả năng tương thích tốt với các chuẩn thông dụng cũng giúp việc lắp đặt, bảo trì và nâng cấp sau này thuận tiện hơn.</p>
       <p>Thông số nổi bật:</p>
       <ul>${specs}</ul>
-      <p>Sản phẩm hiện được phân phối bởi <strong>${supplier?.name ?? "PC Perfect"}</strong> cùng chính sách bảo hành rõ ràng và hỗ trợ kỹ thuật đầy đủ, giúp người dùng yên tâm trong toàn bộ vòng đời sử dụng.</p>
+      <p>Sản phẩm hiện được phân phối bởi <strong>${supplier?.name ?? "TechBuildAi"}</strong> cùng chính sách bảo hành rõ ràng và hỗ trợ kỹ thuật đầy đủ, giúp người dùng yên tâm trong toàn bộ vòng đời sử dụng.</p>
     `.trim();
   }
 
