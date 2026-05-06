@@ -1,12 +1,17 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertCircle,
   Building2,
   ChevronRight,
+  Clock,
   ClipboardList,
+  Eye,
+  EyeOff,
   ImagePlus,
   LayoutDashboard,
   MailCheck,
+  MessageCircle,
   MessageSquareMore,
   Package,
   Pencil,
@@ -7255,30 +7260,69 @@ export default function AdminPage() {
               description="Theo dõi, kiểm duyệt và phản hồi đánh giá khách hàng"
             />
             <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <Panel title="Tổng đánh giá" description="Toàn bộ hệ thống">
-                  <p className="text-xl font-bold">{reviewOverview.total}</p>
-                </Panel>
-                <Panel title="Chờ phản hồi" description="Ưu tiên xử lý">
-                  <p className="text-xl font-bold text-amber-600">
-                    {reviewOverview.waitingReply}
-                  </p>
-                </Panel>
-                <Panel title="Đã ẩn" description="Nội dung vi phạm">
-                  <p className="text-xl font-bold text-slate-700">
-                    {reviewOverview.hidden}
-                  </p>
-                </Panel>
-                <Panel title="Sao thấp" description="Từ 1 đến 2 sao">
-                  <p className="text-xl font-bold text-rose-600">
-                    {reviewOverview.lowRating}
-                  </p>
-                </Panel>
-                <Panel title="24 giờ qua" description="Đánh giá mới">
-                  <p className="text-xl font-bold text-sky-600">
-                    {reviewOverview.recent24h}
-                  </p>
-                </Panel>
+              {/* Compact stats bar with quick filters */}
+              <div className="rounded-xl border border-emerald-100/60 bg-gradient-to-r from-emerald-50/80 via-white/80 to-sky-50/80 p-4 shadow-sm backdrop-blur">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Star className="h-4 w-4 text-emerald-600" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Đánh giá</span>
+                  </div>
+                  <div className="h-6 w-px bg-border/40" />
+                  
+                  <Button
+                    size="sm"
+                    variant={reviewStatusFilter === "all" ? "default" : "ghost"}
+                    className={reviewStatusFilter === "all" ? "bg-emerald-600 hover:bg-emerald-700" : "hover:bg-emerald-100/50"}
+                    onClick={() => setReviewStatusFilter("all")}
+                  >
+                    <span className="font-semibold">{reviewOverview.total}</span>
+                    <span className="ml-1 text-xs">Tất cả</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant={reviewStatusFilter === "wait" ? "default" : "ghost"}
+                    className={reviewStatusFilter === "wait" ? "bg-amber-500 hover:bg-amber-600" : "hover:bg-amber-100/50"}
+                    onClick={() => setReviewStatusFilter("wait")}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{reviewOverview.waitingReply}</span>
+                    <span className="ml-1 text-xs">Chờ</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant={reviewStatusFilter === "lowRating" ? "default" : "ghost"}
+                    className={reviewStatusFilter === "lowRating" ? "bg-rose-500 hover:bg-rose-600" : "hover:bg-rose-100/50"}
+                    onClick={() => setReviewStatusFilter("lowRating")}
+                  >
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{reviewOverview.lowRating}</span>
+                    <span className="ml-1 text-xs">Sao thấp</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant={reviewStatusFilter === "hidden" ? "default" : "ghost"}
+                    className={reviewStatusFilter === "hidden" ? "bg-slate-600 hover:bg-slate-700" : "hover:bg-slate-100/50"}
+                    onClick={() => setReviewStatusFilter("hidden")}
+                  >
+                    <EyeOff className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{reviewOverview.hidden}</span>
+                    <span className="ml-1 text-xs">Ẩn</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant={reviewStatusFilter === "recent" ? "default" : "ghost"}
+                    className={reviewStatusFilter === "recent" ? "bg-sky-500 hover:bg-sky-600" : "hover:bg-sky-100/50"}
+                    onClick={() => setReviewStatusFilter("recent")}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{reviewOverview.recent24h}</span>
+                    <span className="ml-1 text-xs">24h</span>
+                  </Button>
+                </div>
               </div>
 
               <Panel
