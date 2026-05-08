@@ -757,6 +757,8 @@ export default function AdminPage() {
     isHomepageFeatured: false,
     displayOrder: "9999",
     imageUrl: "",
+    galleryImages: [],
+    additionalImageFiles: [],
     specBrand: "",
     specModel: "",
     specCpu: "",
@@ -2337,27 +2339,46 @@ export default function AdminPage() {
   }
 
   async function uploadProductImageIfNeeded() {
-    if (!selectedImageFile || !token) {
-      return productForm.imageUrl.trim();
+    const uploadedUrls = [];
+    
+    // Upload primary image if changed
+    if (selectedImageFile) {
+      const formData = new FormData();
+      formData.append("image", selectedImageFile);
+      const res = await fetch("/api/products/upload-image", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.message ?? "Upload ảnh chính thất bại");
+      uploadedUrls[0] = String(payload?.imageUrl ?? "").trim();
+    } else {
+      uploadedUrls[0] = productForm.imageUrl.trim();
     }
 
-    const formData = new FormData();
-    formData.append("image", selectedImageFile);
-
-    const response = await fetch("/api/products/upload-image", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Upload ảnh thất bại");
+    // Upload gallery images
+    const galleryUrls = [...productForm.galleryImages];
+    if (productForm.additionalImageFiles.length > 0) {
+      for (const file of productForm.additionalImageFiles) {
+        const formData = new FormData();
+        formData.append("image", file);
+        const res = await fetch("/api/products/upload-image", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        const payload = await res.json().catch(() => null);
+        if (res.ok && payload?.imageUrl) {
+          galleryUrls.push(payload.imageUrl);
+        }
+      }
     }
 
-    return String(payload?.imageUrl ?? "").trim();
+    return {
+      primaryUrl: uploadedUrls[0],
+      galleryUrls: galleryUrls
+    };
   }
 
   async function refreshDashboardSummary() {
@@ -2422,6 +2443,8 @@ export default function AdminPage() {
       isHomepageFeatured: false,
       displayOrder: "9999",
       imageUrl: "",
+      galleryImages: [], // For existing images (URLs)
+      additionalImageFiles: [], // For new uploads (File objects)
       specBrand: "",
       specModel: "",
       specCpu: "",
@@ -2455,6 +2478,8 @@ export default function AdminPage() {
       isHomepageFeatured: Boolean(product.isHomepageFeatured),
       displayOrder: String(Number(product.displayOrder ?? 9999)),
       imageUrl: String(product.imageUrl ?? ""),
+      galleryImages: Array.isArray(product.images) ? product.images.map(img => typeof img === 'string' ? img : img.imageUrl) : [],
+      additionalImageFiles: [],
       specBrand: String(specs.brand ?? ""),
       specModel: String(specs.model ?? ""),
       specCpu: String(specs.cpu ?? ""),
@@ -2599,7 +2624,7 @@ export default function AdminPage() {
         gpu: productForm.specGpu.trim(),
       };
 
-      const uploadedImageUrl = await uploadProductImageIfNeeded();
+      const imageUploadResult = await uploadProductImageIfNeeded();
       const resolvedProductCode =
         productForm.productCode.trim() || buildProductCode(productForm.name);
 
@@ -2633,7 +2658,8 @@ export default function AdminPage() {
         warrantyMonths: Number(productForm.warrantyMonths || 0),
         isHomepageFeatured: Boolean(productForm.isHomepageFeatured),
         displayOrder: Number(productForm.displayOrder || 9999),
-        imageUrl: uploadedImageUrl,
+        imageUrl: imageUploadResult.primaryUrl,
+        images: imageUploadResult.galleryUrls, // Additional images
         specifications,
         detail: {
           fullDescription: productForm.fullDescription.trim(),
@@ -5431,6 +5457,67 @@ export default function AdminPage() {
                       <p className="text-xs text-muted-foreground">
                         Hỗ trợ JPG/JPEG/PNG. Nếu đã chọn file, hệ thống tự
                         upload ảnh khi bấm lưu.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 rounded-lg border border-dashed p-4">
+                      <label className="text-sm font-medium flex items-center gap-2 text-primary">
+                        <ImagePlus className="h-4 w-4" />
+                        Ảnh bổ sung (Bộ sưu tập)
+                      </label>
+                      
+                      <div className="flex flex-wrap gap-3">
+                        {/* Existing Images */}
+                        {productForm.galleryImages.map((url, idx) => (
+                          <div key={`exist-${idx}`} className="relative h-20 w-20 rounded-md border bg-muted overflow-hidden group">
+                            <img src={url} className="h-full w-full object-cover" alt="Gallery" />
+                            <button
+                              type="button"
+                              onClick={() => setProductForm(p => ({ ...p, galleryImages: p.galleryImages.filter((_, i) => i !== idx) }))}
+                              className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <span className="text-xs leading-none">×</span>
+                            </button>
+                          </div>
+                        ))}
+                        
+                        {/* New Files Preview */}
+                        {productForm.additionalImageFiles.map((file, idx) => (
+                          <div key={`new-${idx}`} className="relative h-20 w-20 rounded-md border bg-muted overflow-hidden group border-primary/40">
+                            <img src={URL.createObjectURL(file)} className="h-full w-full object-cover opacity-60" alt="New Upload" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <span className="text-[10px] bg-primary text-white px-1 rounded">Mới</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setProductForm(p => ({ ...p, additionalImageFiles: p.additionalImageFiles.filter((_, i) => i !== idx) }))}
+                              className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <span className="text-xs leading-none">×</span>
+                            </button>
+                          </div>
+                        ))}
+
+                        <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors">
+                          <Plus className="h-5 w-5 text-primary" />
+                          <span className="mt-1 text-[10px] font-medium text-primary">Thêm ảnh</span>
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              setProductForm(p => ({
+                                ...p,
+                                additionalImageFiles: [...p.additionalImageFiles, ...files]
+                              }));
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground italic">
+                        * Ảnh đầu tiên (Ảnh sản phẩm chính) sẽ hiện ngoài danh mục. Các ảnh này sẽ hiện trong trang chi tiết.
                       </p>
                     </div>
 

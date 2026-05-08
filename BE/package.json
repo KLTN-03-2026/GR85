@@ -16,9 +16,6 @@
     "enrich:products": "node scripts/enrichProductData.js",
     "setup:check": "node scripts/checkSetup.js"
   },
-  "prisma": {
-    "seed": "node prisma/seed.js"
-  },
   "dependencies": {
     "@payos/node": "^2.0.5",
     "@prisma/client": "^6.7.0",

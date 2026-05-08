@@ -92,6 +92,7 @@ const productSchema = z.object({
   isHomepageFeatured: z.boolean().optional(),
   displayOrder: z.number().int().min(0).optional(),
   imageUrl: z.string().optional(),
+  images: z.array(z.string()).optional(),
   specifications: z.record(z.any()).optional(),
   detail: z
     .object({

@@ -1100,15 +1100,28 @@ export async function createProduct(input) {
         input.specifications && typeof input.specifications === "object"
           ? input.specifications
           : {},
-      images: input.imageUrl
-        ? {
-            create: {
-              imageUrl: input.imageUrl,
-              isPrimary: true,
-              sortOrder: 0,
-            },
-          }
-        : undefined,
+      images: {
+        create: [
+          ...(input.imageUrl
+            ? [
+                {
+                  imageUrl: input.imageUrl,
+                  isPrimary: true,
+                  sortOrder: 0,
+                },
+              ]
+            : []),
+          ...(Array.isArray(input.images)
+            ? input.images
+                .filter((url) => url !== input.imageUrl)
+                .map((url, index) => ({
+                  imageUrl: url,
+                  isPrimary: false,
+                  sortOrder: index + 1,
+                }))
+            : []),
+        ],
+      },
     },
     include: {
       category: { select: CATEGORY_PUBLIC_SELECT },
@@ -1325,21 +1338,37 @@ export async function updateProductById(productId, input) {
       },
     });
 
-    if (input.imageUrl !== undefined) {
-      await tx.productImage.updateMany({
-        where: { productId: id, isPrimary: true },
-        data: { isPrimary: false },
+    // Handle Images (Sync Gallery)
+    if (input.images !== undefined || input.imageUrl !== undefined) {
+      const galleryUrls = Array.isArray(input.images) ? input.images : [];
+      const primaryUrl = input.imageUrl !== undefined ? input.imageUrl : product.images.find(img => img.isPrimary)?.imageUrl;
+
+      // Delete existing images to sync
+      await tx.productImage.deleteMany({ where: { productId: id } });
+
+      const newImages = [];
+      if (primaryUrl) {
+        newImages.push({
+          productId: id,
+          imageUrl: primaryUrl,
+          isPrimary: true,
+          sortOrder: 0,
+        });
+      }
+
+      galleryUrls.forEach((url, index) => {
+        if (url !== primaryUrl) {
+          newImages.push({
+            productId: id,
+            imageUrl: url,
+            isPrimary: false,
+            sortOrder: index + 1,
+          });
+        }
       });
 
-      if (input.imageUrl) {
-        await tx.productImage.create({
-          data: {
-            productId: id,
-            imageUrl: input.imageUrl,
-            isPrimary: true,
-            sortOrder: 0,
-          },
-        });
+      if (newImages.length > 0) {
+        await tx.productImage.createMany({ data: newImages });
       }
     }
 

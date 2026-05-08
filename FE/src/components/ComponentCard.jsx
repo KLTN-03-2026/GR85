@@ -34,11 +34,12 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
         data-aos-duration="1000"
       >
         {/* Image Section */}
-        <div className={`relative ${isBuilderMode ? "aspect-[16/10]" : compact ? "aspect-[16/11]" : "aspect-[4/3]"} bg-secondary/50 overflow-hidden`}>
+        <div className={`relative ${isBuilderMode ? "aspect-[16/10]" : compact ? "aspect-[16/11]" : "aspect-[4/3]"} bg-white overflow-hidden group/img`}>
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-white pointer-events-none" />
           <img
-            src={component.image || component.imageUrl || fallbackImage} // Display the component image or fallback image
+            src={component.imageUrl || component.image || (Array.isArray(component.images) && component.images[0]) || fallbackImage} // Display the component image or fallback image
             alt={component.name} // Alt text for the image
-            className={`h-full w-full object-contain transition-transform duration-500 group-hover:scale-105 ${isBuilderMode ? "p-2" : compact ? "p-2.5" : "p-3"}`}
+            className={`h-full w-full object-contain relative z-10 transition-all duration-700 group-hover:scale-110 group-hover/img:rotate-1 ${isBuilderMode ? "p-4" : compact ? "p-5" : "p-6"}`}
             onError={(event) => {
               if (event.currentTarget.src.includes(fallbackImage)) {
                 return;
