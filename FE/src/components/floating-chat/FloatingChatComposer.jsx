@@ -2,6 +2,14 @@ import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+// This component renders the chat input area for the floating chat widget.
+// It includes an input field for typing messages and a send button.
+// Props:
+// - isLoading: Boolean indicating if the chat is loading.
+// - messageText: The current text in the input field.
+// - onChangeText: Function to handle changes in the input field.
+// - onSend: Function to handle sending messages.
+
 export function FloatingChatComposer({ isLoading, messageText, onChangeText, onSend }) {
   return (
     <div className="border-t border-border/60 bg-background p-2.5">

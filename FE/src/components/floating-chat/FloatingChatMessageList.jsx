@@ -1,6 +1,15 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FloatingChatMessageItem } from "@/components/floating-chat/FloatingChatMessageItem.jsx";
 
+// This component renders the list of chat messages in the floating chat widget.
+// It handles loading states and displays a welcome message if no messages are available.
+// Props:
+// - isLoading: Boolean indicating if messages are loading.
+// - isReady: Boolean indicating if the chat is ready.
+// - messages: Array of message objects to display.
+// - scrollRef: Reference for the scrollable area.
+// - userId: The ID of the current user.
+
 export function FloatingChatMessageList({ isLoading, isReady, messages, scrollRef, userId }) {
   return (
     <ScrollArea
