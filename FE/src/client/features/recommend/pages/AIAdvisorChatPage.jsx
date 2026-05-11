@@ -1,36 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { requestAiAdvisorChat, requestAiAdvisorRecommendation } from "@/client/features/recommend/data/aiRecommend.api";
-
-const STORAGE_KEY = "techbuiltai-ai-advisor-chat";
+import { requestAiAdvisorChat, requestAiAdvisorRecommendation, fetchAiAdvisorHistory, clearAiAdvisorHistory } from "@/client/features/recommend/data/aiRecommend.api";
 
 export default function AIAdvisorChatPage() {
+  const { isAuthenticated } = useAuth();
   const [scope, setScope] = useState("BOTH");
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [messages, setMessages] = useState(() => {
-    if (typeof window === "undefined") {
-      return [];
-    }
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [messages, setMessages] = useState([]);
 
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-
+  // Load history from database on mount
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
+    if (isAuthenticated) {
+      loadHistory();
+    } else {
+      setIsLoadingHistory(false);
     }
+  }, [isAuthenticated]);
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  }, [messages]);
+  async function loadHistory() {
+    try {
+      setIsLoadingHistory(true);
+      const history = await fetchAiAdvisorHistory();
+      if (Array.isArray(history)) {
+        setMessages(history.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          type: msg.type,
+          content: msg.content,
+          createdAt: msg.createdAt,
+          isError: false,
+        })));
+      }
+    } catch (error) {
+      console.error("Failed to load history:", error);
+      setMessages([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
 
   const chatHistory = useMemo(
     () =>
@@ -68,13 +80,14 @@ export default function AIAdvisorChatPage() {
         requestAiAdvisorChat({
           message: question,
           history: chatHistory,
+          scope,
         }),
       ]);
 
       const suggestionLines = (advisorResult?.suggestions ?? [])
         .slice(0, 5)
-        .map((item, index) => `${index + 1}. ${item.name} - ${formatMoney(item.price)}\\nLy do: ${item.reason}`)
-        .join("\\n\\n");
+        .map((item, index) => `${index + 1}. ${item.name} - ${formatMoney(item.price)}\nLy do: ${item.reason}`)
+        .join("\n\n");
 
       const assistantMessage = {
         id: crypto.randomUUID(),
@@ -118,6 +131,20 @@ export default function AIAdvisorChatPage() {
     }
   }
 
+  async function handleClearHistory() {
+    if (!window.confirm("Bạn chắc chắn muốn xóa lịch sử chat?")) {
+      return;
+    }
+
+    try {
+      await clearAiAdvisorHistory();
+      setMessages([]);
+    } catch (error) {
+      console.error("Failed to clear history:", error);
+      window.alert("Không thể xóa lịch sử");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -144,7 +171,7 @@ export default function AIAdvisorChatPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setMessages([])}
+                onClick={handleClearHistory}
               >
                 Xoa lich su
               </Button>
@@ -152,7 +179,9 @@ export default function AIAdvisorChatPage() {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            {messages.length === 0 ? (
+            {isLoadingHistory ? (
+              <p className="text-sm text-muted-foreground">Đang tải lịch sử...</p>
+            ) : messages.length === 0 ? (
               <p className="text-sm text-muted-foreground">Thu nhap: "Toi co 30 trieu, tu van CPU de render"</p>
             ) : (
               messages.map((message) => (
@@ -181,11 +210,14 @@ export default function AIAdvisorChatPage() {
               />
               <Button
                 onClick={onSendMessage}
-                disabled={isSending || !String(input ?? "").trim()}
+                disabled={isSending || !String(input ?? "").trim() || !isAuthenticated}
               >
                 {isSending ? "Dang gui..." : "Gui"}
               </Button>
             </div>
+            {!isAuthenticated && (
+              <p className="text-xs text-muted-foreground mt-2">Vui lòng đăng nhập để sử dụng tính năng này</p>
+            )}
           </div>
         </Card>
       </main>

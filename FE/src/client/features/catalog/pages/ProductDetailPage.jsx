@@ -227,6 +227,12 @@ export default function ProductDetailPage() {
                     src={activeImage || "/images/component-placeholder.svg"}
                     alt={product.name}
                     className="w-full h-full object-contain p-8 md:p-12 transition-all duration-700 group-hover:scale-105"
+                    loading="lazy"
+                    onError={(e) => {
+                      if (e.currentTarget.src !== "/images/component-placeholder.svg") {
+                        e.currentTarget.src = "/images/component-placeholder.svg";
+                      }
+                    }}
                   />
                   
                   <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -247,7 +253,17 @@ export default function ProductDetailPage() {
                           activeImage === img ? "border-primary shadow-md scale-105" : "border-slate-100 opacity-70 hover:opacity-100"
                         }`}
                       >
-                        <img src={img} className="w-full h-full object-cover p-2" alt={`Gallery ${idx}`} />
+                        <img 
+                          src={img} 
+                          className="w-full h-full object-cover p-2" 
+                          alt={`Gallery ${idx}`}
+                          loading="lazy"
+                          onError={(e) => {
+                            if (e.currentTarget.src !== "/images/component-placeholder.svg") {
+                              e.currentTarget.src = "/images/component-placeholder.svg";
+                            }
+                          }}
+                        />
                       </button>
                     ))}
                   </div>

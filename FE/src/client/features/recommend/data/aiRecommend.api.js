@@ -87,11 +87,12 @@ export async function requestAiAdvisorRecommendation({ question, scope = "BOTH" 
   return payload;
 }
 
-export async function requestAiAdvisorChat({ message, history = [] }) {
-  const response = await fetch(ADVISOR_CHAT_ENDPOINT, {
+export async function requestAiAdvisorChat({ message, history = [], scope = "BOTH" }) {
+  const response = await fetch("/api/ai/advisor/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("pc-perfect-token")}`,
     },
     body: JSON.stringify({
       message: String(message ?? "").trim(),
@@ -101,12 +102,44 @@ export async function requestAiAdvisorChat({ message, history = [] }) {
           content: String(item?.content ?? ""),
         }))
         : [],
+      scope,
     }),
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.message || "Không thể chat với AI");
+  }
+
+  return payload;
+}
+
+export async function fetchAiAdvisorHistory() {
+  const response = await fetch("/api/ai/advisor/history", {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("pc-perfect-token")}`,
+    },
+  });
+
+  const payload = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(payload?.message || "Không thể lấy lịch sử chat");
+  }
+
+  return payload;
+}
+
+export async function clearAiAdvisorHistory() {
+  const response = await fetch("/api/ai/advisor/history", {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("pc-perfect-token")}`,
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "Không thể xóa lịch sử chat");
   }
 
   return payload;
