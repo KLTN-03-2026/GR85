@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "aos": "^2.3.4"
+    "aos": "^2.3.4",
+    "docx": "^9.6.1"
   },
   "devDependencies": {
     "tsx": "^4.21.0"
