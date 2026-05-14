@@ -2,6 +2,12 @@ import { MessageCircle, Minus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
+// This component renders the header for the floating chat widget.
+// It displays the chat title, admin typing status, and close/minimize buttons.
+// Props:
+// - adminTypingText: Text indicating if the admin is typing.
+// - onClose: Function to handle closing the chat.
+
 export function FloatingChatHeader({ adminTypingText, onClose }) {
   return (
     <div className="flex items-center justify-between border-b border-border/70 bg-primary px-4 py-2.5 text-primary-foreground">

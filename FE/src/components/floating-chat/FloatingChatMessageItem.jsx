@@ -1,6 +1,11 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { User, UserRoundCog } from "lucide-react";
 
+// This component renders a single chat message in the floating chat widget.
+// It supports messages sent by the user and received from the admin.
+// Props:
+// - message: The message object containing content, senderId, and createdAt.
+// - userId: The ID of the current user to determine message ownership.
 export function FloatingChatMessageItem({ message, userId }) {
   const isMine = Number(message.senderId) === Number(userId);
 
