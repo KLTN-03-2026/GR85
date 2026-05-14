@@ -90,6 +90,106 @@ router.post("/recommend-build", optionalAuth, ensureAiEnabled, async (req, res) 
 
 router.post("/ask", optionalAuth, ensureAiEnabled, askAiAdvisorHandler);
 
+router.post("/advisor/chat", optionalAuth, ensureAiEnabled, async (req, res) => {
+  try {
+    const { message, history, role = "user", type = "chat", scope } = req.body;
+    const userId = req.auth ? Number(req.auth.sub) : null;
+
+    // Validate input
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ message: "Tin nhắn không hợp lệ" });
+    }
+
+    // Save user message to database
+    if (userId) {
+      await prisma.aiAdvisorChat.create({
+        data: {
+          userId,
+          role: "user",
+          type: "chat",
+          content: message,
+          scope: scope || null,
+        },
+      });
+    }
+
+    // Generate AI response
+    const chatPayload = chatSchema.parse({ message, history });
+    const data = await generateAiChatReply(chatPayload, userId);
+
+    // Save AI response to database
+    if (userId && data?.reply) {
+      await prisma.aiAdvisorChat.create({
+        data: {
+          userId,
+          role: "assistant",
+          type: "chat",
+          content: data.reply,
+          scope: scope || null,
+        },
+      });
+    }
+
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: "Dữ liệu không hợp lệ",
+        issues: error.flatten(),
+      });
+    }
+
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.get("/advisor/history", optionalAuth, async (req, res) => {
+  try {
+    if (!req.auth) {
+      return res.status(401).json({ message: "Vui lòng đăng nhập" });
+    }
+
+    const userId = Number(req.auth.sub);
+    const messages = await prisma.aiAdvisorChat.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        role: true,
+        type: true,
+        content: true,
+        scope: true,
+        createdAt: true,
+      },
+    });
+
+    return res.json(messages);
+  } catch (error) {
+    console.error("Error fetching advisor history:", error);
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
+router.delete("/advisor/history", optionalAuth, async (req, res) => {
+  try {
+    if (!req.auth) {
+      return res.status(401).json({ message: "Vui lòng đăng nhập" });
+    }
+
+    const userId = Number(req.auth.sub);
+    await prisma.aiAdvisorChat.deleteMany({ where: { userId } });
+
+    return res.json({ message: "Đã xóa lịch sử" });
+  } catch (error) {
+    console.error("Error deleting advisor history:", error);
+    return res.status(500).json({ message: "Lỗi máy chủ không xác định" });
+  }
+});
+
 router.post("/chat-build", optionalAuth, ensureAiEnabled, async (req, res) => {
   try {
     const payload = chatSchema.parse(req.body);

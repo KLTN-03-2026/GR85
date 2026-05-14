@@ -1,0 +1,53 @@
+{
+  "8.1": {
+    "sheet": "Quản lý đơn hàng",
+    "dates": [
+      "2026-04-07 00:00:00"
+    ],
+    "people": [
+      "FUNC-OD02",
+      "GUI-OD01",
+      "[Nút xem chi tiết] View Detail",
+      "Bảng chỉ hiển thị đơn SHIPPING",
+      "FUNC-OD17"
+    ]
+  },
+  "8.2": {
+    "sheet": "Quản lý Kho & Serial",
+    "dates": [
+      "2026-04-23 00:00:00"
+    ],
+    "people": [
+      "Tải overview kho",
+      "[Tạo kho] Create warehouse panel",
+      "Batch code tuỳ chọn giới hạn độ dài",
+      "FUNC-WH05",
+      "Có sẵn warehouse/product/supplier hợp lệ"
+    ]
+  },
+  "8.3": {
+    "sheet": "Thông báo hệ thống (Notificatio",
+    "dates": [
+      "2026-05-10 00:00:00"
+    ],
+    "people": [
+      "FUNC-NF04",
+      "Notification không thuộc tài khoản hiện tại",
+      "FUNC-NF15",
+      "Có thông báo hợp lệ",
+      "Có nhiều hơn 20 thông báo"
+    ]
+  },
+  "10": {
+    "sheet": "Sprint Backlog",
+    "start_date": "2026-03-20 00:00:00",
+    "end_date": "2026-04-09 00:00:00",
+    "team_members": [
+      "Phạm Thị Sâm",
+      "Võ Văn Huân",
+      "Trần Văn Quảng",
+      "Nguyễn Khương Long",
+      "Phạm Quang Vinh"
+    ]
+  }
+}

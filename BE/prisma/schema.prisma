@@ -140,6 +140,7 @@ model User {
     couponAccesses CouponUser[]
     resolvedChatRooms ChatRoomMeta[] @relation("ChatRoomResolver")
     aiRequestLogs  AiRequestLog[]
+    aiAdvisorChats AiAdvisorChat[]
 
     @@map("Users")
 }
@@ -640,6 +641,21 @@ model AiRequestLog {
 
     @@index([createdAt])
     @@map("AI_Request_Logs")
+}
+
+model AiAdvisorChat {
+    id        Int      @id @default(autoincrement())
+    userId    Int?     @map("user_id")
+    role      String   // "user" or "assistant"
+    type      String   @default("chat") // "chat" or "suggestion"
+    content   String   @db.LongText
+    scope     String?  // "PC", "GEAR", "BOTH"
+    createdAt DateTime @default(now()) @map("created_at")
+
+    user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    @@index([userId, createdAt])
+    @@map("AI_Advisor_Chats")
 }
 
 model EmailVerification {

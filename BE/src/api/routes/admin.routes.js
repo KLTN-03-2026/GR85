@@ -44,6 +44,14 @@ import {
   deleteAiLog,
   getAiStats,
 } from "../../services/ai-admin.service.js";
+import {
+  regenerateProductImagesFromPexels,
+  addProductImage,
+  setProductImageAsPrimary,
+  reorderProductImages,
+  deleteProductImage,
+  getProductImagesForAdmin,
+} from "../../services/product-image.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 const router = Router();
@@ -1334,6 +1342,155 @@ router.get("/ai-stats", requireAuth, async (req, res) => {
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ message: error.message });
+  }
+});
+
+// ============ PRODUCT IMAGE MANAGEMENT ============
+
+router.get("/products/:productId/images", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const images = await getProductImagesForAdmin(Number(req.params.productId));
+    return res.json({ images });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/products/:productId/images/regenerate", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const result = await regenerateProductImagesFromPexels(Number(req.params.productId));
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/products/:productId/images", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const schema = z.object({
+      imageUrl: z.string().url(),
+      altText: z.string().optional(),
+    });
+
+    const parsed = schema.parse(req.body);
+    const image = await addProductImage(
+      Number(req.params.productId),
+      parsed.imageUrl,
+      parsed.altText
+    );
+    return res.status(201).json(image);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid data", issues: error.flatten() });
+    }
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/products/:productId/images/:imageId/primary", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const image = await setProductImageAsPrimary(
+      Number(req.params.productId),
+      Number(req.params.imageId)
+    );
+    return res.json(image);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/products/:productId/images/reorder", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const schema = z.object({
+      imageOrder: z.array(z.object({
+        id: z.number().int().positive(),
+        sortOrder: z.number().int().positive(),
+      })),
+    });
+
+    const parsed = schema.parse(req.body);
+    const updated = await reorderProductImages(
+      Number(req.params.productId),
+      parsed.imageOrder
+    );
+    return res.json({ images: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid data", issues: error.flatten() });
+    }
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.delete("/products/:productId/images/:imageId", requireAuth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.auth.role)) {
+      return res.status(403).json({ message: "Only admins can manage images" });
+    }
+    if (!hasPermission(req, "admin_products_manage")) {
+      return res.status(403).json({ message: "No permission to manage products" });
+    }
+
+    const result = await deleteProductImage(
+      Number(req.params.productId),
+      Number(req.params.imageId)
+    );
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

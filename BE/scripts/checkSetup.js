@@ -183,40 +183,52 @@ async function checkGroq() {
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const candidateModels = [
+      process.env.GROQ_MODEL,
+      "llama-3.3-70b-versatile",
+      "llama-3.1-405b-reasoning",
+    ].filter(Boolean);
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "user",
-            content: "Say 'OK' only.",
+    for (const model of candidateModels) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json",
           },
-        ],
-        max_tokens: 5,
-        temperature: 0,
-      }),
-      signal: controller.signal,
-    });
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "user",
+                content: "Say 'OK' only.",
+              },
+            ],
+            max_tokens: 5,
+            temperature: 0,
+          }),
+          signal: controller.signal,
+        });
 
-    clearTimeout(timeoutId);
+        if (response.ok) {
+          log.success(`Groq API working with model: ${model}`);
+          return true;
+        }
 
-    if (response.ok) {
-      log.success("Groq API working");
-      return true;
-    } else {
-      const errorText = await response.text();
-      log.error(`Groq API returned unexpected response: ${response.status}`);
-      log.info(`  → ${errorText.slice(0, 200)}`);
-      return false;
+        const errorText = await response.text();
+        log.warning(`Groq model failed: ${model} (${response.status})`);
+        log.info(`  → ${errorText.slice(0, 200)}`);
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    log.error("Groq API returned unexpected response for all models");
+    return false;
   } catch (error) {
     log.error(`Groq API check failed: ${error.message}`);
     if (error.message.includes("401")) {

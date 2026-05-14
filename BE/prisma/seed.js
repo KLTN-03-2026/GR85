@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient, UserStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { downloadProductImages, delay } from "../src/services/pexels-download.service.js";
 
 const prisma = new PrismaClient();
 
@@ -911,51 +912,47 @@ async function main() {
       .replace(/^-+|-+$/g, "");
   }
 
-  function buildImageUrls(product, category) {
-    const categorySlug = String(
-      product.categorySlug ?? category?.slug ?? "",
-    ).toLowerCase();
-    const query = String(product.imageQuery ?? "")
-      .trim()
-      .toLowerCase();
-    const tagMap = {
-      cpu: "computer,cpu,processor",
-      ram: "computer,ram,memory",
-      mainboard: "computer,motherboard,pc",
-      ssd: "computer,ssd,storage",
-      vga: "computer,gpu,graphics-card",
-      mouse: "computer,mouse,gaming",
-      keyboard: "computer,keyboard,mechanical",
-      headset: "computer,headset,gaming",
-      hub: "usb,hub,adapter",
-      microphone: "microphone,studio,recording",
-      webcam: "webcam,camera,streaming",
-      monitor: "monitor,display,computer",
-      speaker: "speaker,audio,desktop",
-      cable: "cable,connector,usb",
-      stand: "monitor,stand,desk",
-      pad: "mousepad,desk,gaming",
-    };
-
-    const tags = query || tagMap[categorySlug] || "computer,hardware,desktop";
-    const baseLock = hashString(
-      product.slug || product.name || `${categorySlug}-product`,
-    );
-
-    return [1, 2, 3, 4].map((index) => {
-      const lock = baseLock + index;
-      return `https://loremflickr.com/1200/900/${tags}?lock=${lock}`;
-    });
-  }
-
-  function hashString(value) {
-    const text = String(value ?? "");
-    let hash = 0;
-    for (let i = 0; i < text.length; i += 1) {
-      hash = (hash << 5) - hash + text.charCodeAt(i);
-      hash |= 0;
+  async function buildImageUrls(product, category) {
+    // Try to download and save images locally from Pexels
+    try {
+      const images = await downloadProductImages(product, category);
+      
+      if (images.length > 0) {
+        // Return image objects with local paths
+        return images;
+      }
+    } catch (error) {
+      console.error(`[Seed] Download failed for ${product.name}: ${error.message}`);
     }
-    return Math.abs(hash) + 1000;
+
+    // Fallback to placeholder if download fails
+    console.warn(`[Seed] Using fallback placeholder for ${product.name}`);
+    return [
+      {
+        imageUrl: "/images/component-placeholder.svg",
+        isPrimary: true,
+        sortOrder: 1,
+        altText: product.name,
+      },
+      {
+        imageUrl: "/images/component-placeholder.svg",
+        isPrimary: false,
+        sortOrder: 2,
+        altText: product.name,
+      },
+      {
+        imageUrl: "/images/component-placeholder.svg",
+        isPrimary: false,
+        sortOrder: 3,
+        altText: product.name,
+      },
+      {
+        imageUrl: "/images/component-placeholder.svg",
+        isPrimary: false,
+        sortOrder: 4,
+        altText: product.name,
+      },
+    ];
   }
 
   function buildLongDescription(product, category, supplier) {
@@ -1691,21 +1688,24 @@ async function main() {
       },
     });
 
-    const imageUrls = buildImageUrls(product, category);
+    const imageUrls = await buildImageUrls(product, category);
 
     await prisma.productImage.deleteMany({
       where: { productId: seededProduct.id },
     });
 
     await prisma.productImage.createMany({
-      data: imageUrls.map((imageUrl, imageIndex) => ({
+      data: imageUrls.map((imageData) => ({
         productId: seededProduct.id,
-        imageUrl,
-        isPrimary: imageIndex === 0,
-        sortOrder: imageIndex + 1,
-        altText: product.name,
+        imageUrl: imageData.imageUrl,
+        isPrimary: imageData.isPrimary,
+        sortOrder: imageData.sortOrder,
+        altText: imageData.altText || product.name,
       })),
     });
+
+    // Add rate limiting delay to prevent Pexels API rate limit
+    await delay(500);
 
     detailUpsertCount += 1;
     imageUpsertCount += imageUrls.length;

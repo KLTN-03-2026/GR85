@@ -14,7 +14,13 @@
     "prisma:seed": "prisma db seed",
     "generate:products": "node scripts/autoGenerateProducts.js",
     "enrich:products": "node scripts/enrichProductData.js",
-    "setup:check": "node scripts/checkSetup.js"
+    "setup:check": "node scripts/checkSetup.js",
+    "generate:products:v2": "node scripts/autoGenerateProducts.v2.js",
+    "regenerate:images": "node scripts/autoGenerateProducts.v2.js",
+    "clean:product-images": "node scripts/cleanProductImages.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@payos/node": "^2.0.5",
