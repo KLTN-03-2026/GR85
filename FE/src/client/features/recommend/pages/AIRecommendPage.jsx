@@ -902,10 +902,10 @@ export default function AIRecommendPage() {
                         >
                           <div
                             className={`max-w-[80%] rounded-xl px-4 py-2 text-sm whitespace-pre-wrap ${msg.role === "user"
-                                ? "bg-primary text-primary-foreground"
-                                : msg.isError
-                                  ? "bg-destructive/10 text-destructive"
-                                  : "bg-muted"
+                              ? "bg-primary text-primary-foreground"
+                              : msg.isError
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-muted"
                               }`}
                           >
                             {msg.content}

@@ -144,7 +144,7 @@ export async function requestAiAdvisorChat({ message, history = [], scope = "BOT
   });
 
   const payload = await response.json().catch(() => ({}));
-  
+
   console.log("[Chat API] Response received:", {
     hasReply: !!payload?.reply,
     productCount: Array.isArray(payload?.mentionedProducts) ? payload.mentionedProducts.length : 0,
@@ -159,26 +159,26 @@ export async function requestAiAdvisorChat({ message, history = [], scope = "BOT
   // Process mentioned products
   const mentionedProducts = Array.isArray(payload?.mentionedProducts)
     ? payload.mentionedProducts.map(p => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        price: p.displayPrice || p.price,
-        brand: p.brand || "Unknown",
-        category: p.category?.name || "Unknown",
-        productUrl: p.productUrl || `/components/${p.slug}`,
-      }))
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      price: p.displayPrice || p.price,
+      brand: p.brand || "Unknown",
+      category: p.category?.name || "Unknown",
+      productUrl: p.productUrl || `/components/${p.slug}`,
+    }))
     : [];
 
   const relatedProducts = Array.isArray(payload?.relatedProducts)
     ? payload.relatedProducts.map((p) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        price: p.price,
-        brand: p.brand || "Unknown",
-        category: p.category || "Unknown",
-        productUrl: p.productUrl || `/components/${p.slug}`,
-      }))
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      price: p.price,
+      brand: p.brand || "Unknown",
+      category: p.category || "Unknown",
+      productUrl: p.productUrl || `/components/${p.slug}`,
+    }))
     : [];
 
   return {

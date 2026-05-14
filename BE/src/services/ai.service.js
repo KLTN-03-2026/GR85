@@ -76,7 +76,7 @@ export async function buildAiRecommendation(input) {
   const pcComponentsOnly = input.pcComponentsOnly === true;
 
   const ratioMap = USAGE_BUDGET_RATIO[usage] || USAGE_BUDGET_RATIO.general;
-  
+
   // Nếu pcComponentsOnly = true, chỉ lấy các linh kiện core, không lấy gear
   const defaultCategories = pcComponentsOnly ? CORE_CATEGORY_SLUGS : REQUIRED_CATEGORY_SLUGS;
   const categoriesToBuild = targetCategories || defaultCategories;
@@ -397,13 +397,13 @@ export async function generateAiChatReply(input, userId = null) {
 
   const contextInstructionMessage = productContext.contextText
     ? {
-        role: "system",
-        content: [
-          "Bạn phải dùng dữ liệu ngữ cảnh từ Database để tư vấn sản phẩm.",
-          "Khi có danh sách sản phẩm liên quan, hãy so sánh 1-2 lựa chọn tốt nhất, nêu lý do cụ thể, và nhắc tên sản phẩm chính xác.",
-          "Nếu câu trả lời đề cập đến sản phẩm, hãy ưu tiên phản hồi ngắn gọn, có thông tin sản phẩm, danh mục, giá và link nếu có.",
-        ].join(" "),
-      }
+      role: "system",
+      content: [
+        "Bạn phải dùng dữ liệu ngữ cảnh từ Database để tư vấn sản phẩm.",
+        "Khi có danh sách sản phẩm liên quan, hãy so sánh 1-2 lựa chọn tốt nhất, nêu lý do cụ thể, và nhắc tên sản phẩm chính xác.",
+        "Nếu câu trả lời đề cập đến sản phẩm, hãy ưu tiên phản hồi ngắn gọn, có thông tin sản phẩm, danh mục, giá và link nếu có.",
+      ].join(" "),
+    }
     : null;
 
   const messages = [
@@ -416,98 +416,98 @@ export async function generateAiChatReply(input, userId = null) {
     { role: "user", content: contextualUserMessage },
   ];
 
-    try {
-      const isGroq = Boolean(process.env.GROQ_API_KEY);
-      const endpoint = isGroq
-        ? "https://api.groq.com/openai/v1/chat/completions"
-        : "https://api.openai.com/v1/chat/completions";
-        
-      const configuredModel = settings.model || process.env.AI_MODEL;
-      const openAiDefaultModel = process.env.AI_MODEL || "gpt-4o-mini";
-      const groqDefaultModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  try {
+    const isGroq = Boolean(process.env.GROQ_API_KEY);
+    const endpoint = isGroq
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
 
-      let modelName = configuredModel || (isGroq ? groqDefaultModel : openAiDefaultModel);
+    const configuredModel = settings.model || process.env.AI_MODEL;
+    const openAiDefaultModel = process.env.AI_MODEL || "gpt-4o-mini";
+    const groqDefaultModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
-      // Prevent provider mismatch (for example: gpt-* model sent to Groq endpoint).
-      if (isGroq && /^gpt-/i.test(String(modelName))) {
-        modelName = groqDefaultModel;
-      }
+    let modelName = configuredModel || (isGroq ? groqDefaultModel : openAiDefaultModel);
 
-      if (!isGroq && /llama|mixtral|gemma/i.test(String(modelName))) {
-        modelName = openAiDefaultModel;
+    // Prevent provider mismatch (for example: gpt-* model sent to Groq endpoint).
+    if (isGroq && /^gpt-/i.test(String(modelName))) {
+      modelName = groqDefaultModel;
+    }
+
+    if (!isGroq && /llama|mixtral|gemma/i.test(String(modelName))) {
+      modelName = openAiDefaultModel;
+    }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: messages,
+        max_tokens: settings.maxToken || 800,
+        temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error?.message || "";
+      if (response.status === 429 || errorMessage.toLowerCase().includes("quota")) {
+        throw new Error("Hệ thống AI hiện đã hết lượt sử dụng (quota exceeded) hoặc quá tải. Vui lòng kiểm tra lại API key.");
       }
-  
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: messages,
-          max_tokens: settings.maxToken || 800,
-          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
-        }),
-      });
-  
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error?.message || "";
-        if (response.status === 429 || errorMessage.toLowerCase().includes("quota")) {
-          throw new Error("Hệ thống AI hiện đã hết lượt sử dụng (quota exceeded) hoặc quá tải. Vui lòng kiểm tra lại API key.");
-        }
-        throw new Error(errorMessage || "Lỗi kết nối tới AI provider");
+      throw new Error(errorMessage || "Lỗi kết nối tới AI provider");
+    }
+
+    const data = await response.json();
+    let reply = data.choices?.[0]?.message?.content || "Không thể trả lời.";
+
+    // Giữ ngắn gọn - cắt nếu dài quá
+    reply = reply.trim();
+    if (reply.length > 150) {
+      // Tìm điểm cắt hợp lý (dấu câu hoặc khoảng trắng)
+      let cutPoint = reply.lastIndexOf(".", 150) || reply.lastIndexOf("!", 150) || reply.lastIndexOf("?", 150) || 150;
+      if (cutPoint < 80) cutPoint = 150; // Nếu quá sớm, cắt ở 150
+      reply = reply.substring(0, cutPoint) + "\n\nHỏi thêm nếu cần chi tiết.";
+    } else if (reply.length > 0 && !reply.includes("🛒")) {
+      // Trả lời ngắn, thêm CTA
+      reply = reply + " 🛒";
+    }
+
+    // Calculate token usage and cost
+    const promptTokens = data.usage?.prompt_tokens || 0;
+    const completionTokens = data.usage?.completion_tokens || 0;
+    const totalTokens = data.usage?.total_tokens || 0;
+
+    // Cost estimation based on typical gpt-4o-mini rates
+    const inputCostPer1K = isGroq ? 0.0005 : 0.00015;
+    const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
+    const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
+
+    // Extract mentioned product names from the reply
+    const mentionedProducts = await extractAndFindMentionedProducts(reply);
+
+    // Save log asynchronously
+    prisma.aiRequestLog.create({
+      data: {
+        userId: userId,
+        endpoint: "chat",
+        prompt: message,
+        response: reply,
+        modelUsed: modelName,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        cost,
       }
-  
-      const data = await response.json();
-      let reply = data.choices?.[0]?.message?.content || "Không thể trả lời.";
-      
-      // Giữ ngắn gọn - cắt nếu dài quá
-      reply = reply.trim();
-      if (reply.length > 150) {
-        // Tìm điểm cắt hợp lý (dấu câu hoặc khoảng trắng)
-        let cutPoint = reply.lastIndexOf(".", 150) || reply.lastIndexOf("!", 150) || reply.lastIndexOf("?", 150) || 150;
-        if (cutPoint < 80) cutPoint = 150; // Nếu quá sớm, cắt ở 150
-        reply = reply.substring(0, cutPoint) + "\n\nHỏi thêm nếu cần chi tiết.";
-      } else if (reply.length > 0 && !reply.includes("🛒")) {
-        // Trả lời ngắn, thêm CTA
-        reply = reply + " 🛒";
-      }
-  
-      // Calculate token usage and cost
-      const promptTokens = data.usage?.prompt_tokens || 0;
-      const completionTokens = data.usage?.completion_tokens || 0;
-      const totalTokens = data.usage?.total_tokens || 0;
-      
-      // Cost estimation based on typical gpt-4o-mini rates
-      const inputCostPer1K = isGroq ? 0.0005 : 0.00015;
-      const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
-      const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
-  
-      // Extract mentioned product names from the reply
-      const mentionedProducts = await extractAndFindMentionedProducts(reply);
-  
-      // Save log asynchronously
-      prisma.aiRequestLog.create({
-        data: {
-          userId: userId,
-          endpoint: "chat",
-          prompt: message,
-          response: reply,
-          modelUsed: modelName,
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          cost,
-        }
-      }).catch(err => console.error("Error logging AI request", err));
-  
-      return serializeData({
-        reply,
-        mentionedProducts: mentionedProducts || [],
-        relatedProducts: productContext.relatedProducts || [],
-      });
+    }).catch(err => console.error("Error logging AI request", err));
+
+    return serializeData({
+      reply,
+      mentionedProducts: mentionedProducts || [],
+      relatedProducts: productContext.relatedProducts || [],
+    });
   } catch (error) {
     if (error.message.includes("quota exceeded")) {
       throw error;
@@ -523,14 +523,14 @@ async function extractAndFindMentionedProducts(reply) {
     // Look for words after common keywords like "chip", "CPU", "GPU", "SSD", "RAM", etc.
     const productKeywords = /(Core i\d|Ryzen \d|RTX \d|RX \d|Samsung|Kingston|Corsair|ASUS|Gigabyte|MSI)/gi;
     const matches = reply.match(productKeywords);
-    
+
     if (!matches || matches.length === 0) {
       return [];
     }
 
     // Get unique product names
     const uniqueNames = [...new Set(matches)];
-    
+
     // Search for these products in database
     const products = await Promise.all(
       uniqueNames.map(async (name) => {
@@ -554,7 +554,7 @@ async function extractAndFindMentionedProducts(reply) {
               category: { select: { name: true, slug: true } },
             },
           });
-          
+
           return product ? {
             ...product,
             productUrl: `/components/${product.slug}`,
@@ -594,15 +594,15 @@ async function buildProductContextForMessage(message) {
   const categorySlugs = [...new Set(searchTerms.map((term) => mapTermToCategorySlug(term)).filter(Boolean))];
   const categories = categorySlugs.length > 0
     ? await prisma.category.findMany({
-        where: {
-          slug: { in: categorySlugs },
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-        },
-      })
+      where: {
+        slug: { in: categorySlugs },
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    })
     : [];
   const categoryIds = categories.map((category) => category.id);
 
@@ -886,7 +886,7 @@ function buildTargetBudgetMap({ budget, ratioMap, requiredSlugs }) {
   // Allocate 15% per peripheral, up to max 50%
   const perPeripheralRatio = peripheralSlugs.length > 0 ? 0.15 : 0;
   const peripheralTotalRatio = Math.min(0.5, perPeripheralRatio * peripheralSlugs.length);
-  
+
   const coreTotalBudget = coreSlugs.length > 0 ? normalizedBudget * (1 - peripheralTotalRatio) : 0;
   const peripheralTotalBudget = coreSlugs.length > 0 ? normalizedBudget * peripheralTotalRatio : normalizedBudget;
 
