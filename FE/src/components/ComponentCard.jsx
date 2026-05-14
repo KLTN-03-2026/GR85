@@ -50,8 +50,8 @@ export function ComponentCard({ component, mode = "shop", compact = false }) {
         />
 
         {/* Badges Section */}
-        <div className="absolute left-2 top-2 flex flex-col gap-1.5">
-          <Badge className={`text-[11px] ${getComponentCategoryStyle(categorySlug)}`}>
+        <div className="absolute left-2 top-2 z-50 flex flex-col gap-1.5">
+          <Badge className={`glass text-[11px] ${getComponentCategoryStyle(categorySlug)}`}>
             {getComponentCategoryLabel(categorySlug)}
           </Badge>
           {component.isNew && <Badge className="bg-accent text-[11px] text-accent-foreground">Mới</Badge>}

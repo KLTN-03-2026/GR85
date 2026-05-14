@@ -73,13 +73,21 @@ export async function buildAiRecommendation(input) {
   const preferredBrands = Array.isArray(input.preferredBrands)
     ? input.preferredBrands.map((item) => String(item).trim()).filter(Boolean)
     : [];
-  const pcComponentsOnly = input.pcComponentsOnly === true; // Tính năng mới
+  const pcComponentsOnly = input.pcComponentsOnly === true;
 
   const ratioMap = USAGE_BUDGET_RATIO[usage] || USAGE_BUDGET_RATIO.general;
   
   // Nếu pcComponentsOnly = true, chỉ lấy các linh kiện core, không lấy gear
   const defaultCategories = pcComponentsOnly ? CORE_CATEGORY_SLUGS : REQUIRED_CATEGORY_SLUGS;
   const categoriesToBuild = targetCategories || defaultCategories;
+
+  console.log(`[AI Recommendation] Building recommendation:`, {
+    usage,
+    budget,
+    pcComponentsOnly,
+    categories: categoriesToBuild,
+    timestamp: new Date().toISOString(),
+  });
 
   const targetBudgetMap = buildTargetBudgetMap({
     budget,
@@ -99,6 +107,7 @@ export async function buildAiRecommendation(input) {
           stockQuantity: {
             gt: 0,
           },
+          status: "ACTIVE",
         },
         orderBy: [{ price: "asc" }, { createdAt: "desc" }],
         include: {
@@ -107,6 +116,8 @@ export async function buildAiRecommendation(input) {
         },
         take: 80,
       });
+
+      console.log(`[AI Recommendation] Found ${candidates.length} products in category: ${categorySlug}`);
 
       const priceList = candidates.map((item) => Number(item.price));
       const minPrice = priceList.length > 0 ? Math.min(...priceList) : 0;
@@ -249,7 +260,8 @@ export async function buildAiRecommendation(input) {
     .filter(Boolean);
 
   const categoryAnalysis = productsByCategory.map((group) => {
-    const selected = group.selected;
+    const index = selectedIndexByCategory.get(group.categorySlug);
+    const selected = Number.isInteger(index) ? group.products[index] : null;
     const selectedPrice = Number(selected?.price ?? 0);
     const budgetFitPercent =
       group.categoryBudget > 0
@@ -309,7 +321,7 @@ export async function buildAiRecommendation(input) {
     products: group.products,
   }));
 
-  return serializeData({
+  const result = serializeData({
     items,
     summary:
       items.length > 0
@@ -326,7 +338,18 @@ export async function buildAiRecommendation(input) {
     fullCatalog,
     staysWithinBudget: totalPrice <= budget,
     allowUsed: Boolean(input.allowUsed),
+    dataSource: "DATABASE",
+    generatedAt: new Date().toISOString(),
   });
+
+  console.log(`[AI Recommendation] Completed recommendation:`, {
+    itemsCount: items.length,
+    totalPrice,
+    dataSource: "DATABASE",
+    timestamp: new Date().toISOString(),
+  });
+
+  return result;
 }
 
 export async function generateAiChatReply(input, userId = null) {
@@ -367,13 +390,30 @@ export async function generateAiChatReply(input, userId = null) {
     content: settings.systemPrompt
   };
 
+  const productContext = await buildProductContextForMessage(message);
+  const contextualUserMessage = productContext.contextText
+    ? `${productContext.contextText}\n\n[Yêu cầu của người dùng]\n${message}`
+    : message;
+
+  const contextInstructionMessage = productContext.contextText
+    ? {
+        role: "system",
+        content: [
+          "Bạn phải dùng dữ liệu ngữ cảnh từ Database để tư vấn sản phẩm.",
+          "Khi có danh sách sản phẩm liên quan, hãy so sánh 1-2 lựa chọn tốt nhất, nêu lý do cụ thể, và nhắc tên sản phẩm chính xác.",
+          "Nếu câu trả lời đề cập đến sản phẩm, hãy ưu tiên phản hồi ngắn gọn, có thông tin sản phẩm, danh mục, giá và link nếu có.",
+        ].join(" "),
+      }
+    : null;
+
   const messages = [
     systemMessage,
+    ...(contextInstructionMessage ? [contextInstructionMessage] : []),
     ...history.map((msg) => ({
       role: msg.role === "user" ? "user" : "assistant",
       content: String(msg.content ?? ""),
     })),
-    { role: "user", content: message },
+    { role: "user", content: contextualUserMessage },
   ];
 
     try {
@@ -445,6 +485,9 @@ export async function generateAiChatReply(input, userId = null) {
       const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
       const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
   
+      // Extract mentioned product names from the reply
+      const mentionedProducts = await extractAndFindMentionedProducts(reply);
+  
       // Save log asynchronously
       prisma.aiRequestLog.create({
         data: {
@@ -462,6 +505,8 @@ export async function generateAiChatReply(input, userId = null) {
   
       return serializeData({
         reply,
+        mentionedProducts: mentionedProducts || [],
+        relatedProducts: productContext.relatedProducts || [],
       });
   } catch (error) {
     if (error.message.includes("quota exceeded")) {
@@ -469,6 +514,262 @@ export async function generateAiChatReply(input, userId = null) {
     }
     throw new Error(`Lỗi kết nối AI: ${error.message}`);
   }
+}
+
+// Helper function to extract and find product mentions
+async function extractAndFindMentionedProducts(reply) {
+  try {
+    // Common product name patterns - extract words that might be product names
+    // Look for words after common keywords like "chip", "CPU", "GPU", "SSD", "RAM", etc.
+    const productKeywords = /(Core i\d|Ryzen \d|RTX \d|RX \d|Samsung|Kingston|Corsair|ASUS|Gigabyte|MSI)/gi;
+    const matches = reply.match(productKeywords);
+    
+    if (!matches || matches.length === 0) {
+      return [];
+    }
+
+    // Get unique product names
+    const uniqueNames = [...new Set(matches)];
+    
+    // Search for these products in database
+    const products = await Promise.all(
+      uniqueNames.map(async (name) => {
+        try {
+          const product = await prisma.product.findFirst({
+            where: {
+              OR: [
+                { name: { contains: name, mode: "insensitive" } },
+                { slug: { contains: name.toLowerCase().replace(/\s+/g, "-"), mode: "insensitive" } },
+              ],
+              status: "ACTIVE",
+              stockQuantity: { gt: 0 },
+            },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              price: true,
+              salePrice: true,
+              brand: true,
+              category: { select: { name: true, slug: true } },
+            },
+          });
+          
+          return product ? {
+            ...product,
+            productUrl: `/components/${product.slug}`,
+            displayPrice: product.salePrice || product.price,
+          } : null;
+        } catch (err) {
+          console.error(`Error finding product "${name}":`, err);
+          return null;
+        }
+      })
+    );
+
+    // Filter out null values and return
+    return products.filter(Boolean).slice(0, 3); // Limit to 3 products
+  } catch (error) {
+    console.error("Error extracting mentioned products:", error);
+    return [];
+  }
+}
+
+async function buildProductContextForMessage(message) {
+  const normalizedMessage = normalizeSearchText(message);
+  if (!normalizedMessage) {
+    return { contextText: "", relatedProducts: [] };
+  }
+
+  const keywords = extractProductKeywords(normalizedMessage);
+  const fallbackTerms = keywords.length > 0
+    ? keywords
+    : normalizedMessage.split(" ").filter((word) => word.length >= 4).slice(0, 5);
+  const searchTerms = [...new Set(fallbackTerms)].slice(0, 5);
+
+  if (searchTerms.length === 0) {
+    return { contextText: "", relatedProducts: [] };
+  }
+
+  const categorySlugs = [...new Set(searchTerms.map((term) => mapTermToCategorySlug(term)).filter(Boolean))];
+  const categories = categorySlugs.length > 0
+    ? await prisma.category.findMany({
+        where: {
+          slug: { in: categorySlugs },
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      })
+    : [];
+  const categoryIds = categories.map((category) => category.id);
+
+  const products = await prisma.product.findMany({
+    where: {
+      status: "ACTIVE",
+      stockQuantity: { gt: 0 },
+      OR: [
+        ...searchTerms.map((term) => ({ name: { contains: term } })),
+        ...searchTerms.map((term) => ({ slug: { contains: term.replace(/\s+/g, "-") } })),
+        ...(categoryIds.length > 0 ? [{ categoryId: { in: categoryIds } }] : []),
+      ],
+    },
+    include: {
+      category: true,
+      supplier: true,
+    },
+    orderBy: [
+      { salePrice: "asc" },
+      { price: "asc" },
+      { createdAt: "desc" },
+    ],
+    take: 5,
+  });
+
+  const relatedProducts = products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    category: product.category?.name ?? null,
+    categorySlug: product.category?.slug ?? null,
+    price: Number(product.salePrice ?? product.price ?? 0),
+    brand: product.supplier?.name || extractBrand(product.specifications) || null,
+    productUrl: `/components/${product.slug}`,
+  }));
+
+  if (relatedProducts.length === 0) {
+    return { contextText: "", relatedProducts: [] };
+  }
+
+  const productLines = relatedProducts.map((product, index) => {
+    const purpose = buildProductPurpose(product.categorySlug, product.category);
+    const features = buildProductFeatureSummary(product);
+    return `${index + 1}. Sản phẩm ${String.fromCharCode(65 + index)}: {Tên: "${product.name}", Danh mục: "${product.category ?? ""}", Mục đích phù hợp: "${purpose}", Đặc điểm: "${features}", Giá: "${new Intl.NumberFormat("vi-VN").format(product.price)} VND", Link: "${product.productUrl}"}`;
+  });
+
+  const contextText = [
+    "[Dữ liệu ngữ cảnh từ Database hiện tại]",
+    "Danh sách các sản phẩm có thể liên quan:",
+    ...productLines,
+  ].join("\n");
+
+  return { contextText, relatedProducts };
+}
+
+function mapTermToCategorySlug(term) {
+  const normalized = String(term ?? "").trim().toLowerCase();
+  const map = {
+    cpu: "cpu",
+    processor: "cpu",
+    ryzen: "cpu",
+    intel: "cpu",
+    vga: "vga",
+    gpu: "vga",
+    "card do hoa": "vga",
+    "card đồ họa": "vga",
+    ram: "ram",
+    memory: "ram",
+    ssd: "ssd",
+    hdd: "hdd",
+    storage: "ssd",
+    "o cung": "ssd",
+    "ổ cứng": "ssd",
+    mainboard: "mainboard",
+    motherboard: "mainboard",
+    main: "mainboard",
+    psu: "psu",
+    nguon: "psu",
+    "nguồn": "psu",
+    case: "case",
+    vo: "case",
+    "vỏ": "case",
+    cooling: "cooling",
+    "tan nhiet": "cooling",
+    "tản nhiệt": "cooling",
+    monitor: "monitor",
+    "man hinh": "monitor",
+    "màn hình": "monitor",
+    mouse: "mouse",
+    chuot: "mouse",
+    "chuột": "mouse",
+    keyboard: "keyboard",
+    "ban phim": "keyboard",
+    "bàn phím": "keyboard",
+    headset: "headset",
+    "tai nghe": "headset",
+  };
+
+  return map[normalized] || null;
+}
+
+function normalizeSearchText(input) {
+  return String(input ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractProductKeywords(message) {
+  const keywords = [];
+  const patterns = [
+    /\b(cpu|processor|ryzen|core i\d|intel)\b/g,
+    /\b(vga|gpu|rtx|rx|card do hoa|card đồ họa)\b/g,
+    /\b(ram|memory|ddr[345])\b/g,
+    /\b(ssd|hdd|storage|o cung|ổ cứng)\b/g,
+    /\b(mainboard|motherboard|main)\b/g,
+    /\b(psu|nguon|nguồn)\b/g,
+    /\b(case|vo|vỏ)\b/g,
+    /\b(cooling|tan nhiet|tản nhiệt|fan)\b/g,
+    /\b(monitor|man hinh|màn hình)\b/g,
+    /\b(mouse|chuot|chuột|keyboard|ban phim|bàn phím|headset|tai nghe)\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    const matches = message.match(pattern);
+    if (matches) {
+      keywords.push(...matches);
+    }
+  }
+
+  return [...new Set(keywords.map((item) => item.trim()).filter(Boolean))];
+}
+
+function buildProductPurpose(categorySlug, categoryName) {
+  const normalized = String(categorySlug ?? categoryName ?? "").toLowerCase();
+
+  if (normalized.includes("cpu")) return "Xử lý tác vụ chính, gaming, làm việc đa nhiệm";
+  if (normalized.includes("vga") || normalized.includes("gpu")) return "Tăng hiệu năng đồ họa, chơi game, render";
+  if (normalized.includes("ram")) return "Hỗ trợ đa nhiệm và tăng độ mượt hệ thống";
+  if (normalized.includes("ssd") || normalized.includes("hdd") || normalized.includes("storage")) return "Lưu trữ dữ liệu, tăng tốc khởi động và tải ứng dụng";
+  if (normalized.includes("mainboard") || normalized.includes("motherboard")) return "Kết nối và tương thích toàn hệ thống";
+  if (normalized.includes("psu") || normalized.includes("nguon") || normalized.includes("nguồn")) return "Cung cấp điện ổn định cho toàn bộ cấu hình";
+  if (normalized.includes("case")) return "Bảo vệ linh kiện, tối ưu không gian và luồng gió";
+  if (normalized.includes("cooling")) return "Giữ nhiệt độ ổn định, tăng độ bền và hiệu năng";
+  if (normalized.includes("monitor")) return "Hiển thị hình ảnh cho gaming, làm việc và giải trí";
+  if (normalized.includes("mouse")) return "Điều khiển chính xác khi thao tác và chơi game";
+  if (normalized.includes("keyboard")) return "Nhập liệu, thao tác nhanh và hỗ trợ công việc";
+  if (normalized.includes("headset")) return "Nghe rõ âm thanh, gọi họp, chơi game, giải trí";
+  return `Phù hợp với nhu cầu sử dụng liên quan đến ${categoryName || categorySlug || "sản phẩm"}`;
+}
+
+function buildProductFeatureSummary(product) {
+  const features = [];
+  if (product.brand) {
+    features.push(`Hãng ${product.brand}`);
+  }
+  if (product.category) {
+    features.push(`Danh mục ${product.category}`);
+  }
+  if (Number.isFinite(product.price)) {
+    features.push(`Giá hiện tại ${new Intl.NumberFormat("vi-VN").format(product.price)} VND`);
+  }
+  return features.join(", ");
 }
 
 function normalizeUsage(value) {

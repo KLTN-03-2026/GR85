@@ -67,21 +67,21 @@ export default function AIRecommendPage() {
   const [recommendationData, setRecommendationData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isAddingCombo, setIsAddingCombo] = useState(false);
-  
+
   // ===== CÁC TÍNH NĂNG MỚI =====
   // 1. Chỉ linh kiện PC (không bao gồm gear)
   const [pcComponentsOnly, setPcComponentsOnly] = useState(true);
-  
+
   // 2. Lưu cấu hình & so sánh
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [currentConfigName, setCurrentConfigName] = useState("");
   const [showSaveConfig, setShowSaveConfig] = useState(false);
   const [showCompareMode, setShowCompareMode] = useState(false);
   const [compareConfigs, setCompareConfigs] = useState([]);
-  
+
   // 3. Ngôn ngữ & định dạng tên
   const [showProductImages, setShowProductImages] = useState(true);
-  
+
   const [aiReview, setAiReview] = useState("");
   const [isFetchingAiReview, setIsFetchingAiReview] = useState(false);
 
@@ -103,10 +103,10 @@ export default function AIRecommendPage() {
 
     try {
       // Chuẩn bị message với context cấu hình hiện tại
-      const configContext = recommendationData ? 
+      const configContext = recommendationData ?
         `\n\n[Cấu hình hiện tại: ${displayItems.map(c => `${c.category}: ${c.name}`).join(', ')}]` : '';
-      
-      const enhancedMessage = chatMode === "web" 
+
+      const enhancedMessage = chatMode === "web"
         ? `(Chỉ tư vấn sản phẩm có trên web) ${question}${configContext}`
         : question + configContext;
 
@@ -115,9 +115,19 @@ export default function AIRecommendPage() {
         history: chatMessages,
       });
 
+      console.log("[Chat] AI response:", {
+        replyLength: response?.reply?.length,
+        mentionedProductsCount: response?.mentionedProducts?.length,
+      });
+
       setChatMessages((prev) => [
         ...prev,
-        { role: "assistant", content: response?.reply || "Xin lỗi, tôi không thể xử lý yêu cầu." },
+        {
+          role: "assistant",
+          content: response?.reply || "Xin lỗi, tôi không thể xử lý yêu cầu.",
+          mentionedProducts: response?.mentionedProducts || [],
+          relatedProducts: response?.relatedProducts || [],
+        },
       ]);
     } catch (error) {
       setChatMessages((prev) => [
@@ -161,14 +171,38 @@ export default function AIRecommendPage() {
     setErrorMessage("");
 
     try {
+      console.log("[AIRecommendPage] Fetching recommendation from backend...", {
+        budget,
+        usage,
+        buildMode,
+        targetCategories,
+        pcComponentsOnly,
+        timestamp: new Date().toISOString(),
+      });
+
       const response = await requestAiBuildRecommendation({
         budget,
         usage,
         targetCategories: buildMode === "partial" ? targetCategories : null,
         preferredBrands,
         allowUsed,
-        pcComponentsOnly, // Thêm tham số mới
+        pcComponentsOnly,
       });
+
+      console.log("[AIRecommendPage] Received recommendation response:", {
+        itemsCount: response?.items?.length,
+        dataSource: response?.dataSource,
+        generatedAt: response?.generatedAt,
+        totalPrice: response?.totalPrice,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Verify data is from database (not cached/hardcoded)
+      if (response?.dataSource !== "DATABASE") {
+        console.warn("[AIRecommendPage] Lỗi: Dữ liệu không được lấy từ cơ sở dữ liệu", {
+          dataSource: response?.dataSource,
+        });
+      }
 
       setRecommendationData(response);
       setAiReview(""); // Reset AI review when generating new build
@@ -179,6 +213,7 @@ export default function AIRecommendPage() {
           ? error.message
           : "Không thể gửi yêu cầu AI tới backend",
       );
+      console.error("[AIRecommendPage] Lỗi khi tạo khuyến nghị:", error);
     } finally {
       setIsLoading(false);
     }
@@ -189,18 +224,18 @@ export default function AIRecommendPage() {
   const isSingleModeResult = buildMode === "partial" && targetCategories.length === 1 && Boolean(recommendationData && recommendationData.categoryAnalysis?.length === 1);
   const displayItems = isSingleModeResult
     ? (recommendationData?.fullCatalog?.[0]?.products || []).slice(0, 5).map(p => ({
-        ...p,
-        category: recommendationData.categoryAnalysis[0].category,
-        categorySlug: recommendationData.categoryAnalysis[0].categorySlug,
-      }))
+      ...p,
+      category: recommendationData.categoryAnalysis[0].category,
+      categorySlug: recommendationData.categoryAnalysis[0].categorySlug,
+    }))
     : recommendationData?.items ?? [];
 
   const totalPrice = isSingleModeResult
     ? 0 // Không tính tổng giá trong chế độ single vì đang hiển thị các lựa chọn độc lập
     : displayItems.reduce((sum, c) => {
-        const price = allowUsed && c.usedPrice ? c.usedPrice : c.price;
-        return sum + price;
-      }, 0) || Number(recommendationData?.totalPrice ?? 0);
+      const price = allowUsed && c.usedPrice ? c.usedPrice : c.price;
+      return sum + price;
+    }, 0) || Number(recommendationData?.totalPrice ?? 0);
 
   const categoryIcons = {
     cpu: Cpu,
@@ -248,13 +283,13 @@ export default function AIRecommendPage() {
 
   const fetchAiReviewForBuild = async () => {
     if (!displayItems || displayItems.length === 0) return;
-    
+
     setIsFetchingAiReview(true);
     try {
       const componentsList = displayItems.map(c => `- ${c.category}: ${c.name}`).join('\n');
       const usageName = usageTypes.find((u) => u.id === usage)?.name || usage;
       const message = `Tôi vừa build cấu hình máy tính (nhu cầu ${usageName}) gồm:\n${componentsList}\n\nHãy phân tích chuyên sâu như một chuyên gia:\n1. Khả năng (Làm được gì cực tốt, chơi game gì max setting)?\n2. Hạn chế (Không nên dùng để làm gì, thắt cổ chai ở đâu)?\n3. Lời khuyên để tối ưu hóa hiệu năng và độ bền?`;
-      
+
       const response = await requestAiAdvisorChat({ message });
       setAiReview(response.reply);
     } catch (error) {
@@ -267,7 +302,7 @@ export default function AIRecommendPage() {
   // ===== HÀM LƯU CẤU HÌNH =====
   const saveCurrentConfig = () => {
     if (!currentConfigName.trim() || !recommendationData) return;
-    
+
     const newConfig = {
       id: Date.now(),
       name: currentConfigName,
@@ -278,7 +313,7 @@ export default function AIRecommendPage() {
       createdAt: new Date().toISOString(),
       pcComponentsOnly,
     };
-    
+
     setSavedConfigs([...savedConfigs, newConfig]);
     setCurrentConfigName("");
     setShowSaveConfig(false);
@@ -325,165 +360,165 @@ export default function AIRecommendPage() {
             {/* Left - Form */}
             <div className="lg:col-span-4 xl:col-span-3 sticky top-24 z-10">
               <Card className="glass border-primary/20 p-5 max-h-[calc(100vh-120px)] overflow-y-auto custom-scrollbar">
-              <h2 className="font-display text-xl font-bold mb-6">
-                Yêu cầu của bạn
-              </h2>
+                <h2 className="font-display text-xl font-bold mb-6">
+                  Yêu cầu của bạn
+                </h2>
 
-              <Tabs defaultValue="full" className="w-full mb-6" onValueChange={setBuildMode}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="full">Cả dàn PC</TabsTrigger>
-                  <TabsTrigger value="partial">Từng linh kiện</TabsTrigger>
-                </TabsList>
-              </Tabs>
+                <Tabs defaultValue="full" className="w-full mb-6" onValueChange={setBuildMode}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="full">Cả dàn PC</TabsTrigger>
+                    <TabsTrigger value="partial">Từng linh kiện</TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
-              <div className="space-y-6">
-                {buildMode === "partial" && (
+                <div className="space-y-6">
+                  {buildMode === "partial" && (
+                    <div className="space-y-4">
+                      <Label className="text-base">Các loại linh kiện muốn tìm</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: "cpu", label: "CPU" },
+                          { id: "vga", label: "VGA" },
+                          { id: "mainboard", label: "Mainboard" },
+                          { id: "ram", label: "RAM" },
+                          { id: "ssd", label: "SSD" },
+                          { id: "psu", label: "Nguồn" },
+                          { id: "case", label: "Vỏ Case" },
+                          { id: "cooling", label: "Tản nhiệt" },
+                          { id: "monitor", label: "Màn hình" },
+                          { id: "mouse", label: "Chuột" },
+                          { id: "keyboard", label: "Bàn phím" },
+                          { id: "headset", label: "Tai nghe" },
+                        ].map((cat) => (
+                          <Badge
+                            key={cat.id}
+                            variant={targetCategories.includes(cat.id) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => toggleTargetCategory(cat.id)}
+                          >
+                            {cat.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Budget */}
                   <div className="space-y-4">
-                    <Label className="text-base">Các loại linh kiện muốn tìm</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { id: "cpu", label: "CPU" },
-                        { id: "vga", label: "VGA" },
-                        { id: "mainboard", label: "Mainboard" },
-                        { id: "ram", label: "RAM" },
-                        { id: "ssd", label: "SSD" },
-                        { id: "psu", label: "Nguồn" },
-                        { id: "case", label: "Vỏ Case" },
-                        { id: "cooling", label: "Tản nhiệt" },
-                        { id: "monitor", label: "Màn hình" },
-                        { id: "mouse", label: "Chuột" },
-                        { id: "keyboard", label: "Bàn phím" },
-                        { id: "headset", label: "Tai nghe" },
-                      ].map((cat) => (
-                        <Badge
-                          key={cat.id}
-                          variant={targetCategories.includes(cat.id) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => toggleTargetCategory(cat.id)}
+                    <Label className="text-base">Ngân sách</Label>
+                    <div className="text-3xl font-bold text-gradient-primary">
+                      {formatPrice(budget)}
+                    </div>
+                    <Slider
+                      value={[budget]}
+                      onValueChange={(v) => setBudget(v[0])}
+                      min={buildMode === "partial" ? 500000 : 10000000}
+                      max={buildMode === "partial" ? 30000000 : 100000000}
+                      step={buildMode === "partial" ? 500000 : 10000000}
+                    />
+
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{buildMode === "partial" ? "500k" : "10 triệu"}</span>
+                      <span>{buildMode === "partial" ? "30 triệu" : "100 triệu"}</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Usage */}
+                  <div className="space-y-3">
+                    <Label className="text-base">Mục đích sử dụng</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {usageTypes.map((type) => (
+                        <button
+                          key={type.id}
+                          onClick={() => setUsage(type.id)}
+                          className={`p-3 rounded-lg border text-left transition-all ${usage === type.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border/50 hover:border-primary/50"
+                            }`}
                         >
-                          {cat.label}
+                          <p className="font-medium text-sm">{type.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {type.description}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Preferred Brands */}
+                  <div className="space-y-3">
+                    <Label className="text-base">Hãng yêu thích (tùy chọn)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {brands.slice(0, 8).map((brand) => (
+                        <Badge
+                          key={brand}
+                          variant={
+                            preferredBrands.includes(brand)
+                              ? "default"
+                              : "outline"
+                          }
+                          className="cursor-pointer"
+                          onClick={() => toggleBrand(brand)}
+                        >
+                          {brand}
                         </Badge>
                       ))}
                     </div>
                   </div>
-                )}
 
-                {/* Budget */}
-                <div className="space-y-4">
-                  <Label className="text-base">Ngân sách</Label>
-                  <div className="text-3xl font-bold text-gradient-primary">
-                    {formatPrice(budget)}
+                  <Separator />
+
+                  {/* PC Components Only */}
+                  <div className="flex items-center justify-between">
+                    <Label>Chỉ linh kiện PC (không gear)</Label>
+                    <Switch checked={pcComponentsOnly} onCheckedChange={setPcComponentsOnly} />
                   </div>
-                  <Slider
-                    value={[budget]}
-                    onValueChange={(v) => setBudget(v[0])}
-                    min={buildMode === "partial" ? 500000 : 10000000}
-                    max={buildMode === "partial" ? 30000000 : 100000000}
-                    step={buildMode === "partial" ? 500000 : 10000000}
-                  />
 
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{buildMode === "partial" ? "500k" : "10 triệu"}</span>
-                    <span>{buildMode === "partial" ? "30 triệu" : "100 triệu"}</span>
+                  {/* Allow Used */}
+                  <div className="flex items-center justify-between">
+                    <Label>Cho phép đồ cũ</Label>
+                    <Switch checked={allowUsed} onCheckedChange={setAllowUsed} />
                   </div>
-                </div>
 
-                <Separator />
-
-                {/* Usage */}
-                <div className="space-y-3">
-                  <Label className="text-base">Mục đích sử dụng</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {usageTypes.map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => setUsage(type.id)}
-                        className={`p-3 rounded-lg border text-left transition-all ${usage === type.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border/50 hover:border-primary/50"
-                          }`}
-                      >
-                        <p className="font-medium text-sm">{type.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {type.description}
-                        </p>
-                      </button>
-                    ))}
+                  {/* Chat Mode */}
+                  <div className="space-y-2">
+                    <Label className="text-base">Chế độ tư vấn</Label>
+                    <select
+                      value={chatMode}
+                      onChange={(e) => setChatMode(e.target.value)}
+                      className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
+                    >
+                      <option value="web">Chỉ sản phẩm của web</option>
+                      <option value="unrestricted">Toàn bộ thị trường</option>
+                    </select>
                   </div>
-                </div>
 
-                <Separator />
-
-                {/* Preferred Brands */}
-                <div className="space-y-3">
-                  <Label className="text-base">Hãng yêu thích (tùy chọn)</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {brands.slice(0, 8).map((brand) => (
-                      <Badge
-                        key={brand}
-                        variant={
-                          preferredBrands.includes(brand)
-                            ? "default"
-                            : "outline"
-                        }
-                        className="cursor-pointer"
-                        onClick={() => toggleBrand(brand)}
-                      >
-                        {brand}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* PC Components Only */}
-                <div className="flex items-center justify-between">
-                  <Label>Chỉ linh kiện PC (không gear)</Label>
-                  <Switch checked={pcComponentsOnly} onCheckedChange={setPcComponentsOnly} />
-                </div>
-
-                {/* Allow Used */}
-                <div className="flex items-center justify-between">
-                  <Label>Cho phép đồ cũ</Label>
-                  <Switch checked={allowUsed} onCheckedChange={setAllowUsed} />
-                </div>
-
-                {/* Chat Mode */}
-                <div className="space-y-2">
-                  <Label className="text-base">Chế độ tư vấn</Label>
-                  <select 
-                    value={chatMode} 
-                    onChange={(e) => setChatMode(e.target.value)}
-                    className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
+                  {/* Generate Button */}
+                  <Button
+                    variant="hero"
+                    className="w-full gap-2"
+                    onClick={generateRecommendation}
+                    disabled={isLoading}
                   >
-                    <option value="web">Chỉ sản phẩm của web</option>
-                    <option value="unrestricted">Toàn bộ thị trường</option>
-                  </select>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Đang phân tích...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Gợi ý cấu hình
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
                 </div>
-
-                {/* Generate Button */}
-                <Button
-                  variant="hero"
-                  className="w-full gap-2"
-                  onClick={generateRecommendation}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Đang phân tích...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      Gợi ý cấu hình
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </Card>
+              </Card>
             </div>
 
             {/* Middle - Results */}
@@ -512,13 +547,26 @@ export default function AIRecommendPage() {
                   <Card className="glass border-primary/20 p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-display text-xl font-bold mb-1">
-                          Cấu hình được gợi ý
-                        </h3>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-display text-xl font-bold">
+                            Cấu hình được gợi ý
+                          </h3>
+                          {recommendationData?.dataSource === "DATABASE" && (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-xs">
+                              <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                              <span className="text-emerald-700 font-medium">Dữ liệu từ Database</span>
+                            </div>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground">
                           {isSingleModeResult ? displayItems.length : displayItems.length} linh kiện • Tối ưu cho{" "}
                           {usageTypes.find((u) => u.id === usage)?.name}
                         </p>
+                        {recommendationData?.generatedAt && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Được tạo: {new Date(recommendationData.generatedAt).toLocaleString("vi-VN")}
+                          </p>
+                        )}
                         {recommendationData?.summary && (
                           <p className="text-sm text-muted-foreground mt-2">
                             {recommendationData.summary}
@@ -574,7 +622,7 @@ export default function AIRecommendPage() {
                         {showSaveConfig && (
                           <Card className="bg-blue-50 border-blue-200 p-4">
                             <div className="flex gap-2">
-                              <input 
+                              <input
                                 type="text"
                                 placeholder="Tên cấu hình (VD: Gaming High-End)"
                                 value={currentConfigName}
@@ -609,7 +657,7 @@ export default function AIRecommendPage() {
                             <div className="space-y-2 max-h-40 overflow-y-auto">
                               {savedConfigs.map(config => (
                                 <label key={config.id} className="flex items-center gap-2 cursor-pointer">
-                                  <input 
+                                  <input
                                     type="checkbox"
                                     checked={compareConfigs.includes(config.id)}
                                     onChange={() => toggleConfigForComparison(config.id)}
@@ -658,15 +706,15 @@ export default function AIRecommendPage() {
                             <p className="text-xs text-muted-foreground">Phân tích đa chiều về hiệu năng và trải nghiệm</p>
                           </div>
                         </div>
-                        
+
                         {aiReview ? (
                           <div className="text-sm space-y-3 whitespace-pre-wrap leading-relaxed text-slate-700 bg-white/60 p-4 rounded-xl border border-white/40">
                             {aiReview}
                           </div>
                         ) : (
                           <div className="py-4">
-                            <Button 
-                              onClick={fetchAiReviewForBuild} 
+                            <Button
+                              onClick={fetchAiReviewForBuild}
                               disabled={isFetchingAiReview}
                               className="w-full md:w-auto bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                             >
@@ -709,9 +757,9 @@ export default function AIRecommendPage() {
                           </div>
                         </div>
                       </div>
-                      
-                      </Card>
-                    )}
+
+                    </Card>
+                  )}
 
 
 
@@ -782,9 +830,9 @@ export default function AIRecommendPage() {
                                 </p>
                                 <div className="mt-2 flex items-center gap-3">
                                   {component.slug && (
-                                    <Link 
-                                      to={`/components/${component.slug}`} 
-                                      target="_blank" 
+                                    <Link
+                                      to={`/components/${component.slug}`}
+                                      target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-xs text-primary hover:underline font-medium"
                                     >
@@ -820,79 +868,122 @@ export default function AIRecommendPage() {
             {/* Right - ChatBox Component */}
             <div className="lg:col-span-12 xl:col-span-3 sticky top-24 z-10">
               <Card className="glass border-primary/20 flex flex-col h-[calc(100vh-120px)] shadow-lg">
-                  <div className="p-4 border-b border-border/50 bg-primary/5 rounded-t-xl">
-                    <div>
-                      <h3 className="font-display text-lg font-bold flex items-center gap-2 text-primary">
-                        <Sparkles className="w-5 h-5" />
-                        Trợ lý AI
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Hỏi AI về linh kiện hoặc cấu hình.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 mt-3 bg-background/50 p-2 rounded-lg border border-border/50">
-                      <Label htmlFor="chat-mode" className="text-xs cursor-pointer">
-                        {chatMode === "web" ? "Chỉ dùng SP trên web" : "Hỏi kiến thức mở rộng"}
-                      </Label>
-                      <Switch
-                        id="chat-mode"
-                        checked={chatMode === "web"}
-                        onCheckedChange={(checked) => setChatMode(checked ? "web" : "external")}
-                      />
-                    </div>
+                <div className="p-4 border-b border-border/50 bg-primary/5 rounded-t-xl">
+                  <div>
+                    <h3 className="font-display text-lg font-bold flex items-center gap-2 text-primary">
+                      <Sparkles className="w-5 h-5" />
+                      Trợ lý AI
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Hỏi AI về linh kiện hoặc cấu hình.
+                    </p>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {chatMessages.length === 0 ? (
-                      <div className="text-center text-sm text-muted-foreground pt-10">
-                        Chưa có tin nhắn. Hãy hỏi AI về một linh kiện bạn đang quan tâm!
-                      </div>
-                    ) : (
-                      chatMessages.map((msg, idx) => (
+                  <div className="flex items-center gap-2 mt-3 bg-background/50 p-2 rounded-lg border border-border/50">
+                    <Label htmlFor="chat-mode" className="text-xs cursor-pointer">
+                      {chatMode === "web" ? "Chỉ dùng SP trên web" : "Hỏi kiến thức mở rộng"}
+                    </Label>
+                    <Switch
+                      id="chat-mode"
+                      checked={chatMode === "web"}
+                      onCheckedChange={(checked) => setChatMode(checked ? "web" : "external")}
+                    />
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center text-sm text-muted-foreground pt-10">
+                      Chưa có tin nhắn. Hãy hỏi AI về một linh kiện bạn đang quan tâm!
+                    </div>
+                  ) : (
+                    chatMessages.map((msg, idx) => (
+                      <div key={idx} className="space-y-2">
                         <div
-                          key={idx}
                           className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`max-w-[80%] rounded-xl px-4 py-2 text-sm whitespace-pre-wrap ${
-                              msg.role === "user"
+                            className={`max-w-[80%] rounded-xl px-4 py-2 text-sm whitespace-pre-wrap ${msg.role === "user"
                                 ? "bg-primary text-primary-foreground"
                                 : msg.isError
-                                ? "bg-destructive/10 text-destructive"
-                                : "bg-muted"
-                            }`}
+                                  ? "bg-destructive/10 text-destructive"
+                                  : "bg-muted"
+                              }`}
                           >
                             {msg.content}
                           </div>
                         </div>
-                      ))
-                    )}
-                    {isChatSending && (
-                      <div className="flex justify-start">
-                        <div className="bg-muted rounded-xl px-4 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" /> Đang trả lời...
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3 border-t border-border/50 bg-background/50">
-                    <div className="flex gap-2">
-                      <Input
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendChatMessage();
+
+                        {/* Display mentioned products if any */}
+                        {msg.role === "assistant" && (() => {
+                          const products = Array.isArray(msg.relatedProducts) && msg.relatedProducts.length > 0
+                            ? msg.relatedProducts
+                            : Array.isArray(msg.mentionedProducts)
+                              ? msg.mentionedProducts
+                              : [];
+
+                          if (products.length === 0) {
+                            return null;
                           }
-                        }}
-                        placeholder="VD: Core i5 12400F hay Ryzen 5 5600X chơi game tốt hơn?"
-                        className="flex-1 bg-background"
-                      />
-                      <Button onClick={handleSendChatMessage} disabled={isChatSending || !chatInput.trim()}>
-                        <ArrowRight className="w-4 h-4" />
-                      </Button>
+
+                          return (
+                            <div className="flex justify-start ml-0">
+                              <div className="max-w-[85%] space-y-2">
+                                {products.map((product) => (
+                                  <a
+                                    key={product.id}
+                                    href={product.productUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 hover:bg-primary/10 transition-colors"
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium text-primary uppercase">{product.category}</p>
+                                      <p className="font-semibold text-sm line-clamp-1 text-foreground">{product.name}</p>
+                                      <p className="text-xs text-muted-foreground">{product.brand}</p>
+                                      <p className="text-sm font-bold text-primary mt-1">
+                                        {formatPrice(product.price)}
+                                      </p>
+                                    </div>
+                                    <div className="flex-shrink-0 flex items-center">
+                                      <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ))
+                  )}
+                  {isChatSending && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-xl px-4 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Đang trả lời...
+                      </div>
                     </div>
+                  )}
+                </div>
+                <div className="p-3 border-t border-border/50 bg-background/50">
+                  <div className="flex gap-2">
+                    <Input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendChatMessage();
+                        }
+                      }}
+                      placeholder="VD: Core i5 12400F hay Ryzen 5 5600X chơi game tốt hơn?"
+                      className="flex-1 bg-background"
+                    />
+                    <Button onClick={handleSendChatMessage} disabled={isChatSending || !chatInput.trim()}>
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
                   </div>
+                </div>
               </Card>
             </div>
           </div>
@@ -901,8 +992,8 @@ export default function AIRecommendPage() {
 
       {/* Comparison Modal */}
       {showCompareMode && compareConfigs.length >= 2 && (
-        <BuildComparisonView 
-          configs={compareConfigs.map(id => getConfigById(id)).filter(Boolean)} 
+        <BuildComparisonView
+          configs={compareConfigs.map(id => getConfigById(id)).filter(Boolean)}
           onClose={() => setShowCompareMode(false)}
         />
       )}

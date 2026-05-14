@@ -3,10 +3,22 @@ const ADVISOR_ASK_ENDPOINT = "/api/ai/ask";
 const ADVISOR_CHAT_ENDPOINT = "/api/ai/chat-build";
 
 export async function requestAiBuildRecommendation(input) {
+  console.log("[API] Requesting recommendation build with params:", {
+    budget: input?.budget,
+    usage: input?.usage,
+    pcComponentsOnly: input?.pcComponentsOnly,
+    targetCategories: input?.targetCategories,
+    timestamp: new Date().toISOString(),
+  });
+
   const response = await fetch(API_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      // Prevent caching
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
     },
     body: JSON.stringify({
       budget: Number(input?.budget ?? 0),
@@ -16,11 +28,18 @@ export async function requestAiBuildRecommendation(input) {
         ? input.preferredBrands.map((brand) => String(brand))
         : [],
       allowUsed: Boolean(input?.allowUsed),
-      pcComponentsOnly: Boolean(input?.pcComponentsOnly), // Thêm tham số mới
+      pcComponentsOnly: Boolean(input?.pcComponentsOnly),
     }),
   });
 
   const payload = await response.json().catch(() => ({}));
+
+  console.log("[API] Response received:", {
+    status: response.status,
+    dataSource: payload?.dataSource,
+    generatedAt: payload?.generatedAt,
+    itemsCount: payload?.items?.length,
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -52,7 +71,7 @@ export async function requestAiBuildRecommendation(input) {
     ? payload.fullCatalog.map(normalizeCatalogCategory).filter(Boolean)
     : [];
 
-  return {
+  const result = {
     items,
     summary,
     budget: normalizeNumber(payload?.budget),
@@ -64,7 +83,18 @@ export async function requestAiBuildRecommendation(input) {
     weaknesses,
     recommendations,
     fullCatalog,
+    dataSource: payload?.dataSource || "UNKNOWN",
+    generatedAt: payload?.generatedAt || new Date().toISOString(),
   };
+
+  console.log("[API] Processed recommendation:", {
+    itemsCount: result.items.length,
+    totalPrice: result.totalPrice,
+    dataSource: result.dataSource,
+    generatedAt: result.generatedAt,
+  });
+
+  return result;
 }
 
 export async function requestAiAdvisorRecommendation({ question, scope = "BOTH" }) {
@@ -88,10 +118,17 @@ export async function requestAiAdvisorRecommendation({ question, scope = "BOTH" 
 }
 
 export async function requestAiAdvisorChat({ message, history = [], scope = "BOTH" }) {
+  console.log("[Chat API] Sending message:", {
+    messageLength: message.length,
+    historyLength: history.length,
+    timestamp: new Date().toISOString(),
+  });
+
   const response = await fetch("/api/ai/advisor/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
       Authorization: `Bearer ${localStorage.getItem("pc-perfect-token")}`,
     },
     body: JSON.stringify({
@@ -107,11 +144,48 @@ export async function requestAiAdvisorChat({ message, history = [], scope = "BOT
   });
 
   const payload = await response.json().catch(() => ({}));
+  
+  console.log("[Chat API] Response received:", {
+    hasReply: !!payload?.reply,
+    productCount: Array.isArray(payload?.mentionedProducts) ? payload.mentionedProducts.length : 0,
+    relatedProductCount: Array.isArray(payload?.relatedProducts) ? payload.relatedProducts.length : 0,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!response.ok) {
     throw new Error(payload?.message || "Không thể chat với AI");
   }
 
-  return payload;
+  // Process mentioned products
+  const mentionedProducts = Array.isArray(payload?.mentionedProducts)
+    ? payload.mentionedProducts.map(p => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        price: p.displayPrice || p.price,
+        brand: p.brand || "Unknown",
+        category: p.category?.name || "Unknown",
+        productUrl: p.productUrl || `/components/${p.slug}`,
+      }))
+    : [];
+
+  const relatedProducts = Array.isArray(payload?.relatedProducts)
+    ? payload.relatedProducts.map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        price: p.price,
+        brand: p.brand || "Unknown",
+        category: p.category || "Unknown",
+        productUrl: p.productUrl || `/components/${p.slug}`,
+      }))
+    : [];
+
+  return {
+    reply: payload?.reply || "Xin lỗi, tôi không thể xử lý yêu cầu.",
+    mentionedProducts,
+    relatedProducts,
+  };
 }
 
 export async function fetchAiAdvisorHistory() {

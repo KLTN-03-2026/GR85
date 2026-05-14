@@ -17,6 +17,7 @@ const recommendSchema = z.object({
   targetCategories: z.array(z.string()).optional().nullable(),
   preferredBrands: z.array(z.string()).optional().default([]),
   allowUsed: z.boolean().optional().default(false),
+  pcComponentsOnly: z.boolean().optional().default(true),
 });
 
 const chatSchema = z.object({
@@ -51,7 +52,21 @@ async function ensureAiEnabled(req, res, next) {
 router.post("/recommend-build", optionalAuth, ensureAiEnabled, async (req, res) => {
   try {
     const payload = recommendSchema.parse(req.body);
+    console.log(`[API /recommend-build] Incoming request:`, {
+      budget: payload.budget,
+      usage: payload.usage,
+      pcComponentsOnly: payload.pcComponentsOnly,
+      targetCategories: payload.targetCategories,
+      timestamp: new Date().toISOString(),
+    });
+
     const data = await buildAiRecommendation(payload);
+
+    console.log(`[API /recommend-build] Returning response:`, {
+      itemsCount: data?.items?.length,
+      dataSource: data?.dataSource,
+      timestamp: new Date().toISOString(),
+    });
 
     prisma.aiRequestLog
       .create({
