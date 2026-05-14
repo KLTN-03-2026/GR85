@@ -59,6 +59,7 @@ export default function AIRecommendPage() {
   const { addBuildToCart } = useCart();
   const [budget, setBudget] = useState(30000000);
   const [usage, setUsage] = useState("gaming");
+  const [customNeeds, setCustomNeeds] = useState("");
   const [buildMode, setBuildMode] = useState("full"); // "full" | "partial"
   const [targetCategories, setTargetCategories] = useState(["cpu"]);
   const [preferredBrands, setPreferredBrands] = useState([]);
@@ -174,6 +175,7 @@ export default function AIRecommendPage() {
       console.log("[AIRecommendPage] Fetching recommendation from backend...", {
         budget,
         usage,
+        customNeeds,
         buildMode,
         targetCategories,
         pcComponentsOnly,
@@ -183,6 +185,7 @@ export default function AIRecommendPage() {
       const response = await requestAiBuildRecommendation({
         budget,
         usage,
+        customNeeds,
         targetCategories: buildMode === "partial" ? targetCategories : null,
         preferredBrands,
         allowUsed,
@@ -425,7 +428,23 @@ export default function AIRecommendPage() {
 
                   <Separator />
 
-                  {/* Usage */}
+                  {/* Custom Needs */}
+                  <div className="space-y-3">
+                    <Label htmlFor="custom-needs" className="text-base">
+                      Nhu cầu tùy chỉnh
+                    </Label>
+                    <textarea
+                      id="custom-needs"
+                      value={customNeeds}
+                      onChange={(e) => setCustomNeeds(e.target.value)}
+                      placeholder=""
+                      className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      rows={4}
+                    />
+
+                  </div>
+
+                  <Separator />
                   <div className="space-y-3">
                     <Label className="text-base">Mục đích sử dụng</Label>
                     <div className="grid grid-cols-2 gap-2">
@@ -449,53 +468,6 @@ export default function AIRecommendPage() {
 
                   <Separator />
 
-                  {/* Preferred Brands */}
-                  <div className="space-y-3">
-                    <Label className="text-base">Hãng yêu thích (tùy chọn)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {brands.slice(0, 8).map((brand) => (
-                        <Badge
-                          key={brand}
-                          variant={
-                            preferredBrands.includes(brand)
-                              ? "default"
-                              : "outline"
-                          }
-                          className="cursor-pointer"
-                          onClick={() => toggleBrand(brand)}
-                        >
-                          {brand}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* PC Components Only */}
-                  <div className="flex items-center justify-between">
-                    <Label>Chỉ linh kiện PC (không gear)</Label>
-                    <Switch checked={pcComponentsOnly} onCheckedChange={setPcComponentsOnly} />
-                  </div>
-
-                  {/* Allow Used */}
-                  <div className="flex items-center justify-between">
-                    <Label>Cho phép đồ cũ</Label>
-                    <Switch checked={allowUsed} onCheckedChange={setAllowUsed} />
-                  </div>
-
-                  {/* Chat Mode */}
-                  <div className="space-y-2">
-                    <Label className="text-base">Chế độ tư vấn</Label>
-                    <select
-                      value={chatMode}
-                      onChange={(e) => setChatMode(e.target.value)}
-                      className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                    >
-                      <option value="web">Chỉ sản phẩm của web</option>
-                      <option value="unrestricted">Toàn bộ thị trường</option>
-                    </select>
-                  </div>
 
                   {/* Generate Button */}
                   <Button
@@ -532,8 +504,6 @@ export default function AIRecommendPage() {
                     Sẵn sàng gợi ý
                   </h3>
                   <p className="text-muted-foreground max-w-md mx-auto">
-                    Điền thông tin ở bên trái và nhấn "Gợi ý cấu hình" để nhận
-                    cấu hình PC tối ưu từ AI
                   </p>
                   {errorMessage && (
                     <p className="text-destructive text-sm mt-4">
@@ -567,9 +537,9 @@ export default function AIRecommendPage() {
                             Được tạo: {new Date(recommendationData.generatedAt).toLocaleString("vi-VN")}
                           </p>
                         )}
-                        {recommendationData?.summary && (
+                        {(recommendationData?.aiAnalysis || recommendationData?.summary) && (
                           <p className="text-sm text-muted-foreground mt-2">
-                            {recommendationData.summary}
+                            {recommendationData.aiAnalysis || recommendationData.summary}
                           </p>
                         )}
                       </div>
@@ -624,7 +594,7 @@ export default function AIRecommendPage() {
                             <div className="flex gap-2">
                               <input
                                 type="text"
-                                placeholder="Tên cấu hình (VD: Gaming High-End)"
+                                placeholder=""
                                 value={currentConfigName}
                                 onChange={(e) => setCurrentConfigName(e.target.value)}
                                 className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm bg-white"
@@ -912,8 +882,18 @@ export default function AIRecommendPage() {
                           </div>
                         </div>
 
-                        {/* Display mentioned products if any */}
+                        {/* Display mentioned products if any - ONLY when requested (compare/suggest) */}
                         {msg.role === "assistant" && (() => {
+                          const userMsgContent = chatMessages[idx - 1]?.content?.toLowerCase() || "";
+                          const aiMsgContent = msg.content?.toLowerCase() || "";
+                          
+                          const showKeywords = ["so sánh", "gợi ý", "khác", "lựa chọn", "tư vấn", "đối thủ", "compare", "suggest", "alternative"];
+                          const isRequested = showKeywords.some(key => userMsgContent.includes(key) || aiMsgContent.includes(key));
+
+                          if (!isRequested) {
+                            return null;
+                          }
+
                           const products = Array.isArray(msg.relatedProducts) && msg.relatedProducts.length > 0
                             ? msg.relatedProducts
                             : Array.isArray(msg.mentionedProducts)

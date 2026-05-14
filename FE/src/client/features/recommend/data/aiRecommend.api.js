@@ -6,6 +6,7 @@ export async function requestAiBuildRecommendation(input) {
   console.log("[API] Requesting recommendation build with params:", {
     budget: input?.budget,
     usage: input?.usage,
+    customNeeds: input?.customNeeds,
     pcComponentsOnly: input?.pcComponentsOnly,
     targetCategories: input?.targetCategories,
     timestamp: new Date().toISOString(),
@@ -23,6 +24,7 @@ export async function requestAiBuildRecommendation(input) {
     body: JSON.stringify({
       budget: Number(input?.budget ?? 0),
       usage: String(input?.usage ?? "general"),
+      customNeeds: String(input?.customNeeds ?? "").trim(),
       targetCategories: input?.targetCategories || null,
       preferredBrands: Array.isArray(input?.preferredBrands)
         ? input.preferredBrands.map((brand) => String(brand))
@@ -73,6 +75,7 @@ export async function requestAiBuildRecommendation(input) {
 
   const result = {
     items,
+    aiAnalysis: String(payload?.aiAnalysis ?? "").trim(),
     summary,
     budget: normalizeNumber(payload?.budget),
     usage: String(payload?.usage ?? "general"),

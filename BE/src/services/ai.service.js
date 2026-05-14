@@ -65,7 +65,21 @@ const USAGE_BUDGET_RATIO = {
 };
 
 export async function buildAiRecommendation(input) {
-  const usage = normalizeUsage(input.usage);
+  // If customNeeds provided, detect usage from it; otherwise use provided usage
+  let detectedUsage = input.usage;
+  if (String(input.customNeeds ?? "").trim().length > 0) {
+    const customNeeds = String(input.customNeeds).toLowerCase();
+    if (/render|thiet ke|workstation|edit|dung do hoa|video|3d|design/.test(customNeeds)) {
+      detectedUsage = "workstation";
+    } else if (/game|gaming|fps|esport/.test(customNeeds)) {
+      detectedUsage = "gaming";
+    }
+    console.log(`[AI Recommendation] Detected usage from customNeeds: ${detectedUsage}`, {
+      customNeeds: input.customNeeds.substring(0, 100),
+    });
+  }
+  
+  const usage = normalizeUsage(detectedUsage);
   const budget = Number(input.budget);
   const targetCategories = Array.isArray(input.targetCategories) && input.targetCategories.length > 0
     ? input.targetCategories.map((item) => String(item).trim()).filter(Boolean)
@@ -321,8 +335,22 @@ export async function buildAiRecommendation(input) {
     products: group.products,
   }));
 
+  // Generate AI analysis summary if customNeeds provided
+  let aiAnalysis = "";
+  if (String(input.customNeeds ?? "").trim().length > 0 && items.length > 0) {
+    try {
+      const itemNames = items.map(i => `${i.category}: ${i.name}`).join(", ");
+      const analysisPrompt = `Phân tích ngắn gọn (2-3 câu) tại sao cấu hình này phù hợp với nhu cầu: "${input.customNeeds}".\nCấu hình gồm: ${itemNames}.\nTổng giá: ${new Intl.NumberFormat("vi-VN").format(totalPrice)} VND.`;
+      const analysis = await generateAiChatReply({ message: analysisPrompt, history: [] }).catch(() => null);
+      aiAnalysis = analysis?.reply || "";
+    } catch (err) {
+      console.error("[AI Recommendation] Error generating AI analysis:", err);
+    }
+  }
+
   const result = serializeData({
     items,
+    aiAnalysis,
     summary:
       items.length > 0
         ? `Đã gợi ý ${items.length} linh kiện đầy đủ danh mục cho nhu cầu ${usage}. Tổng giá dự kiến ${new Intl.NumberFormat("vi-VN").format(totalPrice)} VND (không vượt ngân sách). Điểm tổng thể ${buildScore.overall}/100.`
@@ -371,8 +399,8 @@ export async function generateAiChatReply(input, userId = null) {
       isEnabled: true,
       model: defaultModel,
       temperature: 0.6,
-      maxToken: 300,
-      systemPrompt: "Trả lời 1 câu ngắn gọn nhất. Tiếng Việt. CHỈ nội dung chính. Nếu trả lời vượt 150 ký tự, sẽ bị cắt + thêm 'Hỏi thêm nếu cần chi tiết.' Thêm 🛒 để gợi ý mua TechBuildAi nếu liên quan."
+      maxToken: 500,
+      systemPrompt: "Bạn là chuyên gia tư vấn build PC. Hãy trả lời NGẮN GỌN, TRỌNG TÂM và DỄ HIỂU bằng Tiếng Việt. Tập trung vào ý chính và lựa chọn tốt nhất cho người dùng. Tránh giải thích dông dài kỹ thuật không cần thiết. Thêm 🛒 ở cuối nếu có gợi ý sản phẩm."
     };
   }
 
@@ -463,15 +491,15 @@ export async function generateAiChatReply(input, userId = null) {
     const data = await response.json();
     let reply = data.choices?.[0]?.message?.content || "Không thể trả lời.";
 
-    // Giữ ngắn gọn - cắt nếu dài quá
+    // Giữ định dạng sạch sẽ & Ngắn gọn
     reply = reply.trim();
-    if (reply.length > 150) {
-      // Tìm điểm cắt hợp lý (dấu câu hoặc khoảng trắng)
-      let cutPoint = reply.lastIndexOf(".", 150) || reply.lastIndexOf("!", 150) || reply.lastIndexOf("?", 150) || 150;
-      if (cutPoint < 80) cutPoint = 150; // Nếu quá sớm, cắt ở 150
-      reply = reply.substring(0, cutPoint) + "\n\nHỏi thêm nếu cần chi tiết.";
-    } else if (reply.length > 0 && !reply.includes("🛒")) {
-      // Trả lời ngắn, thêm CTA
+    if (reply.length > 300) {
+      let cutPoint = reply.lastIndexOf(".", 300) || reply.lastIndexOf(" ", 300) || 300;
+      reply = reply.substring(0, cutPoint) + "... (Hỏi thêm nếu cần chi tiết)";
+    }
+
+    // Thêm icon nếu cần
+    if (reply.length > 0 && !reply.includes("🛒")) {
       reply = reply + " 🛒";
     }
 

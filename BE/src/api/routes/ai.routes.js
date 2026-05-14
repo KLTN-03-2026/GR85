@@ -14,6 +14,7 @@ const router = Router();
 const recommendSchema = z.object({
   budget: z.number().positive(),
   usage: z.string().min(1),
+  customNeeds: z.string().optional().default(""),
   targetCategories: z.array(z.string()).optional().nullable(),
   preferredBrands: z.array(z.string()).optional().default([]),
   allowUsed: z.boolean().optional().default(false),
@@ -55,6 +56,7 @@ router.post("/recommend-build", optionalAuth, ensureAiEnabled, async (req, res) 
     console.log(`[API /recommend-build] Incoming request:`, {
       budget: payload.budget,
       usage: payload.usage,
+        customNeeds: payload.customNeeds,
       pcComponentsOnly: payload.pcComponentsOnly,
       targetCategories: payload.targetCategories,
       timestamp: new Date().toISOString(),
