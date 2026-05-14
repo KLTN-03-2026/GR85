@@ -1359,6 +1359,15 @@ export default function CartPage() {
                         }
 
                         setCheckoutMessage(`Đặt hàng thành công. Mã đơn #${result.orderId}`);
+                        toast({
+                          title: "Đặt hàng thành công",
+                          description: `Đơn hàng #${result.orderId} của bạn đã được tiếp nhận (COD).`,
+                        });
+                        await removeCartItemsByIds(selectedCartItemIds);
+                        // Redirect to success result page after 1.5 seconds
+                        setTimeout(() => {
+                          navigate(`/payment-result?status=success&orderId=${result.orderId}&message=dat-hang-cod-thanh-cong`);
+                        }, 1500);
                       } catch (error) {
                         setCheckoutError(error instanceof Error ? error.message : "Thanh toán thất bại");
                       }

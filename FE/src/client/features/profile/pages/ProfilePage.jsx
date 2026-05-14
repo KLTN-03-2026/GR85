@@ -100,6 +100,7 @@ export default function ProfilePage() {
   const [returnRequests, setReturnRequests] = useState([]);
   const [returnRequestsLoading, setReturnRequestsLoading] = useState(false);
   const [reorderingOrderId, setReorderingOrderId] = useState(null);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
   const [myReviews, setMyReviews] = useState([]);
   const [myReviewsLoading, setMyReviewsLoading] = useState(false);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
@@ -500,6 +501,33 @@ export default function ProfilePage() {
       });
     } finally {
       setReorderingOrderId(null);
+    }
+  }
+
+  async function handleCancelOrder(orderId) {
+    if (!window.confirm(`Bạn có chắc muốn hủy đơn hàng #${orderId}?`)) {
+      return;
+    }
+
+    try {
+      setCancellingOrderId(orderId);
+      await profileApi.cancelOrder(orderId);
+
+      setMessage({
+        type: "success",
+        text: "Đã hủy đơn hàng thành công",
+      });
+      await loadMyOrders();
+      if (selectedOrderDetail?.id === orderId) {
+        await loadOrderDetail(orderId);
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.message || "Không thể hủy đơn hàng",
+      });
+    } finally {
+      setCancellingOrderId(null);
     }
   }
 
@@ -1462,13 +1490,26 @@ export default function ProfilePage() {
                                     </Badge>
                                   </td>
                                   <td className="px-3 py-3">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => loadOrderDetail(order.id)}
-                                    >
-                                      Xem chi tiết
-                                    </Button>
+                                    <div className="flex flex-col gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => loadOrderDetail(order.id)}
+                                      >
+                                        Xem chi tiết
+                                      </Button>
+                                      {order.orderStatus === "PENDING" && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                          disabled={cancellingOrderId === order.id}
+                                          onClick={() => handleCancelOrder(order.id)}
+                                        >
+                                          Hủy đơn
+                                        </Button>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="px-3 py-3">
                                     {orderReturnRequest ? (
@@ -1578,12 +1619,25 @@ export default function ProfilePage() {
                           <p className="text-sm font-semibold text-emerald-900">
                             Hành trình đơn hàng
                           </p>
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-300 text-emerald-700"
-                          >
-                            {getTrackingHeadline(selectedOrderDetail)}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-300 text-emerald-700"
+                            >
+                              {getTrackingHeadline(selectedOrderDetail)}
+                            </Badge>
+                            {selectedOrderDetail.orderStatus === "PENDING" && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-7 px-3 text-[10px] font-bold"
+                                disabled={cancellingOrderId === selectedOrderDetail.id}
+                                onClick={() => handleCancelOrder(selectedOrderDetail.id)}
+                              >
+                                {cancellingOrderId === selectedOrderDetail.id ? "ĐANG HỦY..." : "HỦY ĐƠN"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-4">

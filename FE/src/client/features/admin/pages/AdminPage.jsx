@@ -1901,8 +1901,47 @@ export default function AdminPage() {
     }
 
     if (orderStatus === "PENDING") {
+      const paymentMethod = String(item.paymentMethod ?? "").toUpperCase();
+      
+      if (paymentMethod === "COD") {
+        return (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-amber-600 font-bold">Chờ duyệt COD</span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                disabled={updatingOrderId === item.id}
+                onClick={() => updateOrderStatus(item.id, "PROCESSING")}
+              >
+                Duyệt đơn
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={updatingOrderId === item.id}
+                onClick={() => updateOrderStatus(item.id, "CANCELLED")}
+              >
+                Hủy
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
       return (
-        <span className="text-xs text-muted-foreground">Chờ thanh toán</span>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-muted-foreground">Chờ thanh toán ({paymentMethod})</span>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={updatingOrderId === item.id}
+            onClick={() => updateOrderStatus(item.id, "CANCELLED")}
+          >
+            Hủy đơn
+          </Button>
+        </div>
       );
     }
 

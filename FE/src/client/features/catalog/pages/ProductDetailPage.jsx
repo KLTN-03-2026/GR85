@@ -3,14 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import { 
   ArrowLeft, Heart, History, Loader2, MessageSquare, Shield, 
   ShoppingCart, Star, Trophy, CheckCircle2, ChevronRight, 
-  Maximize2, Share2, Info, Box
+  Maximize2, Share2, Info, Box, Camera, X
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useFavorite } from "@/client/features/favorite/context/FavoriteContext";
+import { FavoriteProvider, useFavorite } from "@/client/features/favorite/context/FavoriteContext";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -166,6 +168,79 @@ export default function ProductDetailPage() {
     }
     return images;
   }, [product]);
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + reviewImages.length > 6) {
+      setReviewError("Tối đa 6 ảnh cho mỗi đánh giá");
+      return;
+    }
+
+    setReviewImages((prev) => [...prev, ...files]);
+
+    const newPreviews = files.map((file) => URL.createObjectURL(file));
+    setReviewImagePreviews((prev) => [...prev, ...newPreviews]);
+  };
+
+  const removeReviewImage = (index) => {
+    setReviewImages((prev) => prev.filter((_, i) => i !== index));
+    setReviewImagePreviews((prev) => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleSendReview = async () => {
+    if (!isAuthenticated || !token) {
+      setReviewError("Vui lòng đăng nhập để gửi đánh giá");
+      return;
+    }
+
+    if (reviewRating < 1 || reviewRating > 5) {
+      setReviewError("Vui lòng chọn số sao đánh giá");
+      return;
+    }
+
+    try {
+      setIsSubmittingReview(true);
+      setReviewError("");
+      setReviewMessage("");
+
+      const formData = new FormData();
+      formData.append("rating", String(reviewRating));
+      formData.append("comment", reviewComment);
+      reviewImages.forEach((file) => {
+        formData.append("images", file);
+      });
+
+      const response = await fetch(`/api/products/${slug}/reviews`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.message || "Không thể gửi đánh giá");
+      }
+
+      setReviewMessage("Cảm ơn bạn đã đánh giá sản phẩm!");
+      setReviewComment("");
+      setReviewRating(5);
+      setReviewImages([]);
+      setReviewImagePreviews([]);
+      
+      // Refresh reviews and eligibility
+      loadReviews(slug);
+      refreshReviewEligibility(slug, token);
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : "Có lỗi xảy ra");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-slate-950">
@@ -428,6 +503,117 @@ export default function ProductDetailPage() {
                         {reviewSummary.totalReviews} Đánh giá
                       </Badge>
                    </div>
+
+                   {/* Add Review Form - Only if eligible */}
+                   {canReview && (
+                     <div className="p-8 rounded-[40px] bg-white border border-primary/20 shadow-xl shadow-primary/5 space-y-6">
+                        <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                              <Star className="w-5 h-5 fill-primary" />
+                           </div>
+                           <div>
+                              <h3 className="text-xl font-black text-slate-900">Gửi đánh giá của bạn</h3>
+                              <p className="text-sm text-slate-500 font-medium">Chia sẻ trải nghiệm của bạn về sản phẩm này</p>
+                           </div>
+                        </div>
+
+                        <div className="space-y-4">
+                           <div className="flex flex-col gap-2">
+                              <Label className="text-sm font-bold text-slate-700">Chất lượng sản phẩm</Label>
+                              <div className="flex gap-2">
+                                 {[1, 2, 3, 4, 5].map((star) => (
+                                    <button
+                                       key={star}
+                                       type="button"
+                                       onClick={() => setReviewRating(star)}
+                                       className="transition-transform active:scale-90"
+                                    >
+                                       <Star
+                                          className={`w-8 h-8 ${
+                                             star <= reviewRating
+                                                ? "fill-amber-400 text-amber-400"
+                                                : "text-slate-200"
+                                          }`}
+                                       />
+                                    </button>
+                                 ))}
+                              </div>
+                           </div>
+
+                           <div className="flex flex-col gap-2">
+                              <Label className="text-sm font-bold text-slate-700">Nhận xét chi tiết</Label>
+                              <Textarea
+                                 placeholder="Sản phẩm dùng rất tốt, đóng gói cẩn thận..."
+                                 value={reviewComment}
+                                 onChange={(e) => setReviewComment(e.target.value)}
+                                 className="min-h-[120px] rounded-2xl border-slate-200 focus:border-primary resize-none"
+                              />
+                           </div>
+
+                           <div className="space-y-3">
+                              <Label className="text-sm font-bold text-slate-700">Hình ảnh thực tế (Tối đa 6)</Label>
+                              <div className="flex flex-wrap gap-3">
+                                 {reviewImagePreviews.map((url, idx) => (
+                                    <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50">
+                                       <img src={url} className="w-full h-full object-cover" alt="Preview" />
+                                       <button
+                                          onClick={() => removeReviewImage(idx)}
+                                          className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-1 shadow-lg hover:bg-rose-600"
+                                       >
+                                          <X className="w-3 h-3" />
+                                       </button>
+                                    </div>
+                                 ))}
+                                 {reviewImages.length < 6 && (
+                                    <label className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary hover:bg-primary/5 transition-all">
+                                       <Camera className="w-6 h-6 text-slate-400" />
+                                       <input
+                                          type="file"
+                                          multiple
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={handleFileChange}
+                                       />
+                                    </label>
+                                 )}
+                              </div>
+                           </div>
+
+                           {reviewError && (
+                              <div className="p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">
+                                 {reviewError}
+                              </div>
+                           )}
+
+                           {reviewMessage && (
+                              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-sm font-medium">
+                                 {reviewMessage}
+                              </div>
+                           )}
+
+                           <Button
+                              onClick={handleSendReview}
+                              disabled={isSubmittingReview}
+                              className="w-full h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-primary/20"
+                           >
+                              {isSubmittingReview ? (
+                                 <Loader2 className="w-5 h-5 animate-spin" />
+                              ) : (
+                                 "GỬI ĐÁNH GIÁ NGAY"
+                              )}
+                           </Button>
+                        </div>
+                     </div>
+                   )}
+
+                   {!canReview && isAuthenticated && (
+                     <div className="p-6 rounded-[24px] bg-slate-100 border border-slate-200 text-center space-y-2">
+                        <Info className="w-8 h-8 text-slate-400 mx-auto" />
+                        <p className="text-sm font-bold text-slate-600">
+                           {reviewEligibilityMessage || "Bạn cần mua sản phẩm này để có thể đánh giá."}
+                        </p>
+                     </div>
+                   )}
 
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-10 rounded-[40px] bg-white border shadow-sm items-center">
                       <div className="text-center space-y-2">

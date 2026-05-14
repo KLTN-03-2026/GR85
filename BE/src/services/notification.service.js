@@ -267,6 +267,42 @@ export async function createSystemNotification({
   }
 }
 
+export async function notifyAdminsAboutNewOrder(order) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        role: {
+          permissions: {
+            some: {
+              permission: {
+                actionName: "admin_orders_manage",
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (admins.length === 0) return;
+
+    await prisma.notification.createMany({
+      data: admins.map((admin) => ({
+        userId: admin.id,
+        type: "SYSTEM",
+        title: "🔔 Có đơn hàng mới",
+        message: `Đơn hàng #${order.id} vừa được đặt thành công. Phương thức: ${order.paymentMethod}. Tổng cộng: ${formatPrice(order.totalAmount)}`,
+        payload: {
+          orderId: order.id,
+          kind: "NEW_ORDER",
+        },
+      })),
+    });
+  } catch (error) {
+    console.error("Lỗi khi gửi thông báo đơn hàng cho admin:", error);
+  }
+}
+
 export async function createReviewReplyNotification({
   userId,
   reviewId,

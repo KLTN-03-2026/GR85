@@ -106,6 +106,20 @@ export const profileApi = {
     return response.json();
   },
 
+  cancelOrder: async (orderId) => {
+    const response = await fetch(`${API_BASE}/auth/my-orders/${orderId}/cancel`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Không thể hủy đơn hàng");
+    }
+
+    return response.json();
+  },
+
   getMyReviews: async () => {
     const response = await fetch(`${API_BASE}/auth/my-reviews`, {
       headers: authHeaders(),

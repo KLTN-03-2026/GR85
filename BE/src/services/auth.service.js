@@ -502,6 +502,62 @@ export async function getMyOrderDetail(userId, orderId) {
   });
 }
 
+export async function cancelMyOrder(userId, orderId) {
+  const id = Number(orderId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Mã đơn hàng không hợp lệ");
+  }
+
+  const order = await prisma.order.findFirst({
+    where: { id, userId },
+    include: {
+      orderItems: true,
+    },
+  });
+
+  if (!order) {
+    throw new Error("Đơn hàng không tồn tại");
+  }
+
+  if (order.orderStatus !== OrderStatus.PENDING) {
+    throw new Error("Chỉ có thể hủy đơn hàng khi đang ở trạng thái chờ duyệt");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Trả lại tồn kho
+    for (const item of order.orderItems) {
+      await tx.product.update({
+        where: { id: item.productId },
+        data: {
+          stockQuantity: {
+            increment: item.quantity,
+          },
+        },
+      });
+    }
+
+    await tx.order.update({
+      where: { id },
+      data: { orderStatus: OrderStatus.CANCELLED },
+    });
+
+    await tx.orderStatusHistory.create({
+      data: {
+        orderId: id,
+        fromStatus: order.orderStatus,
+        toStatus: OrderStatus.CANCELLED,
+        changedBy: userId,
+        note: "Người dùng chủ động hủy đơn hàng",
+      },
+    });
+  });
+
+  return serializeData({
+    success: true,
+    message: "Đã hủy đơn hàng thành công",
+  });
+}
+
 export async function listMyReviewHistory(userId) {
   const normalizedUserId = Number(userId);
   if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {

@@ -12,6 +12,7 @@ import {
   loginUser,
   listUserAddresses,
   listMyOrders,
+  cancelMyOrder,
   replyToMyReview,
   resendVerificationCode,
   requestPasswordReset,
@@ -230,6 +231,18 @@ router.get("/my-orders", requireAuth, async (req, res) => {
 router.get("/my-orders/:orderId", requireAuth, async (req, res) => {
   try {
     const result = await getMyOrderDetail(
+      Number(req.auth?.sub),
+      Number(req.params.orderId),
+    );
+    return res.json(result);
+  } catch (error) {
+    return handleRouteError(error, res);
+  }
+});
+
+router.post("/my-orders/:orderId/cancel", requireAuth, async (req, res) => {
+  try {
+    const result = await cancelMyOrder(
       Number(req.auth?.sub),
       Number(req.params.orderId),
     );

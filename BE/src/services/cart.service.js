@@ -17,7 +17,10 @@ import { sendPaymentCodeEmail } from "./email.service.js";
 import { env } from "../config/env.js";
 import { estimateShippingFromCartItems } from "./shipping.service.js";
 import { payos } from "../config/payos.config.js";
-import { createSystemNotification } from "./notification.service.js";
+import {
+  createSystemNotification,
+  notifyAdminsAboutNewOrder,
+} from "./notification.service.js";
 import { createSepayQrCode } from "./sepay.service.js";
 
 function resolveFrontendBaseUrl() {
@@ -515,6 +518,9 @@ export async function checkoutCart(userId, input) {
       orderStatus: initialOrderStatus,
     },
   });
+
+  // Gửi thông báo cho toàn bộ Admin có quyền quản lý đơn hàng
+  await notifyAdminsAboutNewOrder(result);
 
   if (isFullyPaidByWallet) {
     return serializeData({
