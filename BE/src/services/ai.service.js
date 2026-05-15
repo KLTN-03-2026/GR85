@@ -78,7 +78,7 @@ export async function buildAiRecommendation(input) {
       customNeeds: input.customNeeds.substring(0, 100),
     });
   }
-  
+
   const usage = normalizeUsage(detectedUsage);
   const budget = Number(input.budget);
   const targetCategories = Array.isArray(input.targetCategories) && input.targetCategories.length > 0
@@ -388,21 +388,8 @@ export async function generateAiChatReply(input, userId = null) {
     throw new Error("Message is required");
   }
 
-  // Load settings from DB
-  let settings = await prisma.aiSetting.findUnique({ where: { id: 1 } });
-  if (!settings) {
-    const defaultModel = process.env.GROQ_API_KEY
-      ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
-      : (process.env.AI_MODEL || "gpt-4o-mini");
-
-    settings = {
-      isEnabled: true,
-      model: defaultModel,
-      temperature: 0.6,
-      maxToken: 500,
-      systemPrompt: "Bạn là chuyên gia tư vấn build PC. Hãy trả lời NGẮN GỌN, TRỌNG TÂM và DỄ HIỂU bằng Tiếng Việt. Tập trung vào ý chính và lựa chọn tốt nhất cho người dùng. Tránh giải thích dông dài kỹ thuật không cần thiết. Thêm 🛒 ở cuối nếu có gợi ý sản phẩm."
-    };
-  }
+  // Load settings (with in-memory cache for systemPrompt)
+  const settings = await getAiSettings();
 
   if (!settings.isEnabled) {
     throw new Error("Hệ thống trợ lý AI hiện đang được tắt bởi quản trị viên.");
@@ -413,12 +400,16 @@ export async function generateAiChatReply(input, userId = null) {
     throw new Error("API Key bị thiếu trong file .env (cần thêm GROQ_API_KEY hoặc OPENAI_API_KEY)");
   }
 
+  const productContext = await buildProductContextForMessage(message);
+
+  // Build a stronger system prompt that *appends* a JSON-only instruction when product context exists.
+  const baseSystemPrompt = String(settings.systemPrompt ?? "Bạn là chuyên gia tư vấn build PC. Trả lời bằng Tiếng Việt.");
+  const jsonInstruction = `\n\nKhi có dữ liệu ngữ cảnh từ Database (danh sách sản phẩm), hãy CHỈ TRẢ VỀ duy nhất 1 KHỐI JSON hợp lệ (KHÔNG GHI THÊM VĂN BẢN BÊN NGOÀI).\nĐịnh dạng JSON mong muốn:\n{\n  "recommended": [{"name":"<Tên sản phẩm>","link":"/components/<slug>"}],\n  "reason":"<1-2 câu ngắn gọn>",\n  "alternatives": [{"name":"<Tên sản phẩm>","link":"/components/<slug>"}]\n}\nNếu không có khuyến nghị, trả: {"recommended":[],"reason":"","alternatives":[]}\n`;
+
   const systemMessage = {
     role: "system",
-    content: settings.systemPrompt
+    content: productContext.contextText ? (baseSystemPrompt + jsonInstruction) : baseSystemPrompt,
   };
-
-  const productContext = await buildProductContextForMessage(message);
   const contextualUserMessage = productContext.contextText
     ? `${productContext.contextText}\n\n[Yêu cầu của người dùng]\n${message}`
     : message;
@@ -491,17 +482,8 @@ export async function generateAiChatReply(input, userId = null) {
     const data = await response.json();
     let reply = data.choices?.[0]?.message?.content || "Không thể trả lời.";
 
-    // Giữ định dạng sạch sẽ & Ngắn gọn
+    // Clean reply but do NOT force truncation here. We want to keep the full assistant output
     reply = reply.trim();
-    if (reply.length > 300) {
-      let cutPoint = reply.lastIndexOf(".", 300) || reply.lastIndexOf(" ", 300) || 300;
-      reply = reply.substring(0, cutPoint) + "... (Hỏi thêm nếu cần chi tiết)";
-    }
-
-    // Thêm icon nếu cần
-    if (reply.length > 0 && !reply.includes("🛒")) {
-      reply = reply + " 🛒";
-    }
 
     // Calculate token usage and cost
     const promptTokens = data.usage?.prompt_tokens || 0;
@@ -513,8 +495,23 @@ export async function generateAiChatReply(input, userId = null) {
     const outputCostPer1K = isGroq ? 0.0008 : 0.0006;
     const cost = (promptTokens / 1000) * inputCostPer1K + (completionTokens / 1000) * outputCostPer1K;
 
-    // Extract mentioned product names from the reply
-    const mentionedProducts = await extractAndFindMentionedProducts(reply);
+    // First try to parse assistant reply as JSON (models are instructed to return JSON-only when context exists)
+    let parsedOutput = null;
+    try {
+      parsedOutput = tryParseJsonFromText(reply);
+    } catch (err) {
+      parsedOutput = null;
+    }
+
+    let mentionedProducts = [];
+    // If parsedOutput contains recommended names/links, map them to DB products
+    if (parsedOutput && Array.isArray(parsedOutput.recommended) && parsedOutput.recommended.length > 0) {
+      const names = parsedOutput.recommended.map((r) => String(r.name ?? "").trim()).filter(Boolean);
+      mentionedProducts = await findProductsByNamesOrSlugs(names);
+    } else {
+      // Fallback: try to extract mentioned product names from the textual reply
+      mentionedProducts = await extractAndFindMentionedProducts(reply);
+    }
 
     // Save log asynchronously
     prisma.aiRequestLog.create({
@@ -535,6 +532,7 @@ export async function generateAiChatReply(input, userId = null) {
       reply,
       mentionedProducts: mentionedProducts || [],
       relatedProducts: productContext.relatedProducts || [],
+      parsedAssistantJson: parsedOutput || null,
     });
   } catch (error) {
     if (error.message.includes("quota exceeded")) {
@@ -566,8 +564,8 @@ async function extractAndFindMentionedProducts(reply) {
           const product = await prisma.product.findFirst({
             where: {
               OR: [
-                { name: { contains: name, mode: "insensitive" } },
-                { slug: { contains: name.toLowerCase().replace(/\s+/g, "-"), mode: "insensitive" } },
+                { name: { contains: name } },
+                { slug: { contains: name.toLowerCase().replace(/\s+/g, "-") } },
               ],
               status: "ACTIVE",
               stockQuantity: { gt: 0 },
@@ -589,7 +587,7 @@ async function extractAndFindMentionedProducts(reply) {
             displayPrice: product.salePrice || product.price,
           } : null;
         } catch (err) {
-          console.error(`Error finding product "${name}":`, err);
+          console.error(`Lỗi tìm kiếm sản phẩm "${name}":`, err);
           return null;
         }
       })
@@ -598,7 +596,7 @@ async function extractAndFindMentionedProducts(reply) {
     // Filter out null values and return
     return products.filter(Boolean).slice(0, 3); // Limit to 3 products
   } catch (error) {
-    console.error("Error extracting mentioned products:", error);
+    console.error("Lỗi trích xuất sản phẩm được đề cập:", error);
     return [];
   }
 }
@@ -798,6 +796,111 @@ function buildProductFeatureSummary(product) {
     features.push(`Giá hiện tại ${new Intl.NumberFormat("vi-VN").format(product.price)} VND`);
   }
   return features.join(", ");
+}
+
+// --- Helpers: settings cache, JSON parsing, product lookup ---
+let _aiSettingsCache = { value: null, expiresAt: 0 };
+async function getAiSettings() {
+  const now = Date.now();
+  const ttl = Number(process.env.AI_SETTINGS_CACHE_TTL_MS || 300000);
+  if (_aiSettingsCache.value && _aiSettingsCache.expiresAt > now) {
+    return _aiSettingsCache.value;
+  }
+
+  try {
+    const settings = await prisma.aiSetting.findUnique({ where: { id: 1 } });
+    if (settings) {
+      _aiSettingsCache = { value: settings, expiresAt: Date.now() + ttl };
+      return settings;
+    }
+  } catch (err) {
+    console.error("Lỗi khi tải cài đặt AI từ DB:", err);
+  }
+
+  // Fallback defaults
+  const defaultModel = process.env.GROQ_API_KEY
+    ? (process.env.GROQ_MODEL || "llama-3.3-70b-versatile")
+    : (process.env.AI_MODEL || "gpt-4o-mini");
+
+  const fallback = {
+    isEnabled: true,
+    model: defaultModel,
+    temperature: 0.6,
+    maxToken: 500,
+    systemPrompt: "Bạn là chuyên gia tư vấn build PC. Hãy trả lời rõ ràng và có cấu trúc."
+  };
+  _aiSettingsCache = { value: fallback, expiresAt: Date.now() + ttl };
+  return fallback;
+}
+
+function tryParseJsonFromText(text) {
+  if (!text || typeof text !== "string") return null;
+  // Try to find a JSON object inside the text
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = text.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch (err) {
+      // ignore and continue
+    }
+  }
+
+  // Try to find a JSON block between ```json ... ```
+  const jsonFence = /```json\s*([\s\S]*?)\s*```/i.exec(text);
+  if (jsonFence && jsonFence[1]) {
+    try {
+      return JSON.parse(jsonFence[1]);
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+async function findProductsByNamesOrSlugs(names) {
+  if (!Array.isArray(names) || names.length === 0) return [];
+
+  const results = await Promise.all(names.map(async (rawName) => {
+    const name = String(rawName ?? "").trim();
+    if (!name) return null;
+
+    try {
+      // Try slug match first
+      const slugCandidate = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      let product = await prisma.product.findFirst({
+        where: {
+          OR: [
+            { slug: slugCandidate },
+            { name: { contains: name } },
+          ],
+          status: "ACTIVE",
+          stockQuantity: { gt: 0 },
+        },
+        include: { category: true, supplier: true },
+      });
+
+      if (!product) return null;
+
+      return {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        price: Number(product.salePrice ?? product.price ?? 0),
+        brand: product.supplier?.name || extractBrand(product.specifications) || null,
+        category: product.category?.name ?? null,
+        categorySlug: product.category?.slug ?? null,
+        productUrl: `/components/${product.slug}`,
+      };
+    } catch (err) {
+      console.error("Error in findProductsByNamesOrSlugs:", err);
+      return null;
+    }
+  }));
+
+  return results.filter(Boolean).slice(0, 5);
 }
 
 function normalizeUsage(value) {
