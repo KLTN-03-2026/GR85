@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   buildAiRecommendation,
   generateAiChatReply,
+  tryParseJsonFromText,
 } from "../../services/ai.service.js";
 import { askAiAdvisorHandler } from "../controllers/ai-advisor.controller.js";
 import { optionalAuth } from "../../middleware/auth.js";
@@ -56,7 +57,7 @@ router.post("/recommend-build", optionalAuth, ensureAiEnabled, async (req, res) 
     console.log(`[API /recommend-build] Incoming request:`, {
       budget: payload.budget,
       usage: payload.usage,
-        customNeeds: payload.customNeeds,
+      customNeeds: payload.customNeeds,
       pcComponentsOnly: payload.pcComponentsOnly,
       targetCategories: payload.targetCategories,
       timestamp: new Date().toISOString(),
@@ -134,7 +135,12 @@ router.post("/advisor/chat", optionalAuth, ensureAiEnabled, async (req, res) => 
     const chatPayload = chatSchema.parse({ message, history });
     const data = await generateAiChatReply(chatPayload, userId);
 
-    // Save AI response to database
+    // If AI returned a parsed JSON with a human-friendly message, prefer that as the saved/replied content
+    if (data && data.parsedAssistantJson && typeof data.parsedAssistantJson === 'object' && String(data.parsedAssistantJson.message || '').trim().length > 0) {
+      data.reply = String(data.parsedAssistantJson.message);
+    }
+
+    // Save AI response to database (save human-friendly message when available)
     if (userId && data?.reply) {
       await prisma.aiAdvisorChat.create({
         data: {
@@ -184,7 +190,26 @@ router.get("/advisor/history", optionalAuth, async (req, res) => {
       },
     });
 
-    return res.json(messages);
+    // Attempt to parse assistant JSON content for better frontend rendering
+    const enriched = messages.map((msg) => {
+      let parsed = null;
+      try {
+        parsed = tryParseJsonFromText(String(msg.content ?? ""));
+      } catch (err) {
+        parsed = null;
+      }
+      return {
+        id: msg.id,
+        role: msg.role,
+        type: msg.type,
+        content: msg.content,
+        scope: msg.scope,
+        createdAt: msg.createdAt,
+        parsedAssistantJson: parsed,
+      };
+    });
+
+    return res.json(enriched);
   } catch (error) {
     console.error("Error fetching advisor history:", error);
     return res.status(500).json({ message: "Lỗi máy chủ không xác định" });

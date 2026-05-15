@@ -402,13 +402,41 @@ export async function generateAiChatReply(input, userId = null) {
 
   const productContext = await buildProductContextForMessage(message);
 
-  // Build a stronger system prompt that *appends* a JSON-only instruction when product context exists.
+  // Build a stronger system prompt that appends a strict JSON instruction when product context exists.
   const baseSystemPrompt = String(settings.systemPrompt ?? "Bạn là chuyên gia tư vấn build PC. Trả lời bằng Tiếng Việt.");
-  const jsonInstruction = `\n\nKhi có dữ liệu ngữ cảnh từ Database (danh sách sản phẩm), hãy CHỈ TRẢ VỀ duy nhất 1 KHỐI JSON hợp lệ (KHÔNG GHI THÊM VĂN BẢN BÊN NGOÀI).\nĐịnh dạng JSON mong muốn:\n{\n  "recommended": [{"name":"<Tên sản phẩm>","link":"/components/<slug>"}],\n  "reason":"<1-2 câu ngắn gọn>",\n  "alternatives": [{"name":"<Tên sản phẩm>","link":"/components/<slug>"}]\n}\nNếu không có khuyến nghị, trả: {"recommended":[],"reason":"","alternatives":[]}\n`;
+
+  const databaseBehaviorInstruction = `
+
+QUAN TRỌNG KHI CÓ DỮ LIỆU DATABASE:
+- Chỉ dùng các sản phẩm, slug, link, giá xuất hiện trong ngữ cảnh Database được cung cấp.
+- Không tự bịa tên sản phẩm, slug, link, giá, hoặc thương hiệu.
+- Nếu có nhiều lựa chọn, ưu tiên 1-3 lựa chọn phù hợp nhất với nhu cầu và ngân sách.
+- Nếu không chắc chắn, chọn sản phẩm gần đúng nhất trong Database thay vì invent sản phẩm mới.
+`;
+  const jsonInstruction = `
+
+KHI NGỮ CẢNH DATABASE CÓ MẶT, BẮT BUỘC CHỈ TRẢ VỀ DUY NHẤT 1 KHỐI JSON HỢP LỆ, KHÔNG THÊM BẤT KỲ VĂN BẢN NÀO KHÁC.
+Schema bắt buộc:
+{
+  "message": "Câu trả lời thân thiện, hữu ích cho khách hàng (string)",
+  "recommendedProducts": ["slug-san-pham-1", "slug-san-pham-2"],
+  "reasoning": "Lý do ngắn gọn tại sao gợi ý các sản phẩm này"
+}
+
+Quy tắc:
+- "message": Tối đa 200 từ, thân thiện, đi thẳng vào vấn đề.
+- "recommendedProducts": Mảng slug (tối đa 5), CHỈ dùng slug có trong danh sách Database context. Nếu không có sản phẩm phù hợp thì trả mảng rỗng [].
+- "reasoning": 1-2 câu giải thích lý do chọn sản phẩm đó.
+- KHÔNG được thêm markdown, backtick, hay bất kỳ text nào ngoài JSON.
+- KHÔNG được bịa slug không có trong danh sách.
+- Nếu không có gợi ý phù hợp, trả đúng: {"message":"","recommendedProducts":[],"reasoning":""}
+`;
 
   const systemMessage = {
     role: "system",
-    content: productContext.contextText ? (baseSystemPrompt + jsonInstruction) : baseSystemPrompt,
+    content: productContext.contextText
+      ? `${baseSystemPrompt}${databaseBehaviorInstruction}${jsonInstruction}`
+      : baseSystemPrompt,
   };
   const contextualUserMessage = productContext.contextText
     ? `${productContext.contextText}\n\n[Yêu cầu của người dùng]\n${message}`
@@ -419,8 +447,8 @@ export async function generateAiChatReply(input, userId = null) {
       role: "system",
       content: [
         "Bạn phải dùng dữ liệu ngữ cảnh từ Database để tư vấn sản phẩm.",
-        "Khi có danh sách sản phẩm liên quan, hãy so sánh 1-2 lựa chọn tốt nhất, nêu lý do cụ thể, và nhắc tên sản phẩm chính xác.",
-        "Nếu câu trả lời đề cập đến sản phẩm, hãy ưu tiên phản hồi ngắn gọn, có thông tin sản phẩm, danh mục, giá và link nếu có.",
+        "Nếu câu hỏi yêu cầu đề xuất cấu hình, hãy so sánh 1-2 lựa chọn tốt nhất và ưu tiên các món có trong Database context và không tự tạo sản phẩm mới.",
+        "Hãy giữ tên sản phẩm khớp tối đa với Database context để frontend có thể render link chính xác.",
       ].join(" "),
     }
     : null;
@@ -484,6 +512,12 @@ export async function generateAiChatReply(input, userId = null) {
 
     // Clean reply but do NOT force truncation here. We want to keep the full assistant output
     reply = reply.trim();
+    // Replace visual separator '***' with a friendly emoji so frontend shows nicer markers
+    try {
+      reply = reply.replace(/\*\*\*/g, " ✨ ");
+    } catch (err) {
+      // noop
+    }
 
     // Calculate token usage and cost
     const promptTokens = data.usage?.prompt_tokens || 0;
@@ -504,9 +538,14 @@ export async function generateAiChatReply(input, userId = null) {
     }
 
     let mentionedProducts = [];
-    // If parsedOutput contains recommended names/links, map them to DB products
-    if (parsedOutput && Array.isArray(parsedOutput.recommended) && parsedOutput.recommended.length > 0) {
-      const names = parsedOutput.recommended.map((r) => String(r.name ?? "").trim()).filter(Boolean);
+    // Support the new slug-based schema and keep backward compatibility with the older object-based schema.
+    if (parsedOutput && Array.isArray(parsedOutput.recommendedProducts) && parsedOutput.recommendedProducts.length > 0) {
+      const slugs = parsedOutput.recommendedProducts.map((item) => String(item ?? "").trim()).filter(Boolean);
+      mentionedProducts = await findProductsByNamesOrSlugs(slugs);
+    } else if (parsedOutput && Array.isArray(parsedOutput.recommended) && parsedOutput.recommended.length > 0) {
+      const names = parsedOutput.recommended
+        .map((item) => String(item?.name ?? item ?? "").trim())
+        .filter(Boolean);
       mentionedProducts = await findProductsByNamesOrSlugs(names);
     } else {
       // Fallback: try to extract mentioned product names from the textual reply
@@ -608,16 +647,21 @@ async function buildProductContextForMessage(message) {
   }
 
   const keywords = extractProductKeywords(normalizedMessage);
+  const hasBuildIntent = detectBuildIntent(normalizedMessage);
   const fallbackTerms = keywords.length > 0
     ? keywords
     : normalizedMessage.split(" ").filter((word) => word.length >= 4).slice(0, 5);
   const searchTerms = [...new Set(fallbackTerms)].slice(0, 5);
 
-  if (searchTerms.length === 0) {
+  const categorySlugs = [...new Set(searchTerms.map((term) => mapTermToCategorySlug(term)).filter(Boolean))];
+  if (categorySlugs.length === 0 && hasBuildIntent) {
+    categorySlugs.push(...CORE_CATEGORY_SLUGS);
+  }
+
+  if (searchTerms.length === 0 && categorySlugs.length === 0) {
     return { contextText: "", relatedProducts: [] };
   }
 
-  const categorySlugs = [...new Set(searchTerms.map((term) => mapTermToCategorySlug(term)).filter(Boolean))];
   const categories = categorySlugs.length > 0
     ? await prisma.category.findMany({
       where: {
@@ -636,11 +680,15 @@ async function buildProductContextForMessage(message) {
     where: {
       status: "ACTIVE",
       stockQuantity: { gt: 0 },
-      OR: [
-        ...searchTerms.map((term) => ({ name: { contains: term } })),
-        ...searchTerms.map((term) => ({ slug: { contains: term.replace(/\s+/g, "-") } })),
-        ...(categoryIds.length > 0 ? [{ categoryId: { in: categoryIds } }] : []),
-      ],
+      ...(searchTerms.length > 0 || categoryIds.length > 0
+        ? {
+          OR: [
+            ...searchTerms.map((term) => ({ name: { contains: term } })),
+            ...searchTerms.map((term) => ({ slug: { contains: term.replace(/\s+/g, "-") } })),
+            ...(categoryIds.length > 0 ? [{ categoryId: { in: categoryIds } }] : []),
+          ],
+        }
+        : {}),
     },
     include: {
       category: true,
@@ -682,6 +730,19 @@ async function buildProductContextForMessage(message) {
   ].join("\n");
 
   return { contextText, relatedProducts };
+}
+
+function detectBuildIntent(message) {
+  const text = String(message ?? "").toLowerCase();
+  return [
+    "build pc",
+    "lap rap",
+    "tu van",
+    "cau hinh",
+    "may tinh",
+    "linh kien",
+    "pc",
+  ].some((keyword) => text.includes(keyword));
 }
 
 function mapTermToCategorySlug(term) {
@@ -833,7 +894,7 @@ async function getAiSettings() {
   return fallback;
 }
 
-function tryParseJsonFromText(text) {
+export function tryParseJsonFromText(text) {
   if (!text || typeof text !== "string") return null;
   // Try to find a JSON object inside the text
   const firstBrace = text.indexOf("{");
@@ -857,6 +918,36 @@ function tryParseJsonFromText(text) {
     }
   }
 
+  // As a last resort, try to evaluate a JS-like object (handles single quotes or unquoted keys)
+  // This is executed in a restricted manner using Function; input originates from AI provider.
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    const candidate = text.substring(first, last + 1);
+    try {
+      // Replace smart quotes
+      const normalized = candidate.replace(/[“”‘’]/g, '"');
+      // Remove trailing commas before } or ]
+      const cleaned = normalized.replace(/,\s*(}|\])/g, '$1');
+      // Try JSON.parse one more time
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        // Fallback to Function-based evaluation
+        try {
+          // Wrap in parentheses so object literal evaluates
+          // eslint-disable-next-line no-new-func
+          const obj = Function('return (' + cleaned + ')')();
+          return obj;
+        } catch (e2) {
+          return null;
+        }
+      }
+    } catch (err) {
+      return null;
+    }
+  }
+
   return null;
 }
 
@@ -868,21 +959,27 @@ async function findProductsByNamesOrSlugs(names) {
     if (!name) return null;
 
     try {
-      // Try slug match first
-      const slugCandidate = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-      let product = await prisma.product.findFirst({
-        where: {
-          OR: [
-            { slug: slugCandidate },
-            { name: { contains: name } },
-          ],
-          status: "ACTIVE",
-          stockQuantity: { gt: 0 },
-        },
-        include: { category: true, supplier: true },
+      const slugCandidate = slugifyForDb(name);
+      const normalizedName = normalizeSearchText(name);
+      const nameTokens = splitSearchTokens(normalizedName);
+      const candidateWhere = buildFuzzyProductWhere({
+        name,
+        slugCandidate,
+        normalizedName,
+        nameTokens,
       });
 
-      if (!product) return null;
+      const candidates = await prisma.product.findMany({
+        where: candidateWhere,
+        include: { category: true, supplier: true },
+        take: 25,
+      });
+
+      const product = pickBestProductMatch(candidates, name, slugCandidate, normalizedName, nameTokens);
+
+      if (!product) {
+        return null;
+      }
 
       return {
         id: product.id,
@@ -901,6 +998,122 @@ async function findProductsByNamesOrSlugs(names) {
   }));
 
   return results.filter(Boolean).slice(0, 5);
+}
+
+function slugifyForDb(text) {
+  return normalizeSearchText(text)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function splitSearchTokens(text) {
+  return String(text ?? "")
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function buildFuzzyProductWhere({ name, slugCandidate, normalizedName, nameTokens }) {
+  const conditions = [
+    { slug: slugCandidate },
+    { slug: { contains: slugCandidate } },
+    { slug: { contains: normalizedName.replace(/\s+/g, "-") } },
+    { name: { contains: name } },
+    { name: { contains: normalizedName } },
+    ...nameTokens.flatMap((token) => ([
+      { name: { contains: token } },
+      { slug: { contains: token } },
+    ])),
+  ];
+
+  return {
+    status: "ACTIVE",
+    stockQuantity: { gt: 0 },
+    OR: conditions,
+  };
+}
+
+function pickBestProductMatch(candidates, originalName, slugCandidate, normalizedName, nameTokens) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  const scored = candidates.map((product) => {
+    const candidateName = normalizeSearchText(product.name);
+    const candidateSlug = normalizeSearchText(product.slug);
+    const candidateTokens = splitSearchTokens(candidateName);
+
+    let score = 0;
+
+    if (candidateSlug === slugCandidate) score += 100;
+    if (candidateName === normalizedName) score += 95;
+    if (candidateName.includes(normalizedName) || normalizedName.includes(candidateName)) score += 45;
+    if (candidateSlug.includes(slugCandidate) || slugCandidate.includes(candidateSlug)) score += 35;
+
+    const tokenOverlap = countTokenOverlap(nameTokens, candidateTokens);
+    score += tokenOverlap * 12;
+
+    score += similarityScore(normalizedName, candidateName) * 30;
+    score += similarityScore(slugCandidate, candidateSlug) * 20;
+
+    const brandName = normalizeSearchText(product.supplier?.name ?? "");
+    if (brandName && normalizedName.includes(brandName)) {
+      score += 4;
+    }
+
+    return { product, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best || best.score < 18) {
+    return null;
+  }
+
+  return best.product;
+}
+
+function countTokenOverlap(sourceTokens, targetTokens) {
+  if (!Array.isArray(sourceTokens) || !Array.isArray(targetTokens)) return 0;
+  const targetSet = new Set(targetTokens);
+  return sourceTokens.reduce((count, token) => count + (targetSet.has(token) ? 1 : 0), 0);
+}
+
+function similarityScore(left, right) {
+  const a = String(left ?? "");
+  const b = String(right ?? "");
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const distance = levenshteinDistance(a, b);
+  const longest = Math.max(a.length, b.length);
+  if (longest === 0) return 0;
+  return Math.max(0, 1 - distance / longest);
+}
+
+function levenshteinDistance(a, b) {
+  const left = String(a ?? "");
+  const right = String(b ?? "");
+
+  if (left === right) return 0;
+  if (!left.length) return right.length;
+  if (!right.length) return left.length;
+
+  const prev = Array.from({ length: right.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= left.length; i += 1) {
+    let current = [i];
+    for (let j = 1; j <= right.length; j += 1) {
+      const insertion = current[j - 1] + 1;
+      const deletion = prev[j] + 1;
+      const substitution = prev[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1);
+      current[j] = Math.min(insertion, deletion, substitution);
+    }
+    prev.splice(0, prev.length, ...current);
+  }
+
+  return prev[right.length];
 }
 
 function normalizeUsage(value) {

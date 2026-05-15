@@ -188,6 +188,7 @@ export async function requestAiAdvisorChat({ message, history = [], scope = "BOT
     reply: payload?.reply || "Xin lỗi, tôi không thể xử lý yêu cầu.",
     mentionedProducts,
     relatedProducts,
+    parsedAssistantJson: payload?.parsedAssistantJson || null,
   };
 }
 
