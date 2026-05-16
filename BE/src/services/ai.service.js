@@ -402,6 +402,16 @@ export async function generateAiChatReply(input, userId = null) {
 
   const productContext = await buildProductContextForMessage(message);
 
+  // Debug logging: show whether we have DB context and related slugs
+  try {
+    const relatedSlugs = Array.isArray(productContext.relatedProducts)
+      ? productContext.relatedProducts.map((p) => p.slug).filter(Boolean)
+      : [];
+    console.log(`[AI Debug] productContext has ${String(Boolean(productContext.contextText))} context, relatedSlugs=${JSON.stringify(relatedSlugs)}`);
+  } catch (e) {
+    // noop
+  }
+
   // Build a stronger system prompt that appends a strict JSON instruction when product context exists.
   const baseSystemPrompt = String(settings.systemPrompt ?? "Bạn là chuyên gia tư vấn build PC. Trả lời bằng Tiếng Việt.");
 
@@ -537,6 +547,14 @@ Quy tắc:
       parsedOutput = null;
     }
 
+    // Debug logs for reply and parsedOutput
+    try {
+      console.log("[AI Debug] assistant reply:\n", reply);
+      console.log("[AI Debug] parsedOutput:", parsedOutput);
+    } catch (e) {
+      // noop
+    }
+
     let mentionedProducts = [];
     // Support the new slug-based schema and keep backward compatibility with the older object-based schema.
     if (parsedOutput && Array.isArray(parsedOutput.recommendedProducts) && parsedOutput.recommendedProducts.length > 0) {
@@ -550,6 +568,95 @@ Quy tắc:
     } else {
       // Fallback: try to extract mentioned product names from the textual reply
       mentionedProducts = await extractAndFindMentionedProducts(reply);
+    }
+
+    // Safety-net: if parsedOutput is missing or recommendedProducts contain slugs not in productContext, retry once
+    try {
+      const allowedSlugs = Array.isArray(productContext.relatedProducts)
+        ? productContext.relatedProducts.map((p) => String(p.slug))
+        : [];
+
+      const needsRetry = (() => {
+        if (!productContext.contextText) return false; // no DB context, don't force retry
+        if (!parsedOutput) return true;
+        if (!Array.isArray(parsedOutput.recommendedProducts)) return true;
+        // ensure all recommended are exact allowed slugs
+        const bad = parsedOutput.recommendedProducts.some((s) => !allowedSlugs.includes(String(s)));
+        return bad;
+      })();
+
+      if (needsRetry) {
+        console.log("[AI Debug] parsedOutput invalid for DB context, retrying once with stricter instruction");
+        // append a clarifying user message forcing JSON and allowed slugs
+        const clarifying = `Previous reply was invalid. You must return ONLY valid JSON with this schema: {"message":"...","recommendedProducts":["slug-1"],"reasoning":"..."}. Use ONLY the following slugs (exact match): ${allowedSlugs.join(",")} . If none suitable, return {\"message\":\"\",\"recommendedProducts\":[],\"reasoning\":\"\"}. Return JSON only.`;
+
+        const retryMessages = [
+          systemMessage,
+          ...(contextInstructionMessage ? [contextInstructionMessage] : []),
+          ...history.map((msg) => ({ role: msg.role === "user" ? "user" : "assistant", content: String(msg.content ?? "") })),
+          { role: "user", content: `${contextualUserMessage}\n\n${clarifying}` },
+        ];
+
+        const retryResp = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: retryMessages,
+            max_tokens: settings.maxToken || 800,
+            temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+          }),
+        });
+
+        if (retryResp.ok) {
+          const retryData = await retryResp.json().catch(() => null);
+          const retryReply = retryData?.choices?.[0]?.message?.content || "";
+          try { console.log("[AI Debug] retry reply:\n", retryReply); } catch (e) {}
+          const retryParsed = tryParseJsonFromText(String(retryReply || ""));
+          if (retryParsed) {
+            parsedOutput = retryParsed;
+            // rebuild mentionedProducts based on retryParsed
+            if (Array.isArray(parsedOutput.recommendedProducts) && parsedOutput.recommendedProducts.length > 0) {
+              const slugs = parsedOutput.recommendedProducts.map((item) => String(item ?? "").trim()).filter(Boolean);
+              mentionedProducts = await findProductsByNamesOrSlugs(slugs);
+            } else if (Array.isArray(parsedOutput.recommended) && parsedOutput.recommended.length > 0) {
+              const names = parsedOutput.recommended.map((item) => String(item?.name ?? item ?? "").trim()).filter(Boolean);
+              mentionedProducts = await findProductsByNamesOrSlugs(names);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[AI Debug] retry flow error:", err);
+    }
+
+    // If DB context exists but parsedOutput is missing or contains invalid slugs,
+    // enforce the required empty-schema response to avoid inventing products.
+    try {
+      if (productContext.contextText) {
+        const allowedSlugs = Array.isArray(productContext.relatedProducts)
+          ? productContext.relatedProducts.map((p) => String(p.slug))
+          : [];
+
+        let invalid = false;
+        if (!parsedOutput || !Array.isArray(parsedOutput.recommendedProducts)) {
+          invalid = true;
+        } else {
+          const bad = parsedOutput.recommendedProducts.some((s) => !allowedSlugs.includes(String(s)));
+          if (bad) invalid = true;
+        }
+
+        if (invalid) {
+          console.log('[AI Debug] Enforcing empty recommendedProducts because parsed output invalid or contains non-DB slugs');
+          parsedOutput = { message: "", recommendedProducts: [], reasoning: "" };
+          mentionedProducts = [];
+        }
+      }
+    } catch (err) {
+      console.error('[AI Debug] error enforcing empty-schema:', err);
     }
 
     // Save log asynchronously
@@ -723,10 +830,20 @@ async function buildProductContextForMessage(message) {
     return `${index + 1}. Sản phẩm ${String.fromCharCode(65 + index)}: {Tên: "${product.name}", Danh mục: "${product.category ?? ""}", Mục đích phù hợp: "${purpose}", Đặc điểm: "${features}", Giá: "${new Intl.NumberFormat("vi-VN").format(product.price)} VND", Link: "${product.productUrl}"}`;
   });
 
+  // Also provide explicit slug list and Name->slug mapping to help LLM return exact slugs
+  const slugList = relatedProducts.map((p) => p.slug).filter(Boolean);
+  const nameToSlugLines = relatedProducts.map((p) => `Tên: "${p.name}" => Slug: "${p.slug}"`);
+
   const contextText = [
     "[Dữ liệu ngữ cảnh từ Database hiện tại]",
     "Danh sách các sản phẩm có thể liên quan:",
     ...productLines,
+    "",
+    "Danh sách slug khả dụng (vui lòng trả recommendedProducts dưới dạng slug chính xác):",
+    slugList.join(", "),
+    "",
+    "Mapping Tên -> Slug:",
+    ...nameToSlugLines,
   ].join("\n");
 
   return { contextText, relatedProducts };
