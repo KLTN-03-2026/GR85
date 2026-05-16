@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { connectChatSocket, disconnectChatSocket, getChatSocket } from "@/client/features/chat/data/chat.socket.js";
 
 const STORAGE_TOKEN_KEY = "pc-perfect-token";
 const STORAGE_USER_KEY = "pc-perfect-user";
@@ -45,6 +46,23 @@ export function AuthProvider({ children }) {
         if (!cancelled) {
           setSession(nextSession);
         }
+
+        // Connect chat socket for realtime events and forward notifications as DOM events
+        try {
+          const socket = connectChatSocket(nextSession.token);
+          if (socket) {
+            const handler = (payload) => {
+              try {
+                window.dispatchEvent(new CustomEvent("app:notification", { detail: payload }));
+              } catch { }
+            };
+
+            socket.on("notification", handler);
+
+            // store handler on socket for cleanup
+            socket.__notification_handler = handler;
+          }
+        } catch { }
       } catch {
         clearSessionStorage();
         if (!cancelled) {
@@ -74,12 +92,36 @@ export function AuthProvider({ children }) {
       setSession: (nextSession) => {
         if (!nextSession) {
           clearSessionStorage();
+          // disconnect socket on logout
+          try {
+            const socket = getChatSocket();
+            if (socket) {
+              const handler = socket.__notification_handler;
+              if (handler) socket.off("notification", handler);
+            }
+          } catch { }
+          disconnectChatSocket();
           setSession(null);
           return;
         }
 
         persistSession(nextSession);
         setSession(nextSession);
+
+        // connect socket when session is set
+        try {
+          const socket = connectChatSocket(nextSession.token);
+          if (socket && !socket.__notification_handler) {
+            const handler = (payload) => {
+              try {
+                window.dispatchEvent(new CustomEvent("app:notification", { detail: payload }));
+              } catch { }
+            };
+
+            socket.on("notification", handler);
+            socket.__notification_handler = handler;
+          }
+        } catch { }
       },
       logout: () => {
         clearSessionStorage();

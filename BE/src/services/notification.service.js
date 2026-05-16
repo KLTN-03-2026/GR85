@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
+import { emitUserNotification } from "../realtime/chat.socket.js";
 
 export async function listNotificationsForUser(userId, input = {}) {
   const normalizedUserId = Number(userId);
@@ -253,7 +254,7 @@ export async function createSystemNotification({
   }
 
   try {
-    await prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         userId: normalizedUserId,
         type: "SYSTEM",
@@ -262,6 +263,19 @@ export async function createSystemNotification({
         payload,
       },
     });
+    // Also emit realtime socket event if possible — emit the created DB object so client has id
+    try {
+      emitUserNotification(normalizedUserId, {
+        id: created.id,
+        type: created.type,
+        title: created.title,
+        message: created.message,
+        payload: created.payload,
+        createdAt: created.createdAt,
+      });
+    } catch (_err) {
+      // ignore realtime emission errors
+    }
   } catch (_error) {
     // Silent fail for notification delivery edge-cases.
   }

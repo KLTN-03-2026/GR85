@@ -111,7 +111,7 @@ export function initializeChatSocket(httpServer) {
     });
 
     socket.on("admin_room_viewing", (payload) => {
-    // Admins can mark that they are actively watching a room response flow.
+      // Admins can mark that they are actively watching a room response flow.
       const roomId = Number(payload?.roomId);
       const isViewing = Boolean(payload?.isViewing);
 
@@ -133,7 +133,7 @@ export function initializeChatSocket(httpServer) {
     });
 
     socket.on("disconnect", () => {
-    // Clean up all in-memory presence records for this user when the socket closes.
+      // Clean up all in-memory presence records for this user when the socket closes.
       for (const [roomId, state] of roomState.entries()) {
         if (state.viewers.has(connectedUser.id) || state.typers.has(connectedUser.id)) {
           state.viewers.delete(connectedUser.id);
@@ -225,7 +225,29 @@ export function emitOrderStatusUpdated(payload) {
   }
 }
 
-// Return the current in-memory presence snapshot for a support room.
+// Emit a direct notification event to a single user (if socket is initialized).
+export function emitUserNotification(userId, notification) {
+  const io = ioInstance;
+  if (!io) {
+    console.info(`[Socket] emitUserNotification skipped (io not initialized) for user ${userId}`);
+    return;
+  }
+
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    console.info(`[Socket] emitUserNotification invalid user id: ${userId}`);
+    return;
+  }
+
+  try {
+    io.to(getUserKey(normalizedUserId)).emit("notification", notification);
+    console.info(`[Socket] notification emitted to user_${normalizedUserId}`);
+  } catch (err) {
+    console.error("[Socket] failed to emit notification:", err);
+  }
+}
+
+// Trả về snapshot hiện tại trong bộ nhớ cho một phòng hỗ trợ.
 export function getRoomPresence(roomId) {
   const state = roomState.get(Number(roomId));
   if (!state) {

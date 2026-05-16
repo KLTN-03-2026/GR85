@@ -40,7 +40,34 @@ export function NotificationProvider({ children }) {
 
       // Poll for new notifications every 30 seconds
       const interval = setInterval(fetchNotifications, 30000);
-      return () => clearInterval(interval);
+      // Listen for realtime notifications forwarded from socket
+      const handler = (e) => {
+        try {
+          const payload = e?.detail;
+          if (!payload) return;
+
+          setNotifications((prev) => {
+            const next = Array.isArray(prev) ? [...prev] : [];
+            next.unshift({
+              id: payload.id ?? `ntf_${Date.now()}`,
+              type: payload.type ?? "SYSTEM",
+              title: payload.title ?? "",
+              message: payload.message ?? "",
+              payload: payload.payload ?? null,
+              createdAt: payload.createdAt ?? new Date().toISOString(),
+              isRead: false,
+            });
+            return next.slice(0, 100);
+          });
+          setUnreadCount((prev) => prev + 1);
+        } catch (_err) { }
+      };
+
+      window.addEventListener("app:notification", handler);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener("app:notification", handler);
+      };
     }
   }, [isAuthenticated]);
 

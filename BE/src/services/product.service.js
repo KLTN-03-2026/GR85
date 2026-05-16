@@ -1,6 +1,6 @@
 import { prisma } from "../db/prisma.js";
 import { serializeData } from "../utils/serialize.js";
-import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { OrderStatus, PaymentStatus, PaymentMethod } from "@prisma/client";
 import { createWishlistPriceDropNotifications } from "./notification.service.js";
 
 const DEFAULT_PAGE_SIZE = 12;
@@ -164,8 +164,8 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       productId: product.id,
       isHidden: false,
       ...(Number.isInteger(ratingFilter) &&
-      ratingFilter >= 1 &&
-      ratingFilter <= 5
+        ratingFilter >= 1 &&
+        ratingFilter <= 5
         ? { rating: ratingFilter }
         : {}),
     },
@@ -212,9 +212,9 @@ export async function listProductReviewsBySlug(slug, input = {}) {
   const averageRating =
     latestPerUser.length > 0
       ? latestPerUser.reduce(
-          (sum, review) => sum + Number(review.rating ?? 0),
-          0,
-        ) / latestPerUser.length
+        (sum, review) => sum + Number(review.rating ?? 0),
+        0,
+      ) / latestPerUser.length
       : 0;
   return serializeData({
     items: latestPerUser.map((review) => ({
@@ -228,11 +228,11 @@ export async function listProductReviewsBySlug(slug, input = {}) {
       adminRepliedAt: review.adminRepliedAt,
       images: Array.isArray(review.images)
         ? review.images.map((image) => ({
-            id: image.id,
-            imageUrl: String(image.imageUrl ?? ""),
-            sortOrder: Number(image.sortOrder ?? 0),
-            isApproved: Boolean(image.isApproved),
-          }))
+          id: image.id,
+          imageUrl: String(image.imageUrl ?? ""),
+          sortOrder: Number(image.sortOrder ?? 0),
+          isApproved: Boolean(image.isApproved),
+        }))
         : [],
       thread: mapPublicReviewThread(review),
       user: {
@@ -341,8 +341,15 @@ export async function getProductReviewEligibilityBySlug(userId, slug) {
       productId: product.id,
       order: {
         userId: normalizedUserId,
-        orderStatus: OrderStatus.DELIVERED,
-        paymentStatus: PaymentStatus.PAID,
+        OR: [
+          { paymentStatus: PaymentStatus.PAID },
+          {
+            AND: [
+              { paymentMethod: PaymentMethod.COD },
+              { orderStatus: OrderStatus.DELIVERED },
+            ],
+          },
+        ],
       },
       reviews: {
         none: {
@@ -358,7 +365,7 @@ export async function getProductReviewEligibilityBySlug(userId, slug) {
     canReview: Boolean(eligibleOrderItem),
     reason: eligibleOrderItem
       ? null
-      : "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã nhận hàng và thanh toán thành công",
+      : "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã thanh toán thành công hoặc đã nhận hàng",
   });
 }
 
@@ -603,11 +610,11 @@ export async function createProductReviewBySlug(
 
   const normalizedReviewImages = Array.isArray(reviewImageUrls)
     ? reviewImageUrls
-        .map((imageUrl, index) => ({
-          imageUrl: String(imageUrl ?? "").trim(),
-          sortOrder: index,
-        }))
-        .filter((item) => Boolean(item.imageUrl))
+      .map((imageUrl, index) => ({
+        imageUrl: String(imageUrl ?? "").trim(),
+        sortOrder: index,
+      }))
+      .filter((item) => Boolean(item.imageUrl))
     : [];
 
   const product = await prisma.product.findUnique({
@@ -624,8 +631,15 @@ export async function createProductReviewBySlug(
       productId: product.id,
       order: {
         userId: normalizedUserId,
-        orderStatus: OrderStatus.DELIVERED,
-        paymentStatus: PaymentStatus.PAID,
+        OR: [
+          { paymentStatus: PaymentStatus.PAID },
+          {
+            AND: [
+              { paymentMethod: PaymentMethod.COD },
+              { orderStatus: OrderStatus.DELIVERED },
+            ],
+          },
+        ],
       },
       reviews: {
         none: {
@@ -639,7 +653,7 @@ export async function createProductReviewBySlug(
 
   if (!eligibleOrderItem) {
     throw new Error(
-      "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã nhận hàng và thanh toán thành công",
+      "Bạn chỉ có thể đánh giá mỗi đơn hàng 1 lần sau khi đã thanh toán thành công hoặc đã nhận hàng",
     );
   }
 
@@ -708,10 +722,10 @@ export async function createProductReviewBySlug(
     createdAt: review.createdAt,
     images: Array.isArray(review.images)
       ? review.images.map((image) => ({
-          id: image.id,
-          imageUrl: String(image.imageUrl ?? ""),
-          sortOrder: Number(image.sortOrder ?? 0),
-        }))
+        id: image.id,
+        imageUrl: String(image.imageUrl ?? ""),
+        sortOrder: Number(image.sortOrder ?? 0),
+      }))
       : [],
     user: {
       id: review.user.id,
@@ -875,17 +889,17 @@ export async function moderateProductReviewByAdmin(
   const updated = await prisma.$transaction(async (tx) => {
     const nextReview = isDelete
       ? await tx.review.delete({
-          where: { id: review.id },
-        })
+        where: { id: review.id },
+      })
       : await tx.review.update({
-          where: { id: review.id },
-          data: {
-            isHidden: true,
-            hiddenReason: reason,
-            moderatedBy: normalizedAdminId,
-            moderatedAt: moderationTime,
-          },
-        });
+        where: { id: review.id },
+        data: {
+          isHidden: true,
+          hiddenReason: reason,
+          moderatedBy: normalizedAdminId,
+          moderatedAt: moderationTime,
+        },
+      });
 
     await tx.reviewModerationLog.create({
       data: {
@@ -902,9 +916,8 @@ export async function moderateProductReviewByAdmin(
   await createSystemNotification({
     userId: review.userId,
     title: isDelete ? "Đánh giá đã bị xóa" : "Đánh giá đã bị ẩn",
-    message: `Đánh giá của bạn cho ${String(review.product.name ?? "sản phẩm")} đã bị ${
-      isDelete ? "xóa" : "ẩn"
-    } vì: ${reason}`,
+    message: `Đánh giá của bạn cho ${String(review.product.name ?? "sản phẩm")} đã bị ${isDelete ? "xóa" : "ẩn"
+      } vì: ${reason}`,
     payload: {
       reviewId: review.id,
       productId: review.productId,
@@ -1104,21 +1117,21 @@ export async function createProduct(input) {
         create: [
           ...(input.imageUrl
             ? [
-                {
-                  imageUrl: input.imageUrl,
-                  isPrimary: true,
-                  sortOrder: 0,
-                },
-              ]
+              {
+                imageUrl: input.imageUrl,
+                isPrimary: true,
+                sortOrder: 0,
+              },
+            ]
             : []),
           ...(Array.isArray(input.images)
             ? input.images
-                .filter((url) => url !== input.imageUrl)
-                .map((url, index) => ({
-                  imageUrl: url,
-                  isPrimary: false,
-                  sortOrder: index + 1,
-                }))
+              .filter((url) => url !== input.imageUrl)
+              .map((url, index) => ({
+                imageUrl: url,
+                isPrimary: false,
+                sortOrder: index + 1,
+              }))
             : []),
         ],
       },
@@ -1697,7 +1710,7 @@ async function attachProductRatings(products) {
       {
         averageRating:
           aggregate._avg?.rating === null ||
-          aggregate._avg?.rating === undefined
+            aggregate._avg?.rating === undefined
             ? 5
             : Number(aggregate._avg.rating),
         reviewCount: Number(aggregate._count?._all ?? 0),
