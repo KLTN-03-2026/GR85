@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft, Heart, History, Loader2, MessageSquare, Shield,
   ShoppingCart, Star, Trophy, CheckCircle2, ChevronRight,
-  Maximize2, Share2, Info, Box, Camera, X
+  Maximize2, Share2, Info, Box, Camera, X, Edit2, Trash2
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 export default function ProductDetailPage() {
   const { slug } = useParams();
   const { addToCart } = useCart();
-  const { token, isAuthenticated, isHydrated } = useAuth();
+  const { token, isAuthenticated, isHydrated, user } = useAuth();
   const { toast } = useToast();
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,6 +36,8 @@ export default function ProductDetailPage() {
   const [reviewMessage, setReviewMessage] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewStarFilter, setReviewStarFilter] = useState("all");
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [existingImageUrls, setExistingImageUrls] = useState([]);
 
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState("");
@@ -291,6 +293,129 @@ export default function ProductDetailPage() {
 
     const el = document.getElementById("reviews");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleEditReview = (review) => {
+    setEditingReviewId(review.id);
+    setReviewRating(review.rating);
+    setReviewComment(review.comment);
+    setExistingImageUrls(Array.isArray(review.images) ? review.images.map(img => img.imageUrl || img) : []);
+    setReviewImages([]);
+    setReviewImagePreviews([]);
+    setReviewError("");
+    setReviewMessage("");
+
+    const el = document.getElementById("reviews");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingReviewId(null);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewImages([]);
+    setReviewImagePreviews([]);
+    setExistingImageUrls([]);
+    setReviewError("");
+    setReviewMessage("");
+  };
+
+  const handleSaveEditReview = async () => {
+    if (!isAuthenticated || !token || !editingReviewId) {
+      setReviewError("Vui lòng đăng nhập");
+      return;
+    }
+
+    if (reviewRating < 1 || reviewRating > 5) {
+      setReviewError("Vui lòng chọn số sao đánh giá");
+      return;
+    }
+
+    try {
+      setIsSubmittingReview(true);
+      setReviewError("");
+      setReviewMessage("");
+
+      const formData = new FormData();
+      formData.append("rating", String(reviewRating));
+      formData.append("comment", reviewComment);
+      reviewImages.forEach((file) => {
+        formData.append("images", file);
+      });
+      
+      // Send existing image URLs
+      existingImageUrls.forEach((url) => {
+        formData.append("reviewImageUrls", url);
+      });
+
+      const response = await fetch(`/api/products/${slug}/reviews/${editingReviewId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.message || "Không thể cập nhật đánh giá");
+      }
+
+      setReviewMessage("Đánh giá đã được cập nhật!");
+      handleCancelEdit();
+
+      // Refresh reviews and eligibility
+      loadReviews(slug);
+      refreshReviewEligibility(slug, token);
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : "Có lỗi xảy ra");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!isAuthenticated || !token) {
+      setReviewError("Vui lòng đăng nhập");
+      return;
+    }
+
+    if (!window.confirm("Bạn có chắc muốn xóa đánh giá này?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/${slug}/reviews/${reviewId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.message || "Không thể xóa đánh giá");
+      }
+
+      toast({
+        title: "Thành công",
+        description: "Đánh giá đã được xóa",
+      });
+
+      // Refresh reviews and eligibility
+      loadReviews(slug);
+      refreshReviewEligibility(slug, token);
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: err instanceof Error ? err.message : "Có lỗi xảy ra",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeExistingImage = (index) => {
+    setExistingImageUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -562,17 +687,28 @@ export default function ProductDetailPage() {
                     </Badge>
                   </div>
 
-                  {/* Add Review Form - Only if eligible */}
-                  {canReview && (
+                  {/* Add/Edit Review Form - Only if eligible or editing */}
+                  {(canReview || editingReviewId) && (
                     <div className="p-8 rounded-[40px] bg-white border border-primary/20 shadow-xl shadow-primary/5 space-y-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                          <Star className="w-5 h-5 fill-primary" />
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <Star className="w-5 h-5 fill-primary" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-black text-slate-900">
+                              {editingReviewId ? "Chỉnh sửa đánh giá" : "Gửi đánh giá của bạn"}
+                            </h3>
+                            <p className="text-sm text-slate-500 font-medium">
+                              {editingReviewId ? "Cập nhật đánh giá của bạn" : "Chia sẻ trải nghiệm của bạn về sản phẩm này"}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="text-xl font-black text-slate-900">Gửi đánh giá của bạn</h3>
-                          <p className="text-sm text-slate-500 font-medium">Chia sẻ trải nghiệm của bạn về sản phẩm này</p>
-                        </div>
+                        {editingReviewId && (
+                          <Button variant="outline" size="sm" onClick={handleCancelEdit}>
+                            Hủy
+                          </Button>
+                        )}
                       </div>
 
                       <div className="space-y-4">
@@ -610,8 +746,20 @@ export default function ProductDetailPage() {
                         <div className="space-y-3">
                           <Label className="text-sm font-bold text-slate-700">Hình ảnh thực tế (Tối đa 6)</Label>
                           <div className="flex flex-wrap gap-3">
+                            {existingImageUrls.map((url, idx) => (
+                              <div key={`existing-${idx}`} className="relative w-20 h-20 rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50">
+                                <img src={url} className="w-full h-full object-cover" alt="Existing" />
+                                <button
+                                  onClick={() => removeExistingImage(idx)}
+                                  className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-1 shadow-lg hover:bg-rose-600"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                                <span className="absolute bottom-1 left-1 text-xs bg-emerald-600 text-white px-1 rounded">Cũ</span>
+                              </div>
+                            ))}
                             {reviewImagePreviews.map((url, idx) => (
-                              <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50">
+                              <div key={`new-${idx}`} className="relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50">
                                 <img src={url} className="w-full h-full object-cover" alt="Preview" />
                                 <button
                                   onClick={() => removeReviewImage(idx)}
@@ -621,7 +769,7 @@ export default function ProductDetailPage() {
                                 </button>
                               </div>
                             ))}
-                            {reviewImages.length < 6 && (
+                            {reviewImages.length + existingImageUrls.length < 6 && (
                               <label className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary hover:bg-primary/5 transition-all">
                                 <Camera className="w-6 h-6 text-slate-400" />
                                 <input
@@ -649,14 +797,14 @@ export default function ProductDetailPage() {
                         )}
 
                         <Button
-                          onClick={handleSendReview}
+                          onClick={editingReviewId ? handleSaveEditReview : handleSendReview}
                           disabled={isSubmittingReview}
                           className="w-full h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-primary/20"
                         >
                           {isSubmittingReview ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : (
-                            "GỬI ĐÁNH GIÁ NGAY"
+                            editingReviewId ? "CẬP NHẬT ĐÁNH GIÁ" : "GỬI ĐÁNH GIÁ NGAY"
                           )}
                         </Button>
                       </div>
@@ -713,27 +861,64 @@ export default function ProductDetailPage() {
                       </div>
                     ) : (
                       <div className="grid gap-6">
-                        {reviews.map(review => (
-                          <div key={review.id} className="p-8 rounded-[32px] bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-start justify-between mb-6">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-black text-lg">
-                                  {review.user?.fullName?.[0]?.toUpperCase() || "?"}
+                        {reviews.map(review => {
+                          const isOwnReview = user && review.user?.id === user.id;
+                          return (
+                            <div key={review.id} className="p-8 rounded-[32px] bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex items-start justify-between mb-6">
+                                <div className="flex items-center gap-4 flex-1">
+                                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-black text-lg shrink-0">
+                                    {review.user?.fullName?.[0]?.toUpperCase() || "?"}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="font-black text-slate-900">{review.user?.fullName || "Khách hàng"}</p>
+                                    <p className="text-xs text-slate-400 font-medium">{formatRelativeTime(review.createdAt)}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-black text-slate-900">{review.user?.fullName || "Khách hàng"}</p>
-                                  <p className="text-xs text-slate-400 font-medium">{formatRelativeTime(review.createdAt)}</p>
+                                <div className="flex items-center gap-3">
+                                  <div className="flex gap-0.5">
+                                    {[1, 2, 3, 4, 5].map(s => (
+                                      <Star key={s} className={`w-3 h-3 ${s <= review.rating ? "fill-amber-400 text-amber-400" : "text-slate-100"}`} />
+                                    ))}
+                                  </div>
+                                  {isOwnReview && (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleEditReview(review)}
+                                        className="text-primary hover:bg-primary/10"
+                                      >
+                                        <Edit2 className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleDeleteReview(review.id)}
+                                        className="text-destructive hover:bg-destructive/10"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex gap-0.5">
-                                {[1, 2, 3, 4, 5].map(s => (
-                                  <Star key={s} className={`w-3 h-3 ${s <= review.rating ? "fill-amber-400 text-amber-400" : "text-slate-100"}`} />
-                                ))}
-                              </div>
+                              <p className="text-slate-600 leading-relaxed font-medium">{review.comment}</p>
+                              {Array.isArray(review.images) && review.images.length > 0 && (
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                  {review.images.map((image, idx) => (
+                                    <img
+                                      key={idx}
+                                      src={image.imageUrl || image}
+                                      alt={`Review ${idx + 1}`}
+                                      className="h-20 w-20 rounded-lg object-cover border"
+                                    />
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <p className="text-slate-600 leading-relaxed font-medium">{review.comment}</p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

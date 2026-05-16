@@ -9,6 +9,7 @@ import {
   addProductToWishlistBySlug,
   batchUpdateProductDisplayOrder,
   createProductReviewBySlug,
+  deleteProductReviewBySlug,
   replyToProductReview,
   createProduct,
   deleteProductById,
@@ -23,6 +24,7 @@ import {
   updateProductById,
   addProductToWishlistById,
   removeProductFromWishlistById,
+  updateProductReviewBySlug,
 } from "../../services/product.service.js";
 
 const router = Router();
@@ -277,6 +279,50 @@ router.post(
         uploadedImages,
       );
       return res.status(201).json(data);
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  },
+);
+
+router.patch(
+  "/:slug/reviews/:reviewId",
+  requireAuth,
+  reviewUpload.array("images", 6),
+  async (req, res) => {
+    try {
+      const parsed = reviewSchema.parse(req.body ?? {});
+      const uploadedImages = Array.isArray(req.files)
+        ? req.files.map((file) => `/uploads/reviews/${file.filename}`)
+        : [];
+      // Include existing images if any
+      const reviewImageUrls = Array.isArray(parsed.reviewImageUrls)
+        ? [...parsed.reviewImageUrls, ...uploadedImages]
+        : uploadedImages;
+      const data = await updateProductReviewBySlug(
+        Number(req.auth?.sub),
+        req.params.slug,
+        Number(req.params.reviewId),
+        { ...parsed, reviewImageUrls },
+      );
+      return res.json(data);
+    } catch (error) {
+      return handleRouteError(error, res);
+    }
+  },
+);
+
+router.delete(
+  "/:slug/reviews/:reviewId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const data = await deleteProductReviewBySlug(
+        Number(req.auth?.sub),
+        req.params.slug,
+        Number(req.params.reviewId),
+      );
+      return res.json(data);
     } catch (error) {
       return handleRouteError(error, res);
     }

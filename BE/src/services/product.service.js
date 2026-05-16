@@ -832,6 +832,185 @@ export async function replyToProductReview(userId, reviewIdInput, input = {}) {
   });
 }
 
+export async function updateProductReviewBySlug(
+  userId,
+  slug,
+  reviewIdInput,
+  input = {},
+) {
+  const normalizedUserId = Number(userId);
+  const reviewId = Number(reviewIdInput);
+  const rating = Number(input.rating ?? 0);
+  const comment = String(input.comment ?? "").trim();
+  const reviewImageUrls = input.reviewImageUrls ?? [];
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!slug || typeof slug !== "string") {
+    throw new Error("Slug sản phẩm không hợp lệ");
+  }
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("ID đánh giá không hợp lệ");
+  }
+
+  if (rating < 1 || rating > 5) {
+    throw new Error("Đánh giá phải từ 1 đến 5 sao");
+  }
+
+  if (!comment) {
+    throw new Error("Nhận xét không được để trống");
+  }
+
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: { images: true },
+  });
+
+  if (!review) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  if (review.userId !== normalizedUserId) {
+    throw new Error("Bạn không có quyền chỉnh sửa đánh giá này");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { slug },
+  });
+
+  if (!product) {
+    throw new Error("Không tìm thấy sản phẩm");
+  }
+
+  if (review.productId !== product.id) {
+    throw new Error("Đánh giá không khớp với sản phẩm này");
+  }
+
+  const normalizedReviewImages = Array.isArray(reviewImageUrls)
+    ? reviewImageUrls
+        .map((item) => {
+          if (typeof item === "string") {
+            return { imageUrl: item };
+          }
+          return item;
+        })
+        .filter((item) => item?.imageUrl)
+    : [];
+
+  const updatedReview = await prisma.$transaction(async (tx) => {
+    const updated = await tx.review.update({
+      where: { id: reviewId },
+      data: {
+        rating,
+        comment,
+        updatedAt: new Date(),
+      },
+      include: {
+        user: true,
+        replies: { include: { user: true } },
+        images: true,
+      },
+    });
+
+    // Delete old images and create new ones
+    if (normalizedReviewImages.length > 0) {
+      await tx.reviewImage.deleteMany({
+        where: { reviewId },
+      });
+
+      await tx.reviewImage.createMany({
+        data: normalizedReviewImages.map((item) => ({
+          reviewId,
+          imageUrl: item.imageUrl,
+        })),
+      });
+    }
+
+    return tx.review.findUnique({
+      where: { id: reviewId },
+      include: {
+        user: true,
+        replies: { include: { user: true } },
+        images: true,
+      },
+    });
+  });
+
+  return serializeData({
+    id: updatedReview.id,
+    rating: Number(updatedReview.rating ?? 0),
+    comment: updatedReview.comment ? String(updatedReview.comment) : "",
+    createdAt: updatedReview.createdAt,
+    updatedAt: updatedReview.updatedAt,
+    images: Array.isArray(updatedReview.images)
+      ? updatedReview.images.map((image) => ({
+          id: image.id,
+          imageUrl: image.imageUrl,
+        }))
+      : [],
+    user: {
+      id: updatedReview.user.id,
+      fullName:
+        String(updatedReview.user.fullName ?? "").trim() ||
+        String(updatedReview.user.email ?? "Ẩn danh"),
+    },
+  });
+}
+
+export async function deleteProductReviewBySlug(userId, slug, reviewIdInput) {
+  const normalizedUserId = Number(userId);
+  const reviewId = Number(reviewIdInput);
+
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    throw new Error("ID người dùng không hợp lệ");
+  }
+
+  if (!slug || typeof slug !== "string") {
+    throw new Error("Slug sản phẩm không hợp lệ");
+  }
+
+  if (!Number.isFinite(reviewId) || reviewId <= 0) {
+    throw new Error("ID đánh giá không hợp lệ");
+  }
+
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    include: { product: true },
+  });
+
+  if (!review) {
+    throw new Error("Không tìm thấy đánh giá");
+  }
+
+  if (review.userId !== normalizedUserId) {
+    throw new Error("Bạn không có quyền xóa đánh giá này");
+  }
+
+  if (review.product.slug !== slug) {
+    throw new Error("Đánh giá không khớp với sản phẩm này");
+  }
+
+  // Delete review images first
+  await prisma.reviewImage.deleteMany({
+    where: { reviewId },
+  });
+
+  // Delete review replies
+  await prisma.reviewReply.deleteMany({
+    where: { reviewId },
+  });
+
+  // Delete the review
+  await prisma.review.delete({
+    where: { id: reviewId },
+  });
+
+  return { success: true, message: "Đánh giá đã được xóa thành công" };
+}
+
 export async function moderateProductReviewByAdmin(
   adminUserId,
   reviewIdInput,
