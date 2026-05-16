@@ -614,7 +614,7 @@ Quy tắc:
         if (retryResp.ok) {
           const retryData = await retryResp.json().catch(() => null);
           const retryReply = retryData?.choices?.[0]?.message?.content || "";
-          try { console.log("[AI Debug] retry reply:\n", retryReply); } catch (e) {}
+          try { console.log("[AI Debug] retry reply:\n", retryReply); } catch (e) { }
           const retryParsed = tryParseJsonFromText(String(retryReply || ""));
           if (retryParsed) {
             parsedOutput = retryParsed;
