@@ -342,7 +342,7 @@ export default function ProductDetailPage() {
       reviewImages.forEach((file) => {
         formData.append("images", file);
       });
-      
+
       // Send existing image URLs
       existingImageUrls.forEach((url) => {
         formData.append("reviewImageUrls", url);
@@ -724,8 +724,8 @@ export default function ProductDetailPage() {
                               >
                                 <Star
                                   className={`w-8 h-8 ${star <= reviewRating
-                                      ? "fill-amber-400 text-amber-400"
-                                      : "text-slate-200"
+                                    ? "fill-amber-400 text-amber-400"
+                                    : "text-slate-200"
                                     }`}
                                 />
                               </button>

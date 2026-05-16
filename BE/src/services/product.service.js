@@ -891,13 +891,13 @@ export async function updateProductReviewBySlug(
 
   const normalizedReviewImages = Array.isArray(reviewImageUrls)
     ? reviewImageUrls
-        .map((item) => {
-          if (typeof item === "string") {
-            return { imageUrl: item };
-          }
-          return item;
-        })
-        .filter((item) => item?.imageUrl)
+      .map((item) => {
+        if (typeof item === "string") {
+          return { imageUrl: item };
+        }
+        return item;
+      })
+      .filter((item) => item?.imageUrl)
     : [];
 
   const updatedReview = await prisma.$transaction(async (tx) => {
@@ -947,9 +947,9 @@ export async function updateProductReviewBySlug(
     updatedAt: updatedReview.updatedAt,
     images: Array.isArray(updatedReview.images)
       ? updatedReview.images.map((image) => ({
-          id: image.id,
-          imageUrl: image.imageUrl,
-        }))
+        id: image.id,
+        imageUrl: image.imageUrl,
+      }))
       : [],
     user: {
       id: updatedReview.user.id,
