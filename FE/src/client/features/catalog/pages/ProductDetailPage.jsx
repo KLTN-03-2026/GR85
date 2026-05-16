@@ -14,6 +14,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FavoriteProvider, useFavorite } from "@/client/features/favorite/context/FavoriteContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -46,6 +56,8 @@ export default function ProductDetailPage() {
   const isWishlisted = product ? isFavorite(product.id) : false;
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [reviewIdToDelete, setReviewIdToDelete] = useState(null);
 
   const refreshReviewEligibility = useCallback(
     async (productSlug, authToken, isCancelled = () => false) => {
@@ -380,12 +392,15 @@ export default function ProductDetailPage() {
       return;
     }
 
-    if (!window.confirm("Bạn có chắc muốn xóa đánh giá này?")) {
-      return;
-    }
+    setReviewIdToDelete(reviewId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteReview = async () => {
+    if (!reviewIdToDelete) return;
 
     try {
-      const response = await fetch(`/api/products/${slug}/reviews/${reviewId}`, {
+      const response = await fetch(`/api/products/${slug}/reviews/${reviewIdToDelete}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -411,6 +426,9 @@ export default function ProductDetailPage() {
         description: err instanceof Error ? err.message : "Có lỗi xảy ra",
         variant: "destructive",
       });
+    } finally {
+      setDeleteConfirmOpen(false);
+      setReviewIdToDelete(null);
     }
   };
 
@@ -1028,6 +1046,27 @@ export default function ProductDetailPage() {
           <p className="text-sm text-slate-400 font-medium">© 2024 TechBuildAi. All Rights Reserved.</p>
         </div>
       </footer>
+
+      {/* Delete Review Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl">Xóa đánh giá</AlertDialogTitle>
+            <AlertDialogDescription className="text-base mt-2">
+              Bạn có chắc chắn muốn xóa đánh giá này? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6">
+            <AlertDialogCancel className="min-w-24">Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteReview}
+              className="min-w-24 bg-red-600 hover:bg-red-700 text-white"
+            >
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -910,7 +910,7 @@ export async function updateProductReviewBySlug(
       },
       include: {
         user: true,
-        replies: { include: { user: true } },
+        replies: { include: { sender: true } },
         images: true,
       },
     });
@@ -933,7 +933,7 @@ export async function updateProductReviewBySlug(
       where: { id: reviewId },
       include: {
         user: true,
-        replies: { include: { user: true } },
+        replies: { include: { sender: true } },
         images: true,
       },
     });
